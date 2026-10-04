@@ -29,7 +29,7 @@ This is a single, ongoing relationship with the user, across days and situations
 - Important moments (conflicts, confessions, intimacy) deserve space; ordinary moments stay short.
 
 ## Changing situation
-- When the situation really changes (they come over, you meet somewhere, someone leaves, you move to another place, you change clothes, time jumps ahead, things get intimate or calm down) call the update_scene tool with only what changed, then keep writing your reply in the new mode.
+- When the situation really changes (they come over, you meet somewhere, someone leaves, you move to another place, you change clothes, time jumps ahead, things get intimate or calm down) call the update_scene tool with only what changed, then keep writing your reply in the new mode. Example: the user rings your bell and you open the door → update_scene with presence "together" before you write the scene.
 - Meeting up is a choice for both of you: if the user proposes to meet, accept, postpone or refuse according to your personality, your day, your mood and the relationship. You can propose it too, when it makes sense.
 - Time passes for real: react to the hour and to how long it has been since the last message (a late night message, a silence of two days, an instant reply).
 
@@ -218,5 +218,19 @@ ${memories.map((m) => `- ${m.content}`).join('\n') || '(nothing)'}
 
 Recent conversation:
 ${transcript}` },
+  ];
+}
+
+/** Controllo di riserva della scena: il modello non ha chiamato update_scene, ma la situazione forse è cambiata. */
+export function sceneCheckPrompt({ card, scene, user, reply }) {
+  return [
+    { role: 'system', content: `You track the situation of a roleplay between ${card.name} and the user. Given the current scene and the last exchange, decide whether the situation has ACTUALLY changed in this exchange (not just proposed, planned or wished). Examples of real changes: the user arrived and they are now face to face; someone left; they moved somewhere else; clothes changed; the moment became flirty or intimate, or calmed down. Reply ONLY with JSON:
+{"changed": true|false, "presence": "apart"|"together", "place": "short, Italian", "activity": "short, Italian", "outfit": "English, concrete, only if it changed", "intimacy": "none"|"flirt"|"intimate"}
+If nothing changed, reply {"changed": false}. Include only the fields that changed.` },
+    { role: 'user', content: `Current scene: ${JSON.stringify({ presence: scene.presence, place: scene.place, activity: scene.activity, outfit: scene.outfit, intimacy: scene.intimacy })}
+
+User: ${String(user || '').slice(-1500)}
+
+${card.name}: ${String(reply || '').slice(-2500)}` },
   ];
 }

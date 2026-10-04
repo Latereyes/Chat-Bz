@@ -40,7 +40,7 @@ Ogni personaggio ha una sola conversazione. Lo **stato della scena** (a distanza
 - Il personaggio sa che ora è e quanto tempo è passato dall'ultimo messaggio.
 
 ### Prompt veloce
-Il prompt è diviso in un **blocco stabile** (regole + scheda, nel messaggio di sistema: Ollama lo tiene in cache) e un **blocco variabile** corto (`<now>`: ora, scena, rapporto, intimità, ricordi, pensieri) messo in testa all'ultimo messaggio. Durante la chat non gira nessun'altra chiamata a Gemma.
+Il prompt è diviso in un **blocco stabile** (regole + scheda, nel messaggio di sistema: Ollama lo tiene in cache) e un **blocco variabile** corto (`<now>`: ora, scena, rapporto, intimità, ricordi, pensieri) messo in testa all'ultimo messaggio. Durante la chat non gira nessun'altra chiamata a Gemma, salvo un controllo breve della scena quando il messaggio fa pensare a un cambio di situazione (arrivi, esci, suoni il campanello) e Gemma non ha aggiornato la scena da sola.
 
 ### Rapporto, intimità, memoria
 - Il rapporto ha cinque dimensioni: fiducia, affetto, attrazione, familiarità, tensione.
@@ -49,7 +49,7 @@ Il prompt è diviso in un **blocco stabile** (regole + scheda, nel messaggio di 
 - **Iniziativa**: alla riaccensione del server, un personaggio che ha qualcosa in sospeso e non ti sente da qualche ora può scriverti per primo (al massimo un messaggio).
 
 ### Foto e video
-- Il personaggio manda foto con il tool `send_photo` (o con il pulsante **Foto**). Motore in base allo stile scelto nella scheda: `krea2-real` per il realismo spontaneo, `zimage-turbo` per un look curato.
+- Il personaggio manda foto con il tool `send_photo` (o con il pulsante **Foto**). Se Gemma invece scrive la foto nel testo ("*Ti mando una foto:* [descrizione]"), la descrizione viene tolta dal messaggio e la foto parte lo stesso. Motore in base allo stile scelto nella scheda: `krea2-real` per il realismo spontaneo, `zimage-turbo` per un look curato.
 - Il prompt finale lo scrive il prompt engineer con la guida del modello (`workflows/<id>/guide.md`), l'aspetto fisso del personaggio e la scena attuale.
 - Il **livello di contenuto** della foto (neutro / sensuale / esplicito) segue la scena e non supera mai il limite del personaggio: una foto in cucina resta una foto in cucina.
 - Video (`send_video`, pulsante **Video**) solo su richiesta: anima l'ultima foto del personaggio con MiniMax H3.

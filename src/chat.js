@@ -7,7 +7,7 @@ import * as memory from './memory.js';
 import { gpu } from './gpu.js';
 import { emit, emitMedia, enqueue, describeImage, mediaUrl, cancel } from './jobs.js';
 import { workflows, getWorkflow, dimensions, dimensionsForRatio, frameCount, randomSeed, ASPECTS } from './workflows.js';
-import { systemPrompt, nowBlock, tools, promptEngineerSystem, characterMediaRequest, cleanPrompt } from './prompts.js';
+import { systemPrompt, nowBlock, tools, promptEngineerSystem, characterMediaRequest, cleanPrompt, sceneCheckPrompt } from './prompts.js';
 import { updateScene } from './relationship.js';
 
 const running = new Map(); // characterId -> AbortController
@@ -74,13 +74,59 @@ function history(conv, upTo) {
 /** Variante di riserva: il modello ha scritto [PHOTO: ...] / [VIDEO: ...] nel testo invece di usare lo strumento. */
 const TAG = /\[\s*(PHOTO|FOTO|SELFIE|IMAGE|IMMAGINE|VIDEO|CLIP)\s*[:：\-–—]\s*([^\]]+?)\s*(?:\]|$)/i;
 const SENT_NOTE = /\[\s*(?:you|tu)\s+sent\s+(?:a\s+)?(?:short\s+)?(?:photo|video)\s*:[^\]]*\]?/gi;
-function extractTag(text) {
+// Gemma spesso annuncia la foto e mette la descrizione tra parentesi: "*Ti mando una foto:* [selfie allo specchio...]"
+const MEDIA_WORD = /\b(?:foto\w*|selfie|scatt\w*|immagin\w*|pic|picture|photo\w*|snap|video\w*|clip)\b/i;
+const VIDEO_WORD = /\b(?:video\w*|clip)\b/i;
+const BRACKET = /\[([^\[\]\n]{12,})\]|\(((?:foto|selfie|photo|video|immagine)[^()\n]{8,})\)/i;
+const ANNOUNCE = /\b(?:ti\s+(?:mando|invio|giro|faccio\s+vedere)|eccoti|ecco(?:mi)?\b[^.!?\n]{0,20}\b(?:foto|selfie)|guarda(?:\s+qui)?\s*[:!]|sending\s+(?:you\s+)?(?:a\s+)?(?:pic|photo)|here'?s\s+(?:a\s+)?(?:pic|photo|selfie))/i;
+const ASKS_MEDIA = /\b(?:mand\w*|invi\w*|fa(?:mmi|i)\s+vedere|fammel\w*\s+vedere|scatta\w*|send|show)\b[^.!?\n]{0,40}\b(?:foto\w*|selfie|pic\w*|photo\w*|video\w*|immagin\w*)\b|\b(?:foto|selfie|pic|photo|video)\s*\?/i;
+
+function cut(text, start, len) {
+  let before = text.slice(0, start).replace(/[:：]\s*(\**)\s*$/, '$1').trimEnd();
+  return `${before}${before ? ' ' : ''}${text.slice(start + len).trimStart()}`.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function extractTag(text, userText = '') {
   let clean = text.replace(SENT_NOTE, '');
   const m = clean.match(TAG);
-  if (!m) return { text: clean.trim(), call: null };
-  clean = (clean.slice(0, m.index) + clean.slice(m.index + m[0].length)).replace(/\n{3,}/g, '\n\n').trim();
-  const video = /VIDEO|CLIP/i.test(m[1]);
-  return { text: clean, call: { function: { name: video ? 'send_video' : 'send_photo', arguments: { description: m[2].trim() } } } };
+  if (m) {
+    const video = /VIDEO|CLIP/i.test(m[1]);
+    return { text: cut(clean, m.index, m[0].length), call: { function: { name: video ? 'send_video' : 'send_photo', arguments: { description: m[2].trim() } } } };
+  }
+  // Descrizione tra parentesi accanto a un annuncio di foto
+  const b = clean.match(BRACKET);
+  if (b) {
+    const around = clean.slice(Math.max(0, b.index - 160), b.index + b[0].length + 40);
+    if (MEDIA_WORD.test(around) || ASKS_MEDIA.test(userText)) {
+      const video = VIDEO_WORD.test(around) && !/\bfoto|selfie|photo\b/i.test(around);
+      return { text: cut(clean, b.index, b[0].length), call: { function: { name: video ? 'send_video' : 'send_photo', arguments: { description: (b[1] || b[2]).replace(/^(?:foto|selfie|photo|video|immagine)\s*[:：\-–—]\s*/i, '').trim() } } } };
+    }
+  }
+  // Nessuna descrizione, ma la risposta annuncia una foto che l'utente ha chiesto
+  if (ASKS_MEDIA.test(userText) && ANNOUNCE.test(clean)) {
+    const video = VIDEO_WORD.test(userText) && !/\bfoto|selfie|photo\b/i.test(userText);
+    return { text: clean.trim(), call: { function: { name: video ? 'send_video' : 'send_photo', arguments: { description: `${userText}\n\n(reply: ${clean.trim()})` } } } };
+  }
+  return { text: clean.trim(), call: null };
+}
+
+// Indizi che la situazione potrebbe essere cambiata: solo in quel caso si controlla la scena
+const MOVE_HINT = /\b(?:arriv\w*|pass(?:o|i|a)\s+(?:da|a\s+prender)|veng(?:o|hi)|sono\s+(?:qui|qua|fuori|sotto|davanti|arrivat\w)|sotto\s+casa|campanell\w*|suon\w*|buss\w*|citofon\w*|apr\w*\s+(?:la\s+)?porta|entr\w*|ci\s+vediamo|raggiung\w*|incontr\w*|vado\s+via|me\s+ne\s+vado|torn\w*\s+a\s+casa|esc\w*|usc\w*|mi\s+cambi\w*|mi\s+spogli\w*|vesti\w*|doccia|letto|camera|divano|bac\w*|abbracc\w*|knock\w*|doorbell|come\s+over|on\s+my\s+way|i'?m\s+here|outside|leav\w*|kiss\w*|hug\w*)\b/i;
+const ACTION = /\*[^*\n]{3,}\*/;
+const needsSceneCheck = (scene, user, reply) =>
+  MOVE_HINT.test(user || '') || MOVE_HINT.test(reply || '') || (scene.presence === 'apart' && ACTION.test(reply || ''));
+
+async function sceneCheck(conv, user, reply, model) {
+  const out = await ollama.complete({
+    model, format: 'json', timeout: 30000,
+    options: { temperature: 0.1, num_predict: 160 },
+    messages: sceneCheckPrompt({ card: conv.card, scene: conv.state.scene, user, reply }),
+  });
+  let j;
+  try { j = JSON.parse(out); } catch { return null; }
+  if (!j?.changed) return null;
+  const { changed, ...patch } = j;
+  return patch;
 }
 
 const parseArgs = (a) => {
@@ -235,6 +281,7 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       }
 
       const allTools = tools({ canAnimate: !!lastCharacterPhoto(conv) });
+      let sceneChanged = false;
       for (let round = 0; round < 3; round++) {
         const result = await ollama.chat({
           model, signal, messages: convo,
@@ -244,6 +291,7 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
         });
         msg.stats = result.stats;
         const sceneCalls = result.tool_calls.filter((c) => c.function?.name === 'update_scene');
+        if (sceneCalls.length) sceneChanged = true;
         calls.push(...result.tool_calls.filter((c) => c.function?.name !== 'update_scene'));
         for (const c of sceneCalls) {
           conv.state.scene = updateScene(conv.state.scene, parseArgs(c.function.arguments));
@@ -256,9 +304,19 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
         convo.push({ role: 'tool', tool_name: 'update_scene', content: JSON.stringify({ ok: true, scene: conv.state.scene, note: 'Scene updated. Now write your reply in the new situation.' }) });
       }
 
-      // Riserva: tag scritto nel testo, o strumento chiesto con il pulsante e ignorato dal modello
-      const tag = extractTag(msg.content);
+      // Riserva: tag o descrizione nel testo, o strumento chiesto con il pulsante e ignorato dal modello
+      const tag = extractTag(msg.content, userMsg?.content || '');
       if (tag.text !== msg.content) { msg.content = tag.text; emit(conv.id, { type: 'content', messageId: msg.id, content: msg.content }); }
+
+      // Riserva per la scena: il modello racconta un cambio di situazione senza chiamare update_scene
+      if (!sceneChanged && msg.content.trim() && needsSceneCheck(conv.state.scene, userMsg?.content, msg.content)) {
+        const patch = await sceneCheck(conv, userMsg?.content || '', msg.content, model).catch((e) => { console.warn('[scene]', e.message); return null; });
+        if (patch && !signal.aborted) {
+          conv.state.scene = updateScene(conv.state.scene, patch);
+          msg.presence = conv.state.scene.presence;
+          emit(conv.id, { type: 'scene', scene: conv.state.scene, messageId: msg.id, presence: msg.presence });
+        }
+      }
       if (!calls.length && tag.call) calls.push(tag.call);
       if (!calls.length && (tool === 'photo' || tool === 'video')) {
         calls.push({ function: { name: tool === 'photo' ? 'send_photo' : 'send_video', arguments: { description: userMsg?.content || 'a casual selfie' } } });
