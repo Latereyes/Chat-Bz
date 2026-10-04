@@ -37,6 +37,13 @@ export function enqueue(conv, msg, media) {
     media.startedAt = Date.now();
     emitMedia(conv, msg, media);
 
+    // Video che parte dalla foto generata appena prima nello stesso messaggio (la coda GPU è in ordine)
+    if (media.sourceMediaId && !media.sourceFile) {
+      const src = msg.media.find((x) => x.id === media.sourceMediaId);
+      if (!src?.file || src.status !== 'done') throw new Error('La foto di partenza non è riuscita');
+      media.sourceFile = src.file;
+      media.sourceUrl = mediaUrl(src.file);
+    }
     // Immagine di partenza (image to image / image to video): va caricata su ComfyUI
     const upload = async (file) => comfy.uploadImage(await fs.readFile(path.join(config.paths.media, file)), `chatbz_${path.basename(file)}`);
     const image = media.sourceFile ? await upload(media.sourceFile) : undefined;

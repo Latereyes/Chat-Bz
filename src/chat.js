@@ -159,6 +159,14 @@ function mediaFromCall(conv, call, callIndex) {
         aspect: photo.aspect, ...dimensionsForRatio(w, ratio),
         sourceFile: photo.file, sourceUrl: mediaUrl(photo.file), sourceDescription: photo.prompt || photo.description };
     }
+    // Nessuna foto recente: prima una foto della scena, poi si anima quella (così il video le somiglia, come in ChatBz 1)
+    const still = mediaFromCall(conv, { function: { name: 'send_photo', arguments: { description: `Still first frame of a short video: ${description}`, aspect_ratio: '9:16' } } }, callIndex);
+    const wi = getWorkflow(null, 'video', 'img2video');
+    if (still && wi) {
+      const f = frameCount(wi, args.duration || 5);
+      return [still, { ...base, id: store.newId(), type: 'video', mode: 'img2video', workflow: wi.id, workflowName: wi.name, seconds: f.seconds, frames: f.frames,
+        aspect: '9:16', ...dimensionsForRatio(wi, still.width / still.height), sourceMediaId: still.id }];
+    }
     return { ...base, type: 'video', mode: 'text2video', workflow: w.id, workflowName: w.name, seconds, frames, aspect: '9:16', ...dimensions(w, '9:16') };
   }
   return null;
@@ -173,7 +181,7 @@ async function engineerPrompt(conv, msg, media, model, signal) {
     options: { temperature: 0.7 },
     messages: [
       { role: 'system', content: promptEngineerSystem(w) },
-      { role: 'user', content: characterMediaRequest({ card: conv.card, state: conv.state, media, width: media.width, height: media.height, seconds: media.seconds, sourceDescription: media.sourceFile ? media.sourceDescription : undefined }) },
+      { role: 'user', content: characterMediaRequest({ card: conv.card, state: conv.state, media, width: media.width, height: media.height, seconds: media.seconds, sourceDescription: media.sourceFile || media.sourceMediaId ? media.sourceDescription : undefined }) },
     ],
     onChunk: (c) => {
       if (!c.content) return;
@@ -321,11 +329,13 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       if (!calls.length && (tool === 'photo' || tool === 'video')) {
         calls.push({ function: { name: tool === 'photo' ? 'send_photo' : 'send_video', arguments: { description: userMsg?.content || 'a casual selfie' } } });
       }
-      calls.slice(0, 2).forEach((c, i) => { const md = mediaFromCall(conv, c, i); if (md) msg.media.push(md); });
+      calls.slice(0, 2).forEach((c, i) => { const md = mediaFromCall(conv, c, i); if (md) msg.media.push(...[md].flat()); });
       for (const md of msg.media) emitMedia(conv, msg, md);
 
       // Prompt per il modello immagine/video (Gemma è ancora in VRAM: si fa subito)
       for (const md of msg.media) {
+        const src = md.sourceMediaId && msg.media.find((x) => x.id === md.sourceMediaId);
+        if (src) md.sourceDescription = src.prompt || src.description;
         md.prompt = await engineerPrompt(conv, msg, md, model, signal);
         emitMedia(conv, msg, md);
       }
