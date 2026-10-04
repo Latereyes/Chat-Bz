@@ -7,13 +7,13 @@ const dataDir = env.DATA_DIR ? path.resolve(env.DATA_DIR) : path.join(root, 'dat
 
 export default {
   root,
-  port: Number(env.PORT || 3000),
+  port: Number(env.PORT || 3100),
   host: env.HOST || '0.0.0.0',
 
-  assistantName: env.ASSISTANT_NAME || 'Gemma',
-
+  // Oggi Ollama e ComfyUI girano sullo stesso PC; quando torneranno su un altro PC basta
+  // impostare OLLAMA_URL e COMFY_URL (es. http://192.168.1.12:11434), senza toccare il codice.
   ollama: {
-    url: env.OLLAMA_URL || 'http://192.168.1.12:11434',
+    url: env.OLLAMA_URL || 'http://127.0.0.1:11434',
     model: env.OLLAMA_MODEL || 'gemma4-12b-uncensored:latest',
     numCtx: Number(env.OLLAMA_CTX || 24576),
     // Tempo per cui Ollama tiene il modello in VRAM tra un messaggio e l'altro
@@ -21,23 +21,26 @@ export default {
   },
 
   comfy: {
-    url: env.COMFY_URL || 'http://192.168.1.12:8188',
+    url: env.COMFY_URL || 'http://127.0.0.1:8188',
   },
 
-  search: {
-    // Vuoto = DuckDuckGo (nessuna configurazione). Impostando uno dei due si usa quel motore.
-    searxngUrl: env.SEARXNG_URL || '',
-    braveKey: env.BRAVE_API_KEY || '',
-    region: env.SEARCH_REGION || 'it-it',
-    maxRounds: Number(env.SEARCH_MAX_ROUNDS || 6),
-    // Pagine lette automaticamente dopo la ricerca iniziale
-    autoRead: Number(env.SEARCH_AUTO_READ ?? 3),
+  // Riflessione a riposo: quando una conversazione è ferma da REFLECT_IDLE_MIN minuti
+  // (e la GPU è libera) il personaggio aggiorna rapporto, memorie e pensieri per la prossima volta.
+  reflect: {
+    idleMs: Number(env.REFLECT_IDLE_MIN || 3) * 60 * 1000,
+    minMessages: Number(env.REFLECT_MIN_MESSAGES || 4),
+  },
+
+  // Iniziativa: alla riaccensione un personaggio può scriverti per primo (max un messaggio).
+  initiative: {
+    enabled: (env.INITIATIVE ?? '1') !== '0',
+    minHours: Number(env.INITIATIVE_MIN_HOURS || 6),
   },
 
   paths: {
     workflows: path.join(root, 'workflows'),
     data: dataDir,
-    conversations: path.join(dataDir, 'conversations'),
+    db: path.join(dataDir, 'chatbz.sqlite'),
     media: path.join(dataDir, 'media'),
     users: path.join(dataDir, 'users.json'),
     sessions: path.join(dataDir, 'sessions.json'),

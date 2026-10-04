@@ -1,9 +1,9 @@
 @echo off
-title LocalAI
+title ChatBz
 cd /d "%~dp0"
 if not exist node_modules (
   echo Installo le dipendenze...
   call npm install
 )
-node server.js
+node --disable-warning=ExperimentalWarning server.js
 pause

@@ -37,8 +37,15 @@ export function enqueue(conv, msg, media) {
     media.startedAt = Date.now();
     emitMedia(conv, msg, media);
 
+    // Video che parte dalla foto generata appena prima nello stesso messaggio (la coda GPU è in ordine)
+    if (media.sourceMediaId && !media.sourceFile) {
+      const src = msg.media.find((x) => x.id === media.sourceMediaId);
+      if (!src?.file || src.status !== 'done') throw new Error('La foto di partenza non è riuscita');
+      media.sourceFile = src.file;
+      media.sourceUrl = mediaUrl(src.file);
+    }
     // Immagine di partenza (image to image / image to video): va caricata su ComfyUI
-    const upload = async (file) => comfy.uploadImage(await fs.readFile(path.join(config.paths.media, file)), `localai_${path.basename(file)}`);
+    const upload = async (file) => comfy.uploadImage(await fs.readFile(path.join(config.paths.media, file)), `chatbz_${path.basename(file)}`);
     const image = media.sourceFile ? await upload(media.sourceFile) : undefined;
     const [image2, image3] = await Promise.all((media.extraSources || []).slice(0, 2).map(upload));
 
@@ -70,6 +77,11 @@ export function enqueue(conv, msg, media) {
     media.file = name;
     media.status = 'done';
     media.finishedAt = Date.now();
+    // La prima foto diventa l'immagine del profilo, se il personaggio non ne ha ancora una
+    if (media.type === 'image' && !conv.avatar) {
+      conv.avatar = name;
+      emit(conv.id, { type: 'character', avatarUrl: mediaUrl(name) });
+    }
   }).catch((e) => {
     media.status = e.aborted || ac.signal.aborted ? 'cancelled' : 'error';
     media.error = media.status === 'cancelled' ? null : e.message;
@@ -90,8 +102,7 @@ export function cancel(mediaId) {
 
 /** All'avvio: i lavori rimasti a metà (server riavviato) vengono marcati come interrotti. */
 export function recoverInterrupted() {
-  for (const { id } of store.list()) {
-    const c = store.get(id);
+  for (const c of store.list()) {
     let dirty = false;
     for (const m of c.messages) {
       if (m.status === 'streaming' || m.status === 'pending') { m.status = 'stopped'; dirty = true; }
@@ -113,8 +124,8 @@ export async function describeImage(file, question) {
   const w = getWorkflow(null, 'vision');
   if (!w) throw new Error('Nessun workflow di lettura immagini installato');
   const buf = await fs.readFile(path.join(config.paths.media, file));
-  const image = await comfy.uploadImage(buf, `localai_${path.basename(file)}`);
-  const prompt = `Analizza questa immagine per un assistente che non può vederla. Descrivi in italiano, in modo oggettivo e completo: tipo di immagine (foto, screenshot, illustrazione, documento…), soggetti (aspetto, età apparente, abbigliamento, espressione, posa), oggetti, ambiente, colori, luce, stile, composizione e inquadratura. Trascrivi fedelmente tutto il testo visibile.${question ? ` Includi in particolare i dettagli utili per rispondere a questa richiesta dell'utente: «${question.slice(0, 500)}»` : ''}`;
+  const image = await comfy.uploadImage(buf, `chatbz_${path.basename(file)}`);
+  const prompt = `Analizza questa immagine (una foto che una persona ha mandato in chat) per qualcuno che non può vederla. Descrivi in italiano, in modo oggettivo e completo: tipo di immagine (foto, screenshot, illustrazione, documento…), soggetti (aspetto, età apparente, abbigliamento, espressione, posa), oggetti, ambiente, colori, luce, stile, composizione e inquadratura. Trascrivi fedelmente tutto il testo visibile.${question ? ` Includi in particolare i dettagli utili per rispondere a questa richiesta dell'utente: «${question.slice(0, 500)}»` : ''}`;
   const { texts } = await comfy.run(buildGraph(w, { image, prompt }));
   const text = (texts[0] || '').trim();
   if (!text) throw new Error('Il modello visivo non ha restituito testo');
