@@ -9,7 +9,7 @@ import config from './config.js';
  * - Una password impostata da un amministratore è temporanea: al primo accesso va cambiata.
  */
 
-const COOKIE = 'localai_sid';
+const COOKIE = 'chatbz_sid';
 const SESSION_DAYS = 30;
 const DEFAULT_PASSWORD = '1234';
 const MIN_PASSWORD = 6;

@@ -12,7 +12,10 @@ import * as chat from './src/chat.js';
 import { gpu } from './src/gpu.js';
 import { bus, cancel, mediaUrl, recoverInterrupted } from './src/jobs.js';
 import { workflows, loadWorkflows, publicInfo, checkAvailability } from './src/workflows.js';
-import { extractText } from './src/documents.js';
+import * as memory from './src/memory.js';
+import * as life from './src/life.js';
+import { publicCharacter, draftFromIdea, normalizeCard, RELATIONS, PACES, INTIMACY, STYLES } from './src/characters.js';
+import { updateScene, initialState, DIM_LABEL, intimacyOpen, closeness } from './src/relationship.js';
 
 const app = express();
 app.set('trust proxy', false);
@@ -20,7 +23,6 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.static(config.paths.public, { index: 'index.html' }));
 app.use('/vendor', express.static(path.join(config.root, 'node_modules', 'marked', 'lib')));
 app.use('/vendor', express.static(path.join(config.root, 'node_modules', 'dompurify', 'dist')));
-app.use('/vendor/katex', express.static(path.join(config.root, 'node_modules', 'katex', 'dist'), { maxAge: '30d' }));
 app.use(auth.session);
 
 const wrap = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => {
@@ -28,17 +30,18 @@ const wrap = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => {
 });
 const httpError = (status, message) => Object.assign(new Error(message), { status });
 
-/** Conversazione dell'utente corrente (404 se non esiste o è di un altro utente). */
+/** Personaggio dell'utente corrente (404 se non esiste o è di un altro utente). */
 function ownConv(req) {
   const c = store.get(req.params.id);
-  if (!c || c.ownerId !== req.user.id) throw httpError(404, 'Conversazione non trovata');
+  if (!c || c.ownerId !== req.user.id) throw httpError(404, 'Personaggio non trovato');
   return c;
 }
 
 const withUrls = (c) => ({
-  ...c,
+  ...publicCharacter(c, mediaUrl),
+  state: c.state,
   running: chat.isRunning(c.id),
-  messages: c.messages.map((m) => ({
+  messages: c.messages.map(({ sceneBefore, ...m }) => ({
     ...m,
     ...(m.media ? { media: m.media.map((md) => ({ ...md, url: mediaUrl(md.file), sourceUrl: mediaUrl(md.sourceFile) })) } : {}),
     ...(m.attachments ? { attachments: m.attachments.map((a) => ({ ...a, url: mediaUrl(a.file) })) } : {}),
@@ -91,8 +94,8 @@ app.get('/api/config', wrap(async (req, res) => {
   let models = [];
   try { models = (await ollama.listModels()).filter((m) => m.tools); } catch {}
   res.json({
-    assistantName: config.assistantName,
     defaultModel: config.ollama.model,
+    options: { relations: RELATIONS, paces: PACES, intimacy: INTIMACY, styles: STYLES, dims: DIM_LABEL },
     models,
     workflows: workflows().map(publicInfo),
   });
@@ -119,26 +122,37 @@ app.get('/api/events', (req, res) => {
   req.on('close', () => { clearInterval(ping); bus.off('event', onEvent); gpu.off('state', onGpu); });
 });
 
-// ---- Conversazioni ----
-app.get('/api/conversations', (req, res) => res.json(store.list(req.user.id)));
+// ---- Personaggi ----
+app.get('/api/characters', (req, res) => res.json(store.list(req.user.id).map((c) => publicCharacter(c, mediaUrl))));
 
-app.post('/api/conversations', wrap(async (req, res) => {
-  const c = store.create(req.user.id);
+app.post('/api/characters/draft', wrap(async (req, res) => {
+  const { idea, current, model } = req.body || {};
+  const card = await gpu.run('ollama', 'Scrivo la scheda del personaggio', () => draftFromIdea(String(idea || '').slice(0, 2000), { model, current: current ? normalizeCard(current) : null }));
+  res.json(card);
+}));
+
+app.post('/api/characters', wrap(async (req, res) => {
+  const c = store.create(req.user.id, req.body || {});
+  if (c.card.greeting) {
+    c.messages.push({ id: store.newId(), role: 'assistant', content: c.card.greeting, media: [], status: 'done', presence: c.state.scene.presence, createdAt: Date.now() });
+  }
   await store.save(c);
   res.json(withUrls(c));
 }));
 
-app.get('/api/conversations/:id', wrap(async (req, res) => res.json(withUrls(ownConv(req)))));
+app.get('/api/characters/:id', wrap(async (req, res) => res.json(withUrls(ownConv(req)))));
 
-app.patch('/api/conversations/:id', wrap(async (req, res) => {
+app.patch('/api/characters/:id', wrap(async (req, res) => {
   const c = ownConv(req);
-  if (typeof req.body.title === 'string') c.title = req.body.title.trim().slice(0, 80) || c.title;
-  if (typeof req.body.pinned === 'boolean') c.pinned = req.body.pinned;
+  const prev = c.card;
+  c.card = normalizeCard({ ...prev, ...(req.body || {}) });
+  // Cambiare il rapporto di partenza ha senso solo prima di iniziare: altrimenti il rapporto è quello vissuto
+  if (c.card.relation !== prev.relation && !c.messages.some((m) => m.role === 'user')) c.state.rel = initialState(c.card).rel;
   await store.save(c, { touch: false });
-  res.json({ ok: true });
+  res.json(withUrls(c));
 }));
 
-app.delete('/api/conversations/:id', wrap(async (req, res) => {
+app.delete('/api/characters/:id', wrap(async (req, res) => {
   const c = ownConv(req);
   chat.stop(c.id);
   for (const m of c.messages) for (const md of m.media || []) cancel(md.id);
@@ -146,13 +160,54 @@ app.delete('/api/conversations/:id', wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
-app.post('/api/conversations/:id/messages', wrap(async (req, res) => {
+/** Correzione a mano della scena (chip in alto nella chat). */
+app.patch('/api/characters/:id/scene', wrap(async (req, res) => {
   const c = ownConv(req);
-  const { text, tool, imageModel, aspect, duration, think, model, attachments } = req.body || {};
-  res.json(await chat.send(c, { text, tool, imageModel, aspect, duration, think, model, attachments }));
+  c.state.scene = updateScene(c.state.scene, req.body || {});
+  await store.save(c, { touch: false });
+  res.json(c.state.scene);
 }));
 
-app.post('/api/conversations/:id/stop', wrap(async (req, res) => { chat.stop(ownConv(req).id); res.json({ ok: true }); }));
+/** Rapporto e memorie (pannello "Rapporto" della scheda). */
+app.get('/api/characters/:id/relationship', wrap(async (req, res) => {
+  const c = ownConv(req);
+  res.json({ state: c.state, closeness: closeness(c.state.rel), intimacyOpen: intimacyOpen(c.card, c.state.rel), memories: memory.list(c.id) });
+}));
+app.delete('/api/characters/:id/memories/:memId', wrap(async (req, res) => { memory.remove(ownConv(req).id, req.params.memId); res.json({ ok: true }); }));
+
+/** Ricomincia da capo: cancella messaggi, memorie e rapporto (la scheda resta). */
+app.post('/api/characters/:id/reset', wrap(async (req, res) => {
+  const c = ownConv(req);
+  chat.stop(c.id);
+  for (const m of c.messages) for (const md of m.media || []) cancel(md.id);
+  await store.removeMessages(c, c.messages.map((m) => m.id));
+  memory.clear(c.id);
+  c.state = initialState(c.card);
+  if (c.card.greeting) c.messages.push({ id: store.newId(), role: 'assistant', content: c.card.greeting, media: [], status: 'done', presence: c.state.scene.presence, createdAt: Date.now() });
+  await store.save(c);
+  res.json(withUrls(c));
+}));
+
+/** Usa una foto generata come immagine del profilo. */
+app.post('/api/characters/:id/avatar', wrap(async (req, res) => {
+  const c = ownConv(req);
+  const file = String(req.body?.file || '');
+  const ok = c.messages.some((m) => (m.media || []).some((md) => md.file === file && md.type === 'image'));
+  if (!ok) throw httpError(400, 'Foto non valida');
+  c.avatar = file;
+  await store.save(c, { touch: false });
+  res.json({ avatarUrl: mediaUrl(file) });
+}));
+
+app.post('/api/characters/:id/messages', wrap(async (req, res) => {
+  const c = ownConv(req);
+  const { text, tool, model, attachments } = req.body || {};
+  res.json(await chat.send(c, { text, tool, model, attachments }));
+}));
+
+app.post('/api/characters/:id/regenerate', wrap(async (req, res) => res.json(chat.regenerate(ownConv(req), { model: req.body?.model }))));
+
+app.post('/api/characters/:id/stop', wrap(async (req, res) => { chat.stop(ownConv(req).id); res.json({ ok: true }); }));
 
 // ---- Immagini allegate (già ridimensionate dal browser) ----
 const IMAGE_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
@@ -160,11 +215,8 @@ const looksLikeImage = (b) => (b[0] === 0xff && b[1] === 0xd8) // JPEG
   || (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) // PNG
   || (b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP');
 
-const DOC_TYPES = { 'application/pdf': 'pdf', 'text/plain': 'txt', 'text/markdown': 'md' };
-
-app.post('/api/uploads', express.raw({ type: [...Object.keys(IMAGE_TYPES), ...Object.keys(DOC_TYPES)], limit: '60mb' }), wrap(async (req, res) => {
+app.post('/api/uploads', express.raw({ type: Object.keys(IMAGE_TYPES), limit: '16mb' }), wrap(async (req, res) => {
   const ctype = (req.headers['content-type'] || '').split(';')[0];
-  if (DOC_TYPES[ctype]) return res.json(await saveDocument(req, DOC_TYPES[ctype]));
   if (req.body?.length > 15 * 1024 * 1024) throw httpError(413, 'Immagine troppo grande (max 15 MB)');
   const ext = IMAGE_TYPES[ctype];
   if (!ext || !Buffer.isBuffer(req.body) || req.body.length < 16 || !looksLikeImage(req.body)) {
@@ -176,34 +228,14 @@ app.post('/api/uploads', express.raw({ type: [...Object.keys(IMAGE_TYPES), ...Ob
   res.json({ file, url: mediaUrl(file), width: Number(req.query.w) || 0, height: Number(req.query.h) || 0 });
 }));
 
-/** Salva un documento e ne estrae subito il testo (pagina per pagina). */
-async function saveDocument(req, ext) {
-  const buf = req.body;
-  if (!Buffer.isBuffer(buf) || !buf.length) throw httpError(400, 'File vuoto');
-  if (ext === 'pdf' && buf.toString('ascii', 0, 5) !== '%PDF-') throw httpError(400, 'Il file non è un PDF valido');
-  let name = 'documento';
-  try { name = decodeURIComponent(req.headers['x-filename'] || name); } catch {}
-  name = name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').slice(0, 120);
-  let extracted;
-  try { extracted = await extractText(buf, `x.${ext}`); }
-  catch (e) { throw httpError(400, `Impossibile leggere il documento (${e.message.includes('password') ? 'protetto da password' : 'file danneggiato o non supportato'})`); }
-  const id = randomUUID();
-  const base = `${req.user.id}/doc-${id}`;
-  await fs.mkdir(path.join(config.paths.media, req.user.id), { recursive: true });
-  await fs.writeFile(path.join(config.paths.media, `${base}.${ext}`), buf);
-  await fs.writeFile(path.join(config.paths.media, `${base}.json`), JSON.stringify({ name, pages: extracted.pages }));
-  const chars = extracted.pages.reduce((n, p) => n + p.length, 0);
-  return { kind: 'document', file: `${base}.${ext}`, textFile: `${base}.json`, url: mediaUrl(`${base}.${ext}`), name, pages: extracted.pages.length, chars, scanned: extracted.scanned };
-}
-
 // ---- Media ----
-app.post('/api/conversations/:id/media/:mediaId/cancel', wrap(async (req, res) => {
+app.post('/api/characters/:id/media/:mediaId/cancel', wrap(async (req, res) => {
   ownConv(req);
   res.json({ ok: cancel(req.params.mediaId) });
 }));
 
-app.post('/api/conversations/:id/messages/:messageId/media/:mediaId/regenerate', wrap(async (req, res) => {
-  res.json(chat.regenerate(ownConv(req), req.params.messageId, req.params.mediaId, { prompt: req.body?.prompt }));
+app.post('/api/characters/:id/messages/:messageId/media/:mediaId/regenerate', wrap(async (req, res) => {
+  res.json(chat.regenerateMedia(ownConv(req), req.params.messageId, req.params.mediaId, { prompt: req.body?.prompt }));
 }));
 
 app.get('/api/media', (req, res) => res.json(store.allMedia(req.user.id).map((m) => ({ ...m, url: mediaUrl(m.file) }))));
@@ -219,12 +251,11 @@ app.get('/media/:owner/:file', (req, res) => {
 
 app.get('/{*path}', (req, res) => res.sendFile(path.join(config.paths.public, 'index.html')));
 
-const adopted = store.adoptOwnerless(auth.adminUser().id);
-if (adopted) console.log(`  ${adopted} conversazioni esistenti assegnate all'utente ${auth.adminUser().displayName}`);
 recoverInterrupted();
+life.start();
 const server = app.listen(config.port, config.host, () => {
   const ips = Object.values(os.networkInterfaces()).flat().filter((i) => i?.family === 'IPv4' && !i.internal).map((i) => i.address);
-  console.log(`\n  LocalAI pronto`);
+  console.log(`\n  ChatBz pronto`);
   console.log(`  → su questo PC:     http://localhost:${config.port}`);
   for (const ip of ips) console.log(`  → telefono/tablet: http://${ip}:${config.port}   (stessa rete Wi-Fi)`);
   console.log(`\n  Ollama:  ${config.ollama.url}  (${config.ollama.model})`);
@@ -240,7 +271,7 @@ const server = app.listen(config.port, config.host, () => {
   setInterval(refresh, 5 * 60 * 1000);
 });
 server.on('error', (e) => {
-  if (e.code === 'EADDRINUSE') console.error(`\n  ⚠ La porta ${config.port} è già in uso: LocalAI è probabilmente già avviato in un'altra finestra.\n    Chiudi quella finestra oppure usa un'altra porta (set PORT=3001 prima di avviare).\n`);
+  if (e.code === 'EADDRINUSE') console.error(`\n  ⚠ La porta ${config.port} è già in uso: ChatBz è probabilmente già avviato in un'altra finestra.\n    Chiudi quella finestra oppure usa un'altra porta (set PORT=3101 prima di avviare).\n`);
   else console.error(e);
   process.exit(1);
 });

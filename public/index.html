@@ -5,9 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#1b1b1d" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#faf9f7" media="(prefers-color-scheme: light)">
-  <title>LocalAI</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%237c6cf2' d='M12 2c.5 4.8 2.7 7.6 7.5 8.3v1.4C14.7 12.4 12.5 15.2 12 22h-.1c-.5-6.8-2.7-9.6-7.5-10.3v-1.4C9.2 9.6 11.4 6.8 11.9 2z'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/vendor/katex/katex.min.css">
+  <title>ChatBz</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23d0567f' d='M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.8 4.5c2.1 0 3.6 1.2 5.2 3 1.6-1.8 3.1-3 5.2-3 3.8 0 5.9 3.9 4.4 7.3C19.5 16.4 12 21 12 21z'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/app.css">
 </head>
 <body>
@@ -15,9 +14,10 @@
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-top">
         <button class="icon-btn" id="btn-collapse" title="Chiudi barra laterale" data-icon="panel"></button>
-        <button class="new-chat" id="btn-new"><span data-icon="edit"></span>Nuova chat</button>
+        <button class="new-chat" id="btn-new"><span data-icon="plus"></span>Nuovo personaggio</button>
       </div>
       <nav class="sidebar-nav">
+        <button class="nav-item" id="btn-home"><span data-icon="users"></span>Personaggi</button>
         <button class="nav-item" id="btn-gallery"><span data-icon="gallery"></span>Galleria</button>
       </nav>
       <div class="conv-list" id="conv-list"></div>
@@ -29,11 +29,13 @@
         <div class="user-box">
           <button class="user-btn" id="user-btn"><span class="user-avatar" id="user-avatar"></span><span class="user-name" id="user-name"></span><span data-icon="chevron"></span></button>
           <div class="menu menu-up" id="user-menu" hidden>
+            <button class="menu-item" data-user-act="model"><span data-icon="chip"></span><div>Modello di chat<small id="model-name">Gemma</small></div></button>
             <button class="menu-item" data-user-act="password"><span data-icon="key"></span>Cambia password</button>
             <button class="menu-item admin-only" data-user-act="users"><span data-icon="users"></span>Gestione utenti</button>
             <div class="menu-sep"></div>
             <button class="menu-item" data-user-act="logout"><span data-icon="logout"></span>Esci</button>
           </div>
+          <div class="menu menu-up" id="model-menu" hidden></div>
         </div>
       </div>
     </aside>
@@ -42,23 +44,37 @@
     <main class="main">
       <header class="topbar">
         <button class="icon-btn" id="btn-open" title="Apri barra laterale" data-icon="panel"></button>
-        <div class="model-picker">
-          <button class="model-btn" id="model-btn"><span id="model-name">Gemma</span><span data-icon="chevron"></span></button>
-          <div class="menu" id="model-menu" hidden></div>
+        <div class="char-head" id="char-head" hidden>
+          <button class="char-who" id="char-who" title="Scheda del personaggio"><span class="char-ava" id="char-ava"></span><span class="char-name" id="char-name"></span></button>
+          <div class="scene-wrap">
+            <button class="scene-chip" id="scene-chip" title="Dove siete: tocca per correggere"></button>
+            <form class="menu scene-menu" id="scene-menu" hidden>
+              <div class="seg" role="radiogroup">
+                <label><input type="radio" name="presence" value="apart"><span>A distanza</span></label>
+                <label><input type="radio" name="presence" value="together"><span>Insieme</span></label>
+              </div>
+              <label class="fld">Dove<input name="place" placeholder="es. a casa sua, al bar"></label>
+              <label class="fld">Cosa sta facendo<input name="activity"></label>
+              <label class="fld">Cosa indossa<input name="outfit" placeholder="in inglese, per le foto"></label>
+              <div class="row-end"><button type="submit" class="btn primary">Aggiorna</button></div>
+            </form>
+          </div>
         </div>
         <div class="spacer"></div>
         <button class="gpu-pill" id="gpu-pill" title="Stato della GPU"><i></i><span id="gpu-label">GPU</span></button>
         <div class="menu menu-right" id="gpu-menu" hidden></div>
       </header>
 
-      <section class="view" id="view-chat">
+      <section class="view" id="view-home" hidden>
+        <div class="home">
+          <h1 id="home-title">I tuoi personaggi</h1>
+          <div class="char-grid" id="char-grid"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-chat" hidden>
         <div class="scroller" id="scroller">
           <div class="thread" id="thread"></div>
-          <div class="welcome" id="welcome" hidden>
-            <div class="welcome-mark" data-icon="spark"></div>
-            <h1 id="welcome-title">Ciao, come posso aiutarti?</h1>
-            <div class="suggestions" id="suggestions"></div>
-          </div>
         </div>
         <button class="to-bottom" id="to-bottom" hidden data-icon="down" title="Vai in fondo"></button>
 
@@ -68,20 +84,16 @@
             <textarea id="input" rows="1" placeholder="Scrivi un messaggio…" autocomplete="off"></textarea>
             <div class="composer-bar">
               <div class="chips">
-                <button type="button" class="icon-chip" id="btn-attach" title="Allega immagini o documenti (PDF, TXT, MD)" data-icon="clip"></button>
+                <button type="button" class="icon-chip" id="btn-attach" title="Manda una foto" data-icon="clip"></button>
                 <button type="button" class="icon-chip camera-only" id="btn-camera" title="Scatta una foto" data-icon="camera"></button>
-                <input type="file" id="file-input" accept="image/*,.pdf,.txt,.md,application/pdf,text/plain,text/markdown" multiple hidden>
+                <input type="file" id="file-input" accept="image/*" multiple hidden>
                 <input type="file" id="camera-input" accept="image/*" capture="environment" hidden>
-                <button type="button" class="chip" data-tool="web" title="Cerca sul web prima di rispondere"><span data-icon="globe"></span><span>Cerca</span></button>
-                <button type="button" class="chip" data-tool="image"><span data-icon="image"></span><span>Immagine</span></button>
-                <button type="button" class="chip" data-tool="video"><span data-icon="video"></span><span>Video</span></button>
-                <button type="button" class="chip" id="chip-think" title="Ragionamento esteso (più lento)"><span data-icon="brain"></span><span>Ragiona</span></button>
-                <div class="opts" id="opts"></div>
+                <button type="button" class="chip" data-tool="photo" title="Chiedi una foto"><span data-icon="image"></span><span>Foto</span></button>
+                <button type="button" class="chip" data-tool="video" title="Chiedi un video"><span data-icon="video"></span><span>Video</span></button>
               </div>
               <button type="submit" class="send" id="send" title="Invia" data-icon="send"></button>
             </div>
           </form>
-          <p class="disclaimer">Tutto gira in locale sulla tua GPU. Le risposte possono contenere errori.</p>
         </div>
       </section>
 
@@ -92,13 +104,78 @@
     </main>
   </div>
 
+  <!-- Scheda del personaggio -->
+  <div class="modal" id="char-modal" hidden>
+    <div class="modal-card char-card">
+      <div class="modal-head">
+        <h2 id="cm-title">Nuovo personaggio</h2>
+        <button class="icon-btn" data-close data-icon="close" title="Chiudi"></button>
+      </div>
+      <div class="tabs" id="cm-tabs">
+        <button type="button" class="tab on" data-tab="card">Scheda</button>
+        <button type="button" class="tab" data-tab="rel">Rapporto</button>
+      </div>
+
+      <form id="char-form" class="char-form" data-pane="card">
+        <div class="idea">
+          <textarea name="idea" rows="2" placeholder="Un'idea in una frase: «barista di Bologna, ironica, timida con chi non conosce»… oppure lascia vuoto per una sorpresa"></textarea>
+          <button type="button" class="btn primary" id="cm-draft"><span data-icon="spark"></span><span id="cm-draft-label">Scrivi la scheda</span></button>
+        </div>
+        <p class="hint" id="cm-draft-hint">Gemma scrive una scheda completa: poi la rifinisci qui sotto, oppure scrivi una richiesta («più spigliata», «fallo più grande») e premi di nuovo.</p>
+
+        <div class="grid2">
+          <label class="fld">Nome<input name="name" required maxlength="60"></label>
+          <label class="fld">Età<input name="age" type="number" min="18" max="99" value="25" required></label>
+        </div>
+        <div class="grid2">
+          <label class="fld">Genere<select name="gender"><option value="donna">Donna</option><option value="uomo">Uomo</option><option value="altro">Altro</option></select></label>
+          <label class="fld">Stile delle foto<select name="style" data-opts="styles"></select></label>
+        </div>
+        <label class="fld">Carattere<small>temperamento, valori, cosa desidera, cosa la ferisce, contraddizioni</small><textarea name="personality" rows="4"></textarea></label>
+        <label class="fld">Vita<small>lavoro, routine, persone, cosa sta succedendo in questo periodo</small><textarea name="life" rows="3"></textarea></label>
+        <label class="fld">Come parla e scrive<textarea name="speech" rows="2"></textarea></label>
+        <label class="fld">Limiti<small>cosa non le piace o non fa</small><textarea name="boundaries" rows="2"></textarea></label>
+        <label class="fld">Aspetto<small>in inglese, usato per foto e video: viso, capelli, corporatura, stile</small><textarea name="look" rows="3"></textarea></label>
+
+        <h3>Rapporto</h3>
+        <div class="grid2">
+          <label class="fld">Punto di partenza<select name="relation" data-opts="relations"></select></label>
+          <label class="fld">Quanto in fretta si apre<select name="pace" data-opts="paces"></select></label>
+        </div>
+        <label class="fld">Intimità<small>il tuo limite per questo personaggio. Dentro questo limite decidono il suo carattere, il vostro rapporto e il momento.</small><select name="intimacy" data-opts="intimacy"></select></label>
+
+        <h3>Inizio</h3>
+        <div class="grid2">
+          <label class="fld">Situazione<select name="startPresence"><option value="apart">A distanza (messaggi)</option><option value="together">Insieme</option></select></label>
+          <label class="fld">Dove si trova<input name="startPlace" maxlength="200"></label>
+        </div>
+        <label class="fld">Primo messaggio<small>facoltativo</small><textarea name="greeting" rows="2"></textarea></label>
+        <label class="check"><input type="checkbox" name="initiative" checked> Può scriverti per prima quando riaccendi il server</label>
+
+        <p class="auth-error" hidden></p>
+        <div class="row-end">
+          <button type="button" class="btn danger" id="cm-delete" hidden>Elimina</button>
+          <span class="spacer"></span>
+          <button type="submit" class="btn primary" id="cm-save">Crea e inizia</button>
+        </div>
+      </form>
+
+      <div class="rel-pane" data-pane="rel" hidden>
+        <div id="rel-body"></div>
+        <div class="row-end">
+          <button type="button" class="btn danger" id="cm-reset">Ricomincia da capo</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Accesso / cambio password -->
   <div class="auth" id="auth" hidden>
     <div class="auth-card">
-      <div class="auth-mark" data-icon="spark"></div>
+      <div class="auth-mark" data-icon="heart"></div>
       <form id="login-form" hidden>
-        <h1>Accedi a LocalAI</h1>
-        <p class="auth-sub">Ogni utente vede solo le proprie conversazioni e i propri media.</p>
+        <h1>Accedi a ChatBz</h1>
+        <p class="auth-sub">Ogni utente vede solo i propri personaggi e le proprie conversazioni.</p>
         <label>Nome utente<input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
         <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
         <p class="auth-error" hidden></p>
@@ -151,7 +228,6 @@
 
   <script src="/vendor/marked.umd.js"></script>
   <script src="/vendor/purify.min.js"></script>
-  <script src="/vendor/katex/katex.min.js"></script>
   <script src="/app.js" type="module"></script>
 </body>
 </html>
