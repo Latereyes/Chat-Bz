@@ -44,6 +44,9 @@ const P = {
   heart: '<path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.8 4.5c2.1 0 3.6 1.2 5.2 3 1.6-1.8 3.1-3 5.2-3 3.8 0 5.9 3.9 4.4 7.3C19.5 16.4 12 21 12 21z"/>',
   pin: '<path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+  home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9v11a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9"/>',
+  tag: '<path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z"/><circle cx="7.5" cy="7.5" r="1.2" fill="currentColor"/>',
   social: '<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".6" fill="currentColor"/>',
   comment: '<path d="M21 12a8 8 0 0 1-11.8 7L3 21l2-6.2A8 8 0 1 1 21 12z"/>',
   pause: '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',
@@ -164,9 +167,15 @@ async function loadConvs() {
   state.convs = await api('/api/characters').catch(() => []);
   renderConvList();
   if (state.view === 'home') renderHome();
+  if (state.view === 'social') renderSide();
 }
 
 // ---------- Viste / routing ----------
+let titleBase = 'ChatBz';
+function setTitle(name) {
+  titleBase = name ? `${name} · ChatBz` : 'ChatBz';
+  document.title = `${notif.unread ? `(${notif.unread}) ` : ''}${titleBase}`;
+}
 function showView(v) {
   state.view = v;
   for (const name of ['home', 'chat', 'gallery', 'social']) $(`#view-${name}`).hidden = v !== name;
@@ -175,6 +184,9 @@ function showView(v) {
   $('#btn-home').classList.toggle('active', v === 'home');
   $('#btn-studio').classList.toggle('active', v === 'chat' && !!state.conv?.studio);
   setStudioMode(v === 'chat' && !!state.conv?.studio);
+  const tab = v === 'chat' ? (state.conv?.studio ? 'studio' : '') : v;
+  $$('#tabbar [data-tab-go]').forEach((b) => b.classList.toggle('on', b.dataset.tabGo === tab));
+  el.app.dataset.view = v === 'chat' && state.conv?.studio ? 'studio' : v;
 }
 
 function showHome(push = true) {
@@ -182,8 +194,8 @@ function showHome(push = true) {
   showView('home');
   renderHead();
   renderHome();
-  document.title = 'ChatBz';
-  if (push && location.pathname !== '/') history.pushState(null, '', '/');
+  setTitle('Personaggi');
+  if (push && location.pathname !== '/personaggi') history.pushState(null, '', '/personaggi');
   renderConvList();
 }
 
@@ -209,7 +221,7 @@ async function openConv(id, push = true) {
   showView('chat');
   el.thread.innerHTML = '';
   for (const m of c.messages) renderMessage(m);
-  document.title = `${c.name} · ChatBz`;
+  setTitle(c.name);
   if (push && location.pathname !== `/c/${id}`) history.pushState(null, '', `/c/${id}`);
   renderHead();
   renderConvList();
@@ -225,8 +237,19 @@ function route() {
   else if (location.pathname.startsWith('/studio')) openStudio(false);
   else if (location.pathname.startsWith('/galleria')) openGallery(false);
   else if (location.pathname.startsWith('/social')) openSocial(location.pathname.split('/')[2] || null, false);
-  else showHome(false);
+  else if (location.pathname.startsWith('/personaggi')) showHome(false);
+  else openSocial(null, false);   // la home è il social
 }
+
+// Sezioni principali dal basso (mobile)
+$('#tabbar').onclick = (e) => {
+  const go = e.target.closest('[data-tab-go]')?.dataset.tabGo;
+  if (go === 'social') openSocial();
+  else if (go === 'home') showHome();
+  else if (go === 'new') openCharModal(null);
+  else if (go === 'studio') openStudio();
+  else if (go === 'gallery') openGallery();
+};
 
 // ---------- Intestazione: personaggio e scena ----------
 function renderHead() {
@@ -410,18 +433,42 @@ el.thread.addEventListener('click', async (e) => {
 });
 
 // ---------- Eventi dal server ----------
-let es, esWasOpen = false;
+let es, esWasOpen = false, lastEventAt = Date.now(), hiddenAt = 0;
 function connectEvents() {
   if (es) es.close();
+  lastEventAt = Date.now();
   es = new EventSource('/api/events');
   es.onopen = () => {
-    if (esWasOpen && state.conv) { if (state.conv.studio) openStudio(false); else openConv(state.conv.id, false); } // risincronizza dopo una disconnessione
+    if (esWasOpen) resync();   // dopo una disconnessione: quello che è successo nel frattempo
     esWasOpen = true;
   };
-  es.onmessage = (e) => { try { onEvent(JSON.parse(e.data)); } catch (err) { console.error(err); } };
+  es.onmessage = (e) => { lastEventAt = Date.now(); try { onEvent(JSON.parse(e.data)); } catch (err) { console.error(err); } };
 }
 
+/**
+ * Riallinea la vista aperta con il server: dopo una disconnessione, o quando torni sulla pagina
+ * (sul telefono il browser congela le pagine in background e gli eventi persi non arrivano più).
+ */
+function resync() {
+  loadNotifs();
+  loadConvs();
+  if (state.view === 'chat' && state.conv) { if (state.conv.studio) openStudio(false); else openConv(state.conv.id, false); }
+  else if (state.view === 'social') refreshSocial();
+  else if (state.view === 'gallery') openGallery(false);
+  const pm = $('#post-modal');
+  if (!pm.hidden && pm.dataset.post) api(`/api/social/posts/${pm.dataset.post}`).then(updatePost).catch(() => {});
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { hiddenAt = Date.now(); return; }
+  if (!started || Date.now() - hiddenAt < 4000) return;
+  if (!es || es.readyState === EventSource.CLOSED || Date.now() - lastEventAt > 45000) connectEvents();   // onopen → resync
+  else resync();
+});
+// Connessione muta (il server manda un segnale ogni 20 s): si riapre
+setInterval(() => { if (started && !document.hidden && Date.now() - lastEventAt > 50000) connectEvents(); }, 15000);
+
 function onEvent(evt) {
+  if (evt.type === 'ping') return;
   if (evt.type === 'gpu') return renderGpu(evt.state);
   if (evt.type === 'character') return setAvatar(evt.conversationId, evt.avatarUrl);
   if (evt.type === 'social' || evt.postId) return onSocialEvent(evt);
@@ -1061,7 +1108,7 @@ async function openStudio(push = true) {
     <p>Descrivi quello che vuoi vedere, anche in due parole: Gemma scrive il prompt adatto al motore scelto e ComfyUI genera.
     Puoi ritrarre uno dei tuoi personaggi, allegare una foto da modificare o animare il risultato.</p></div>`;
   for (const m of c.messages) renderMessage(m);
-  document.title = 'Studio immagini · ChatBz';
+  setTitle('Studio immagini');
   if (push && location.pathname !== '/studio') history.pushState(null, '', '/studio');
   renderHead();
   renderConvList();
@@ -1083,7 +1130,7 @@ async function openGallery(push = true) {
   renderHead();
   renderConvList();
   if (push) history.pushState(null, '', '/galleria');
-  document.title = 'Galleria · ChatBz';
+  setTitle('Galleria');
   const items = await api('/api/media').catch(() => []);
   state.gallery = items;
   el.gallery.innerHTML = items.length
@@ -1154,17 +1201,18 @@ async function openSocial(characterId = null, push = true) {
   showView('social');
   renderHead();
   renderConvList();
-  const url = characterId ? `/social/${characterId}` : '/social';
+  const url = characterId ? `/social/${characterId}` : '/';
   if (push && location.pathname !== url) history.pushState(null, '', url);
   $('#social-back').hidden = !characterId;
-  $('#social-title').textContent = 'Social';
-  document.title = 'Social · ChatBz';
+  $('#social-title').textContent = characterId ? '' : 'Home';
+  setTitle(characterId ? null : 'Home');
   storiesEl.hidden = true;
   profileEl.hidden = !characterId;
   profileEl.innerHTML = '';
   feedEl.innerHTML = '<p class="hint center">Carico…</p>';
   $('#feed-more').hidden = true;
   refreshQueue();
+  renderSide();
   if (characterId) return renderProfile();
   loadStories();
   soc.oldest = null;
@@ -1175,6 +1223,37 @@ async function openSocial(characterId = null, push = true) {
 }
 $('#social-back').onclick = () => openSocial();
 $('#btn-char-social').onclick = () => { if (state.conv && !state.conv.studio) openSocial(state.conv.id); };
+
+/** Riallinea il social senza ricaricare la pagina: post nuovi in cima, quelli già visti aggiornati sul posto. */
+async function refreshSocial() {
+  refreshQueue();
+  renderSide();
+  if (soc.mode === 'profile') return renderProfile();
+  loadStories();
+  const posts = await api('/api/social/feed').catch(() => null);
+  if (!posts || soc.mode !== 'feed' || state.view !== 'social') return;
+  if (!$('.post', feedEl)) { feedEl.innerHTML = ''; return renderFeed(posts, false); }
+  for (const p of [...posts].reverse()) updatePost(p);   // i nuovi finiscono in cima nell'ordine giusto
+}
+
+/** Colonna di lato (schermi larghi): i personaggi e cosa stanno facendo, per scrivere o aprire il profilo. */
+function renderSide() {
+  const side = $('#social-side');
+  if (!side) return;
+  side.innerHTML = state.convs.length ? `<h3>I tuoi personaggi</h3>
+    ${state.convs.map((c) => `<div class="side-row">
+      <button class="ava-btn" data-profile="${c.id}">${avatarHtml(c)}</button>
+      <button class="side-who" data-profile="${c.id}"><b>${esc(c.name)}</b><small>${esc(sceneLabel(c.scene))}</small></button>
+      <button class="icon-btn" data-side-chat="${c.id}" title="Scrivi">${icon('comment', 17)}</button>
+    </div>`).join('')}
+    <button class="btn wide ghost" data-side-new>${icon('plus', 15)} Nuovo personaggio</button>`
+    : `<h3>Inizia da qui</h3><p class="hint">Crea un personaggio: avrà il suo profilo, pubblicherà foto e storie e commenterà quelle degli altri.</p><button class="btn primary" data-side-new>Crea un personaggio</button>`;
+}
+$('#social-side').addEventListener('click', (e) => {
+  const chat = e.target.closest('[data-side-chat]');
+  if (chat) return openConv(chat.dataset.sideChat);
+  if (e.target.closest('[data-side-new]')) openCharModal(null);
+});
 
 function renderFeed(posts, append) {
   if (!append && !posts.length) {
@@ -1220,19 +1299,31 @@ function statusLine(p) {
   return `<div class="post-status ${p.status}">${txt}${p.status === 'error' ? ` <button class="link" data-post-act="retry">Riprova</button>` : ''}</div>`;
 }
 
-function commentsHtml(p) {
+/**
+ * Commenti come su Instagram: ogni conversazione parte da un commento e le risposte (di chiunque, a chiunque)
+ * stanno sotto, con la @menzione di chi si sta rispondendo. Nel feed se ne vedono pochi, il post aperto li mostra tutti.
+ */
+function commentsHtml(p, all) {
   const byId = new Map(p.comments.map((c) => [c.id, c]));
-  const rootOf = (c) => { let r = c; while (r.replyTo && byId.get(r.replyTo)) r = byId.get(r.replyTo); return r.id; };
-  const roots = p.comments.filter((c) => !c.replyTo || !byId.get(c.replyTo));
+  const rootOf = (c) => { let r = c; for (let i = 0; r.replyTo && byId.get(r.replyTo) && i < 50; i++) r = byId.get(r.replyTo); return r.id; };
+  const nameOf = (c) => (c.author.kind === 'user' ? (state.user?.displayName || 'Tu') : c.author.username || c.author.name);
   const one = (c, reply) => {
     const name = c.author.kind === 'user' ? 'Tu' : c.author.name;
+    const to = byId.get(c.replyTo);
+    const mention = to ? `<button class="mention" ${to.author.kind === 'character' ? `data-profile="${to.author.id}"` : ''}>@${esc(nameOf(to))}</button> ` : '';
     return `<div class="comment ${reply ? 'reply' : ''}" data-comment="${c.id}">
       ${c.author.kind === 'user' ? `<span class="ava ava-letter small">${initial(state.user?.displayName)}</span>` : `<button class="ava-btn" data-profile="${c.author.id}">${who(c.author, 'small')}</button>`}
-      <div class="c-body"><p><b>${esc(name)}</b> ${esc(c.content)}</p>
-      <small>${agoLabel(c.createdAt)}${c.author.kind === 'character' ? ` · <button class="link" data-reply="${c.id}" data-name="${esc(name)}">Rispondi</button>` : ''}${c.likedByAuthor ? ` · <span class="liked">${icon('heart', 11)} da ${esc(p.character.name)}</span>` : ''}</small></div>
+      <div class="c-body"><p><b>${esc(name)}</b> ${mention}${esc(c.content)}</p>
+      <small>${agoLabel(c.createdAt)} · <button class="link" data-reply="${c.id}" data-name="${esc(name === 'Tu' ? 'te stesso' : name)}">Rispondi</button>${c.likedByAuthor ? ` · <span class="liked">${icon('heart', 11)} da ${esc(p.character.name)}</span>` : ''}</small></div>
     </div>`;
   };
-  return roots.map((r) => one(r, false) + p.comments.filter((c) => c.id !== r.id && rootOf(c) === r.id).map((c) => one(c, true)).join('')).join('');
+  if (!all) {
+    // anteprima nel feed: gli ultimi due commenti, senza rientri
+    const last = p.comments.slice(-2);
+    return `${p.comments.length > 2 ? `<button class="link more" data-post-act="open">Mostra tutti i ${p.comments.length} commenti</button>` : ''}${last.map((c) => one(c, false)).join('')}`;
+  }
+  const roots = p.comments.filter((c) => !c.replyTo || !byId.get(c.replyTo));
+  return roots.map((r) => `<div class="c-thread">${one(r, false)}${p.comments.filter((c) => c.id !== r.id && rootOf(c) === r.id).map((c) => one(c, true)).join('')}</div>`).join('');
 }
 
 function likesLine(p) {
@@ -1244,12 +1335,12 @@ function likesLine(p) {
 
 function postHeadHtml(p) {
   return `<button class="ava-btn" data-profile="${p.character.id}">${who(p.character)}</button>
-    <div class="ph-who"><button class="link strong" data-profile="${p.character.id}">${esc(p.character.username || p.character.name)}</button>
+    <div class="ph-who"><span><button class="link strong" data-profile="${p.character.id}">${esc(p.character.username || p.character.name)}</button>${p.tags?.length ? ` <span class="with">con</span> ${p.tags.map((t) => `<button class="link strong" data-profile="${t.id}">${esc(t.username || t.name)}</button>`).join(', ')}` : ''}</span>
     <small>${p.publishedAt ? agoLabel(p.publishedAt) : ''}${p.location ? ` · ${esc(p.location)}` : ''}${p.kind === 'story' ? ' · storia' : ''}</small></div>
     <span class="spacer"></span><button class="icon-btn" data-post-act="delete" title="Elimina">${icon('trash', 16)}</button>`;
 }
 
-function postBodyHtml(p) {
+function postBodyHtml(p, all) {
   const caption = p.caption ? `<p class="caption"><b>${esc(p.character.username || p.character.name)}</b> ${esc(p.caption)}</p>` : '';
   if (p.status !== 'published') return `${statusLine(p)}${caption}`;
   return `<div class="post-actions">
@@ -1258,18 +1349,18 @@ function postBodyHtml(p) {
     </div>
     ${likesLine(p)}
     ${caption}
-    <div class="comments">${commentsHtml(p)}</div>
+    <div class="comments">${commentsHtml(p, all)}</div>
     ${p.typing.length ? `<p class="typing-line"><span class="typing"><i></i><i></i><i></i></span>${esc(p.typing.join(', '))} sta scrivendo…</p>` : ''}`;
 }
 
 const mediaSig = (p) => p.media.map((m) => `${m.id}:${m.status}`).join('|') || p.status;
 const canComment = (p) => p.status === 'published' && p.kind === 'post';
 
-function postHtml(p) {
-  return `<article class="post" data-post="${p.id}" data-sig="${mediaSig(p)}">
+function postHtml(p, all = false) {
+  return `<article class="post" data-post="${p.id}" data-sig="${mediaSig(p)}" ${all ? 'data-all' : ''}>
     <header class="post-head">${postHeadHtml(p)}</header>
     <div class="post-media">${carouselHtml(p)}</div>
-    <div class="post-body">${postBodyHtml(p)}</div>
+    <div class="post-body">${postBodyHtml(p, all)}</div>
     <form class="comment-form" ${canComment(p) ? '' : 'hidden'}><input placeholder="Aggiungi un commento…" autocomplete="off" maxlength="600"><button class="link strong">Pubblica</button></form>
   </article>`;
 }
@@ -1284,7 +1375,7 @@ function updatePost(p) {
   for (const node of nodes) {
     $('.post-head', node).innerHTML = postHeadHtml(p);
     if (node.dataset.sig !== mediaSig(p)) { $('.post-media', node).innerHTML = carouselHtml(p); node.dataset.sig = mediaSig(p); }
-    $('.post-body', node).innerHTML = postBodyHtml(p);
+    $('.post-body', node).innerHTML = postBodyHtml(p, node.hasAttribute('data-all'));
     $('.comment-form', node).hidden = !canComment(p);
   }
   if (state.view !== 'social') return;
@@ -1301,6 +1392,8 @@ function updatePost(p) {
 }
 
 function onSocialEvent(evt) {
+  if (evt.what === 'notification') return onNotification(evt);
+  if (evt.what === 'unread') return setUnread(evt.unread);
   if (evt.what === 'post') return updatePost(evt.post);
   if (evt.what === 'removed') {
     soc.posts.delete(evt.postId);
@@ -1329,7 +1422,7 @@ document.addEventListener('scroll', (e) => {
 
 document.addEventListener('click', async (e) => {
   const prof = e.target.closest('[data-profile]');
-  if (prof && (state.view === 'social' || !$('#post-modal').hidden)) { $('#post-modal').hidden = true; return openSocial(prof.dataset.profile); }
+  if (prof && (state.view === 'social' || !$('#post-modal').hidden)) { closePostModal(); return openSocial(prof.dataset.profile); }
   const post = e.target.closest('.post');
   if (!post) return;
   const p = soc.posts.get(post.dataset.post);
@@ -1341,6 +1434,7 @@ document.addEventListener('click', async (e) => {
     soc.replyTo.set(p.id, reply.dataset.reply);
     const input = $('.comment-form input', post);
     input.placeholder = `Rispondi a ${reply.dataset.name}…`;
+    $('.comment-form', post).classList.add('replying');
     input.focus();
     return;
   }
@@ -1351,6 +1445,7 @@ document.addEventListener('click', async (e) => {
     return api(`/api/social/posts/${p.id}/like`, { method: 'POST' }).then(updatePost).catch((err) => alert(err.message));
   }
   if (act === 'focus') return $('.comment-form input', post).focus();
+  if (act === 'open') return openPostModal(p);
   if (act === 'retry') return api(`/api/social/posts/${p.id}/retry`, { method: 'POST' }).then(updatePost).catch((err) => alert(err.message));
   if (act === 'delete') {
     if (!confirm(`Eliminare ${p.kind === 'story' ? 'questa storia' : 'questo post'} di ${p.character.name}?`)) return;
@@ -1370,6 +1465,7 @@ document.addEventListener('submit', async (e) => {
   const replyTo = soc.replyTo.get(id) || null;
   soc.replyTo.delete(id);
   input.placeholder = 'Aggiungi un commento…';
+  form.classList.remove('replying');
   try { updatePost(await api(`/api/social/posts/${id}/comments`, { body: { text, replyTo } })); }
   catch (err) { input.value = text; alert(err.message); }
 });
@@ -1473,11 +1569,16 @@ async function renderProfile() {
       <button class="btn" data-prof="chat">${icon('comment', 15)}${he ? 'Scrivigli' : 'Scrivile'}</button>
       <button class="btn" data-prof="post">${icon('image', 15)}Nuovo post</button>
       <button class="btn" data-prof="story">${icon('plus', 15)}Nuova storia</button>
+      ${state.convs.length > 1 ? `<button class="btn" data-prof="with">${icon('users', 15)}Foto con…</button>` : ''}
       <label class="check small"><input type="checkbox" data-prof="auto" ${pr.social ? 'checked' : ''}> Pubblica da ${he ? 'solo' : 'sola'}</label>
     </div>
-    ${pr.pending.length ? `<div class="pending">${pr.pending.map(postHtml).join('')}</div>` : ''}
+    <div class="with-pick" id="with-pick" hidden><small>Con chi esce? Pubblicherà una foto insieme, taggando l'altra persona.</small>
+      <div>${state.convs.filter((c) => c.id !== id).map((c) => `<button class="bond" data-with="${c.id}">${avatarHtml(c, 'small')}<span><b>${esc(c.name)}</b></span></button>`).join('')}</div></div>
+    ${pr.pending.length ? `<div class="pending">${pr.pending.map((p) => postHtml(p)).join('')}</div>` : ''}
     ${pr.posts.length ? `<div class="pgrid">${pr.posts.map((p) => `<button data-open="${p.id}">${p.media[0]?.url ? `<img src="${esc(p.media[0].url)}" loading="lazy" alt="">` : ''}${p.media.length > 1 ? `<span class="multi">${icon('gallery', 14)}</span>` : ''}</button>`).join('')}</div>`
-      : !pr.pending.length ? '<div class="empty">Ancora nessun post.</div>' : ''}`;
+      : !pr.pending.length ? '<div class="empty">Ancora nessun post.</div>' : ''}
+    ${pr.tagged?.length ? `<h4 class="grid-title">${icon('tag', 14)} Foto con gli amici</h4><div class="pgrid">${pr.tagged.map((p) => `<button data-open="${p.id}">${p.media[0]?.url ? `<img src="${esc(p.media[0].url)}" loading="lazy" alt="">` : ''}<span class="multi">${icon('tag', 14)}</span></button>`).join('')}</div>` : ''}`;
+  for (const p of pr.tagged || []) soc.posts.set(p.id, p);
   feedEl.innerHTML = '';
   $('#feed-more').hidden = true;
   profileEl._stories = pr.stories.length ? [{ character: pr.character, stories: pr.stories }] : [];
@@ -1486,10 +1587,19 @@ profileEl.addEventListener('click', async (e) => {
   if (e.target.closest('[data-prof-stories]')) return profileEl._stories?.length && openStories(profileEl._stories);
   const open = e.target.closest('[data-open]');
   if (open) return openPostModal(soc.posts.get(open.dataset.open));
+  const id = soc.characterId;
+  const w = e.target.closest('[data-with]');
+  if (w) {
+    const hint = prompt(`Cosa fanno insieme? (facoltativo: lascia vuoto e decidono loro)`, '');
+    if (hint === null) return;
+    try { await api(`/api/social/profile/${id}/posts`, { body: { kind: 'post', hint, withId: w.dataset.with } }); renderProfile(); }
+    catch (err) { alert(err.message); }
+    return;
+  }
   const b = e.target.closest('[data-prof]');
   if (!b || b.dataset.prof === 'auto') return;
-  const id = soc.characterId;
   if (b.dataset.prof === 'chat') return openConv(id);
+  if (b.dataset.prof === 'with') { const box = $('#with-pick'); box.hidden = !box.hidden; return; }
   const kind = b.dataset.prof;
   const hint = prompt(`Un'idea per ${kind === 'story' ? 'la storia' : 'il post'}? (facoltativa: lascia vuoto e decide da sé)`, '');
   if (hint === null) return;
@@ -1504,11 +1614,20 @@ profileEl.addEventListener('change', async (e) => {
 
 function openPostModal(p) {
   if (!p) return;
+  const pm = $('#post-modal');
   $('#pm-title').textContent = p.character.name;
-  $('#pm-body').innerHTML = postHtml(p);
-  $('#post-modal').hidden = false;
+  $('#pm-body').innerHTML = postHtml(p, true);
+  pm.dataset.post = p.id;
+  pm.hidden = false;
+  api(`/api/social/posts/${p.id}/open`, { method: 'POST' }).catch(() => {});   // le sue notifiche diventano lette
+  api(`/api/social/posts/${p.id}`).then(updatePost).catch(() => {});           // la versione più recente
 }
-$('#post-modal').addEventListener('click', (e) => { if (e.target.id === 'post-modal' || e.target.closest('[data-close]')) $('#post-modal').hidden = true; });
+async function openPostById(id) {
+  try { const p = await api(`/api/social/posts/${id}`); soc.posts.set(p.id, p); openPostModal(p); }
+  catch { alert('Questo post non c\'è più.'); }
+}
+function closePostModal() { const pm = $('#post-modal'); pm.hidden = true; delete pm.dataset.post; $('#pm-body').innerHTML = ''; }
+$('#post-modal').addEventListener('click', (e) => { if (e.target.id === 'post-modal' || e.target.closest('[data-close]')) closePostModal(); });
 
 // ---- Coda a goccia ----
 async function refreshQueue() {
@@ -1532,7 +1651,7 @@ function renderQueue() {
       : j.runAfter > Date.now() + 30000 ? inLabel(j.runAfter) : 'in attesa');
   queuePanel.innerHTML = `
     <div class="qp-head">
-      <p>I contenuti si generano un pezzo alla volta, solo quando la GPU è libera e non stai chattando${qv.waitingForYou ? ' (ora aspetta: hai scritto da poco)' : ''}. In questa accensione: <b>${qv.counters.posts}/${qv.limits.posts}</b> post e <b>${qv.counters.stories}/${qv.limits.stories}</b> storie automatiche; quelli che chiedi tu non contano.</p>
+      <p>I contenuti si generano un pezzo alla volta, solo quando la GPU è libera e non stai chattando${qv.waitingForYou ? ' (ora aspetta: hai scritto da poco)' : ''}. Nelle ultime 24 ore: <b>${qv.counters.posts}/${qv.limits.posts}</b> post e <b>${qv.counters.stories}/${qv.limits.stories}</b> storie automatiche; quelli che chiedi tu non contano.${qv.night ? ` Dalle ${qv.night.from} alle ${qv.night.to} i personaggi dormono${qv.asleep ? ' (adesso dormono)' : ''}.` : ''}</p>
       <button class="btn" id="qp-pause">${icon(qv.paused ? 'play' : 'pause', 15)}${qv.paused ? 'Riprendi' : 'Metti in pausa'}</button>
     </div>
     ${qv.jobs.length ? `<ul class="qp-jobs">${qv.jobs.map((j) => `<li><span>${esc(j.label || j.kind)}</span><small>${when(j)}</small></li>`).join('')}</ul>` : '<p class="hint">Niente in coda.</p>'}`;
@@ -1546,6 +1665,74 @@ queuePanel.addEventListener('click', async (e) => {
   const r = e.target.closest('[data-retry-job]');
   if (r) { await api(`/api/social/queue/jobs/${r.dataset.retryJob}/retry`, { method: 'POST' }).catch(() => {}); refreshQueue(); }
 });
+
+// ---------- Notifiche ----------
+const notif = { unread: 0, items: [], open: false };
+const nmMenu = $('#notif-menu'), nmList = $('#nm-list');
+const NOTIF_ICON = { post: 'image', tag: 'tag', reply: 'comment', comment: 'comment', like: 'heart', life: 'spark' };
+
+function setUnread(n) {
+  notif.unread = n || 0;
+  const b = $('#notif-badge');
+  b.textContent = notif.unread > 99 ? '99+' : String(notif.unread);
+  b.hidden = !notif.unread;
+  document.title = `${notif.unread ? `(${notif.unread}) ` : ''}${titleBase}`;
+}
+
+async function loadNotifs() {
+  const r = await api('/api/notifications').catch(() => null);
+  if (!r) return;
+  notif.items = r.items;
+  setUnread(r.unread);
+  if (!nmMenu.hidden) renderNotifs();
+}
+
+function renderNotifs() {
+  nmList.innerHTML = notif.items.length ? notif.items.map((n) => `
+    <button class="nm-item ${n.read ? '' : 'unread'}" data-notif="${n.id}">
+      <span class="nm-ava">${n.character ? avatarHtml(n.character) : `<span class="ava ava-letter">${icon('bell', 16)}</span>`}<i>${icon(NOTIF_ICON[n.kind] || 'bell', 11)}</i></span>
+      <span class="nm-text">${esc(n.text)}<small>${agoLabel(n.createdAt)}</small></span>
+    </button>`).join('') : '<p class="hint center">Ancora niente: qui arrivano i nuovi post, le risposte ai tuoi commenti e cosa fanno i personaggi quando non ci sei.</p>';
+  const canAsk = 'Notification' in window && window.isSecureContext && Notification.permission === 'default';
+  $('#nm-browser').hidden = !canAsk;
+}
+
+$('#btn-notif').onclick = (e) => {
+  e.stopPropagation();
+  nmMenu.hidden = !nmMenu.hidden;
+  if (!nmMenu.hidden) { renderNotifs(); loadNotifs(); }
+};
+document.addEventListener('click', (e) => { if (!nmMenu.hidden && !e.target.closest('#notif-menu, #btn-notif')) nmMenu.hidden = true; });
+$('#nm-all').onclick = async () => {
+  await api('/api/notifications/read', { body: {} }).catch(() => {});
+  notif.items.forEach((n) => (n.read = true));
+  setUnread(0);
+  renderNotifs();
+};
+$('#nm-browser').onclick = async () => { await Notification.requestPermission().catch(() => {}); renderNotifs(); };
+nmList.onclick = async (e) => {
+  const b = e.target.closest('[data-notif]');
+  if (!b) return;
+  const n = notif.items.find((x) => x.id === b.dataset.notif);
+  if (!n) return;
+  nmMenu.hidden = true;
+  if (!n.read) { n.read = true; api('/api/notifications/read', { body: { id: n.id } }).then((r) => setUnread(r.unread)).catch(() => {}); }
+  if (n.postId) { if (state.view !== 'social') await openSocial(); openPostById(n.postId); }
+  else if (n.character) openSocial(n.character.id);
+};
+
+function onNotification(evt) {
+  notif.items = [evt.notification, ...notif.items.filter((x) => x.id !== evt.notification.id)].slice(0, 60);
+  setUnread(evt.unread);
+  if (!nmMenu.hidden) renderNotifs();
+  // Pagina in background: anche come notifica del sistema (se l'hai permesso)
+  if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+    try {
+      const n = new Notification(evt.notification.character?.name || 'ChatBz', { body: evt.notification.text, icon: evt.notification.character?.avatarUrl || undefined, tag: evt.notification.id });
+      n.onclick = () => { window.focus(); if (evt.notification.postId) openPostById(evt.notification.postId); n.close(); };
+    } catch {}
+  }
+}
 
 // ---------- Stato servizi ----------
 async function pollStatus() {
@@ -1647,7 +1834,7 @@ async function openUsers() {
   renderWorkflows(state.config?.workflows || []);
   await renderUsers();
 }
-const MODE_LABEL = { text2img: 'testo → immagine', img2img: 'rielaborazione', edit: 'editing', identity: 'volto di riferimento', scene: 'stessa persona, nuova scena', upscale: 'upscale', text2video: 'testo → video', img2video: 'immagine → video', vision: 'lettura immagini' };
+const MODE_LABEL = { text2img: 'testo → immagine', img2img: 'rielaborazione', edit: 'editing', identity: 'volto di riferimento', scene: 'stessa persona, nuova scena', duo: 'due persone insieme', upscale: 'upscale', text2video: 'testo → video', img2video: 'immagine → video', vision: 'lettura immagini' };
 function renderWorkflows(list) {
   $('#wf-list').innerHTML = list.map((w) => `<div class="wf-row ${w.available ? '' : 'off'}">
     <span class="wf-dot"></span><div><b>${esc(w.name)}</b> <small>${esc(MODE_LABEL[w.mode] || w.mode)}</small>
@@ -1697,7 +1884,7 @@ usersModal.addEventListener('click', (e) => { if (e.target === usersModal || e.t
 let started = false;
 async function startApp() {
   renderUserBox();
-  if (started) { connectEvents(); await loadConvs(); return route(); }
+  if (started) { connectEvents(); await loadConvs(); loadNotifs(); return route(); }
   started = true;
   updateSend();
   connectEvents();
@@ -1707,6 +1894,7 @@ async function startApp() {
   if (prefs.model && !state.config.models.some((m) => m.name === prefs.model)) delete prefs.model;
   renderModel();
   await loadConvs();
+  loadNotifs();
   route();
 }
 

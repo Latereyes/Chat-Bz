@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const env = process.env;
 const dataDir = env.DATA_DIR ? path.resolve(env.DATA_DIR) : path.join(root, 'data');
+// "1-7" → { from: 1, to: 7 } (ore locali); vuoto → nessuna pausa notturna
+const parseHours = (v) => { const m = String(v || '').match(/^(\d{1,2})-(\d{1,2})$/); return m ? { from: Number(m[1]), to: Number(m[2]) } : null; };
 
 export default {
   root,
@@ -40,10 +42,14 @@ export default {
   // Coda a goccia del social: un pezzo alla volta, solo con la GPU libera e quando non stai chattando
   drip: {
     idleMs: Number(env.DRIP_IDLE_SEC || 90) * 1000,          // pausa dalla chat prima di lavorare
-    maxPostsPerRun: Number(env.DRIP_MAX_POSTS || 3),          // post automatici per accensione del server
-    maxStoriesPerRun: Number(env.DRIP_MAX_STORIES || 4),      // storie automatiche per accensione
-    postEveryHours: Number(env.SOCIAL_POST_HOURS || 20),      // distanza minima tra due post dello stesso personaggio
-    storyEveryHours: Number(env.SOCIAL_STORY_HOURS || 8),
+    postsPerDay: Number(env.DRIP_POSTS_DAY || 8),             // post automatici nelle ultime 24 ore (tutti i personaggi)
+    storiesPerDay: Number(env.DRIP_STORIES_DAY || 12),        // storie automatiche nelle ultime 24 ore
+    gapMinutes: Number(env.DRIP_GAP_MIN || 20),               // distanza minima tra due contenuti automatici
+    postEveryHours: Number(env.SOCIAL_POST_HOURS || 12),      // ogni quanto, in media, posta lo stesso personaggio
+    storyEveryHours: Number(env.SOCIAL_STORY_HOURS || 5),
+    night: parseHours(env.DRIP_NIGHT ?? '1-7'),               // ore in cui i personaggi dormono (niente contenuti nuovi)
+    meetEveryDays: Number(env.DRIP_MEET_DAYS || 3),           // foto insieme tra due personaggi: al massimo una ogni N giorni
+    catchupHours: Number(env.LIFE_CATCHUP_HOURS || 2),        // server spento più di così: alla riaccensione raccontano cosa hanno fatto
   },
 
   // Livello delle foto del feed: neutral (presentabile) o sensual (mai esplicito)

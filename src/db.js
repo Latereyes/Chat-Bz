@@ -142,7 +142,45 @@ db.exec(`
     owner_id     TEXT PRIMARY KEY,
     paused       INTEGER NOT NULL DEFAULT 0
   );
+
+  -- Notifiche in-app: nuovi post, risposte ai tuoi commenti, foto insieme, cosa è successo a server spento
+  CREATE TABLE IF NOT EXISTS notifications (
+    id           TEXT PRIMARY KEY,
+    owner_id     TEXT NOT NULL,
+    kind         TEXT NOT NULL,           -- post | tag | reply | comment | like | life
+    character_id TEXT REFERENCES characters(id) ON DELETE CASCADE,
+    post_id      TEXT REFERENCES posts(id) ON DELETE CASCADE,
+    comment_id   TEXT,
+    text         TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    read_at      INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_notifications_owner ON notifications(owner_id, created_at);
+
+  -- Vita dei personaggi mentre il server era spento (scritta da Gemma alla riaccensione)
+  CREATE TABLE IF NOT EXISTS life_log (
+    id           TEXT PRIMARY KEY,
+    character_id TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+    from_ts      INTEGER NOT NULL,
+    to_ts        INTEGER NOT NULL,
+    summary      TEXT NOT NULL,
+    post_idea    TEXT NOT NULL DEFAULT '',
+    met_id       TEXT,                    -- un personaggio dell'app con cui ha passato del tempo
+    idea_used    INTEGER NOT NULL DEFAULT 0,
+    created_at   INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_life_char ON life_log(character_id, created_at);
+
+  -- Valori sparsi del server (es. ultimo segno di vita, per sapere quanto è rimasto spento)
+  CREATE TABLE IF NOT EXISTS app_meta (
+    key          TEXT PRIMARY KEY,
+    value        TEXT
+  );
 `);
+
+// Colonne aggiunte dopo la prima versione delle tabelle
+const hasColumn = (table, col) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col);
+if (!hasColumn('posts', 'tags')) db.exec(`ALTER TABLE posts ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'`);   // personaggi taggati (foto insieme)
 
 /** Esegue fn in una transazione. */
 export function tx(fn) {

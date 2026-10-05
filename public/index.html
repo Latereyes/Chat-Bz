@@ -17,8 +17,8 @@
         <button class="new-chat" id="btn-new"><span data-icon="plus"></span>Nuovo personaggio</button>
       </div>
       <nav class="sidebar-nav">
+        <button class="nav-item" id="btn-social"><span data-icon="home"></span>Home</button>
         <button class="nav-item" id="btn-home"><span data-icon="users"></span>Personaggi</button>
-        <button class="nav-item" id="btn-social"><span data-icon="social"></span>Social</button>
         <button class="nav-item" id="btn-studio"><span data-icon="spark"></span>Studio immagini</button>
         <button class="nav-item" id="btn-gallery"><span data-icon="gallery"></span>Galleria</button>
       </nav>
@@ -65,6 +65,11 @@
         <div class="spacer"></div>
         <button class="icon-btn" id="btn-char-social" title="Profilo social" data-icon="social" hidden></button>
         <button class="icon-btn" id="btn-studio-clear" title="Svuota lo studio" data-icon="trash" hidden></button>
+        <button class="icon-btn bell" id="btn-notif" title="Notifiche" data-icon="bell"><b class="badge" id="notif-badge" hidden></b></button>
+        <div class="menu menu-right notif-menu" id="notif-menu" hidden>
+          <div class="nm-head"><b>Notifiche</b><span class="spacer"></span><button class="link" id="nm-browser" hidden title="Notifiche del browser anche quando la pagina è in background">Attiva avvisi</button><button class="link" id="nm-all">Segna come lette</button></div>
+          <div class="nm-list" id="nm-list"></div>
+        </div>
         <button class="gpu-pill" id="gpu-pill" title="Stato della GPU"><i></i><span id="gpu-label">GPU</span></button>
         <div class="menu menu-right" id="gpu-menu" hidden></div>
       </header>
@@ -111,6 +116,7 @@
 
       <section class="view" id="view-social" hidden>
         <div class="social-scroll" id="social-scroll">
+          <div class="social-wrap">
           <div class="social">
             <div class="social-head">
               <button class="icon-btn" id="social-back" data-icon="back" title="Torna al feed" hidden></button>
@@ -124,6 +130,8 @@
             <div class="feed" id="feed"></div>
             <button class="btn wide ghost" id="feed-more" hidden>Altri post</button>
           </div>
+          <aside class="social-side" id="social-side"></aside>
+          </div>
         </div>
       </section>
 
@@ -131,6 +139,14 @@
         <div class="gallery-head"><h2>Galleria</h2></div>
         <div class="gallery" id="gallery"></div>
       </section>
+      <!-- Mobile: le sezioni principali sempre a portata di pollice -->
+      <nav class="tabbar" id="tabbar">
+        <button data-tab-go="social"><span data-icon="home"></span><small>Home</small></button>
+        <button data-tab-go="home"><span data-icon="users"></span><small>Personaggi</small></button>
+        <button data-tab-go="new"><span data-icon="plus"></span><small>Nuovo</small></button>
+        <button data-tab-go="studio"><span data-icon="spark"></span><small>Studio</small></button>
+        <button data-tab-go="gallery"><span data-icon="gallery"></span><small>Galleria</small></button>
+      </nav>
     </main>
   </div>
 

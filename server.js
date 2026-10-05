@@ -17,6 +17,7 @@ import * as life from './src/life.js';
 import * as studio from './src/studio.js';
 import * as social from './src/social.js';
 import * as queue from './src/queue.js';
+import * as notify from './src/notify.js';
 import { publicCharacter, draftFromIdea, normalizeCard, RELATIONS, PACES, INTIMACY, STYLES } from './src/characters.js';
 import { analyzeBody, BODY, installedLoras } from './src/body.js';
 import { updateScene, initialState, DIM_LABEL, intimacyOpen, closeness } from './src/relationship.js';
@@ -125,7 +126,7 @@ app.get('/api/events', (req, res) => {
   send({ type: 'gpu', state: gpu.state() });
   bus.on('event', onEvent);
   gpu.on('state', onGpu);
-  const ping = setInterval(() => res.write(': ping\n\n'), 20000);
+  const ping = setInterval(() => send({ type: 'ping' }), 20000);   // evento vero: il browser capisce se la connessione è morta
   req.on('close', () => { clearInterval(ping); bus.off('event', onEvent); gpu.off('state', onGpu); });
 });
 
@@ -307,12 +308,15 @@ app.patch('/api/social/profile/:id', wrap(async (req, res) => {
   if (on !== undefined) { c.card = { ...c.card, social: !!on }; await store.save(c, { touch: false }); }
   res.json(social.profileView(c));
 }));
-/** Nuovo post o storia su richiesta (fuori dal limite per accensione, prima dei contenuti automatici). */
+/** Nuovo post o storia su richiesta (fuori dai limiti giornalieri, prima dei contenuti automatici). */
 app.post('/api/social/profile/:id/posts', wrap(async (req, res) => {
   const c = ownConv(req);
-  res.json(social.createPost(c, req.body?.kind === 'story' ? 'story' : 'post', { requested: true, hint: req.body?.hint }));
+  const friend = req.body?.withId ? store.get(String(req.body.withId)) : null;
+  if (friend && (friend.ownerId !== req.user.id || friend.id === c.id)) throw httpError(400, 'Amico non valido');
+  res.json(social.createPost(c, req.body?.kind === 'story' ? 'story' : 'post', { requested: true, hint: req.body?.hint, withId: friend?.id }));
 }));
 app.get('/api/social/posts/:id', wrap(async (req, res) => res.json(social.publicPost(ownPost(req)))));
+app.post('/api/social/posts/:id/open', wrap(async (req, res) => { notify.markRead(req.user.id, { postId: ownPost(req).id }); res.json({ ok: true }); }));
 app.delete('/api/social/posts/:id', wrap(async (req, res) => { await social.deletePost(ownPost(req)); res.json({ ok: true }); }));
 app.post('/api/social/posts/:id/like', wrap(async (req, res) => res.json(social.toggleLike(ownPost(req)))));
 app.post('/api/social/posts/:id/comments', wrap(async (req, res) => res.json(social.addUserComment(ownPost(req), req.body || {}))));
@@ -327,6 +331,10 @@ app.post('/api/social/posts/:id/reply', wrap(async (req, res) => {
   const story = { postId: p.id, caption: p.caption, description: md?.description || '', file: md?.file || null, url: mediaUrl(md?.file) };
   res.json({ characterId: c.id, ...(await chat.send(c, { text: req.body?.text, story, model: req.body?.model })) });
 }));
+
+// ---- Notifiche ----
+app.get('/api/notifications', (req, res) => res.json(notify.list(req.user.id)));
+app.post('/api/notifications/read', (req, res) => res.json({ unread: notify.markRead(req.user.id, { id: req.body?.id }) }));
 
 app.get('/api/media', (req, res) => res.json([...store.allMedia(req.user.id), ...social.allMedia(req.user.id)]
   .sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0)).map((m) => ({ ...m, url: mediaUrl(m.file) }))));
@@ -344,6 +352,7 @@ app.get('/{*path}', (req, res) => res.sendFile(path.join(config.paths.public, 'i
 
 recoverInterrupted();
 life.start();
+social.startLife();
 queue.start();
 const server = app.listen(config.port, config.host, () => {
   const ips = Object.values(os.networkInterfaces()).flat().filter((i) => i?.family === 'IPv4' && !i.internal).map((i) => i.address);
