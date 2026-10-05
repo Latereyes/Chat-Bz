@@ -6,6 +6,7 @@ import * as comfy from './comfy.js';
 import * as store from './store.js';
 import { gpu } from './gpu.js';
 import { getWorkflow, buildGraph } from './workflows.js';
+import { bodyLoras, installedLoras, applyBodyLoras } from './body.js';
 
 /** Bus globale degli eventi verso il frontend (SSE). */
 export const bus = new EventEmitter();
@@ -54,6 +55,11 @@ export function enqueue(conv, msg, media) {
       width: media.width, height: media.height, frames: media.frames,
       image, image2, image3, denoise: media.denoise,
     });
+    // LoRA del corpo del personaggio (solo nei grafi Krea Real e solo se installate su ComfyUI)
+    if (media.type === 'image') {
+      const loras = await installedLoras(bodyLoras(conv.card));
+      if (applyBodyLoras(graph, loras)) media.loras = loras.map(({ part, strength }) => ({ part, strength }));
+    }
 
     let lastPreview = 0;
     const { files } = await comfy.run(graph, {

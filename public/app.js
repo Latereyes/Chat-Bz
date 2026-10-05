@@ -663,17 +663,35 @@ function fillOptions() {
 }
 
 const CARD_FIELDS = ['name', 'age', 'gender', 'style', 'personality', 'life', 'speech', 'boundaries', 'look', 'relation', 'pace', 'intimacy', 'startPresence', 'startPlace', 'greeting'];
+// Taglie del corpo (→ LoRA delle foto): automatiche, valgono solo per l'aspetto da cui sono state ricavate
+let cardBody = null;
+function bodySummary(card) {
+  const opts = state.config?.options?.body || {};
+  const parts = Object.entries(card.body || {}).filter(([k]) => opts[k]).map(([k, s]) => `${opts[k].label.toLowerCase()} ${opts[k].sizes[s] || s}`);
+  return parts.length ? `Fisico nelle foto (automatico, dall'aspetto): ${parts.join(', ')}.` : '';
+}
+function showBody() {
+  const p = $('#cm-body');
+  const same = cardBody && cardBody.look === cf.look.value;
+  p.textContent = cf.gender.value === 'uomo' ? '' : same ? bodySummary(cardBody) : cf.look.value.trim() ? "Il fisico nelle foto verrà ricavato dall'aspetto al salvataggio." : '';
+  p.hidden = !p.textContent;
+}
 function fillCard(card) {
   for (const k of CARD_FIELDS) if (cf[k] && card[k] !== undefined) cf[k].value = card[k];
   cf.initiative.checked = card.initiative !== false;
+  cardBody = card.body ? { look: card.look, body: card.body } : null;
+  showBody();
 }
 function readCard() {
   const out = {};
   for (const k of CARD_FIELDS) out[k] = cf[k].value;
   out.age = Number(out.age);
   out.initiative = cf.initiative.checked;
+  if (cardBody && cardBody.look === out.look) out.body = cardBody.body;
   return out;
 }
+cf.look.addEventListener('input', showBody);
+cf.gender.addEventListener('change', showBody);
 
 function setTab(tab) {
   $$('.tab', cm).forEach((t) => t.classList.toggle('on', t.dataset.tab === tab));
