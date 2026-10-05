@@ -37,6 +37,22 @@ export default {
     minHours: Number(env.INITIATIVE_MIN_HOURS || 6),
   },
 
+  // Coda a goccia del social: un pezzo alla volta, solo con la GPU libera e quando non stai chattando
+  drip: {
+    idleMs: Number(env.DRIP_IDLE_SEC || 90) * 1000,          // pausa dalla chat prima di lavorare
+    maxPostsPerRun: Number(env.DRIP_MAX_POSTS || 3),          // post automatici per accensione del server
+    maxStoriesPerRun: Number(env.DRIP_MAX_STORIES || 4),      // storie automatiche per accensione
+    postEveryHours: Number(env.SOCIAL_POST_HOURS || 20),      // distanza minima tra due post dello stesso personaggio
+    storyEveryHours: Number(env.SOCIAL_STORY_HOURS || 8),
+  },
+
+  // Livello delle foto del feed: neutral (presentabile) o sensual (mai esplicito)
+  social: {
+    level: env.SOCIAL_LEVEL === 'sensual' ? 'sensual' : 'neutral',
+    // Caroselli con lo stesso volto della foto profilo (Qwen "stessa persona, nuova scena"), solo stile Krea
+    identity: (env.SOCIAL_IDENTITY ?? '1') !== '0',
+  },
+
   paths: {
     workflows: path.join(root, 'workflows'),
     data: dataDir,

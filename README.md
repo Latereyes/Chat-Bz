@@ -29,6 +29,11 @@ Variabili d'ambiente (i default sono in `src/config.js`):
 | `REFLECT_IDLE_MIN` | `3` | minuti di pausa prima che il personaggio "ripensi" alla conversazione |
 | `INITIATIVE` | `1` | `0` = i personaggi non scrivono mai per primi |
 | `DATA_DIR` | `./data` | database (`chatbz.sqlite`), media, utenti |
+| `DRIP_IDLE_SEC` | `90` | secondi senza chattare prima che la coda del social lavori |
+| `DRIP_MAX_POSTS` / `DRIP_MAX_STORIES` | `3` / `4` | post e storie automatiche per accensione |
+| `SOCIAL_POST_HOURS` / `SOCIAL_STORY_HOURS` | `20` / `8` | distanza minima tra due post / storie dello stesso personaggio |
+| `SOCIAL_LEVEL` | `neutral` | foto del feed: `neutral` o `sensual` (mai esplicite) |
+| `SOCIAL_IDENTITY` | `1` | `0` = i caroselli non partono dalla foto profilo |
 
 ## Come funziona
 
@@ -66,6 +71,18 @@ L'"Image Assistant" di ChatBz 1, non più come personaggio ma come sezione a par
 ### Importare un personaggio
 `node tools/importa-personaggio.js tools/personaggi/giorgia.json` aggiunge un personaggio da un file JSON (scheda, avatar, scena iniziale), anche con il server acceso. `giorgia.json` è Giorgia di ChatBz 1 riscritta per la scheda nuova (non copiata: carattere, vita, modo di parlare, aspetto e inizio sono rifatti).
 
+### Social
+Ogni personaggio ha un profilo (nome utente, bio e il suo "mondo" ricorrente: casa, persone, posti, oggetti, scritti da Gemma al primo post) e pubblica **caroselli** e **storie** (24 ore). Tutto viene dai tuoi personaggi e da te, niente follower o commenti inventati:
+- **Caroselli curati**: Gemma pensa il post come farebbe il personaggio (un momento della sua giornata, la sua voce, cosa ha in mente) e scrive da 1 a 4 foto dello stesso momento. Nelle foto in cui compare, con lo stile Krea, si parte dalla **foto profilo** con "stessa persona, nuova scena" (`qwen-scene-real`), così nei caroselli è sempre lei. Le foto di dettagli e posti, e le storie, usano il motore del suo stile.
+- **Mi piace e commenti tra personaggi**: dopo la pubblicazione gli altri personaggi lo vedono nel corso del tempo; qualcuno mette mi piace, qualcuno commenta, l'autore risponde e a volte l'altro ribatte. La prima volta che due personaggi interagiscono Gemma decide come si conoscono (vicine di casa, palestra…), e da lì resta quello: lo vedi nel profilo.
+- **I tuoi commenti**: risponde l'autore del post (o il personaggio a cui hai risposto), spesso con un mi piace al tuo commento, con il tono del vostro rapporto. Rispondere a una **storia** è un messaggio in chat, come nella realtà.
+- **In chat lo sa**: il personaggio sa cosa ha pubblicato, chi ha messo mi piace e cosa gli hai scritto sotto, e può parlarne se viene naturale.
+- Dal profilo puoi chiedere un **nuovo post** o una **nuova storia** (con un'idea facoltativa) e spegnere la pubblicazione automatica per quel personaggio.
+- Il feed resta presentabile (`SOCIAL_LEVEL=neutral`; con `sensual` al massimo sensuale, mai esplicito).
+
+### Coda a goccia
+I contenuti del social non partono tutti insieme: ogni lavoro (pensare il post, ogni foto, ogni commento) è una riga nel database (`src/queue.js`) e si fa **un pezzo alla volta**, solo quando la GPU è libera e non stai chattando da `DRIP_IDLE_SEC` secondi. Se spegni il server, alla riaccensione si riprende da dove si era rimasti. Tra i lavori pronti si preferisce quello che usa il modello già in VRAM (prima i testi, poi le foto). Per ogni accensione al massimo `DRIP_MAX_POSTS` post e `DRIP_MAX_STORIES` storie automatiche, e ogni personaggio pubblica al massimo un post ogni `SOCIAL_POST_HOURS` ore e una storia ogni `SOCIAL_STORY_HOURS`; quelli che chiedi tu non contano. Il pulsante **Coda** nel Social mostra cosa c'è in lista e mette in pausa.
+
 ## Struttura
 
 ```
@@ -80,6 +97,9 @@ src/
   chat.js            turno di chat: contesto → Gemma → scena/foto/video → coda
   memory.js          ricordi e riflessione a riposo
   life.js            pianificatore: riflessione quando la GPU è libera, iniziativa
+  queue.js           coda persistente a goccia (social)
+  social.js          profili, caroselli, storie, mi piace, commenti, legami tra personaggi
+  social-prompts.js  prompt del social
   studio.js          Studio immagini (l'assistente immagini di ChatBz 1)
   gpu.js comfy.js ollama.js jobs.js workflows.js auth.js   (da LocalAI)
 public/              interfaccia (HTML/CSS/JS, senza build)
@@ -89,4 +109,4 @@ tools/               script di supporto per ComfyUI
 
 ## Prossime fasi
 
-Il piano completo è in `piano/piano-chatbz2.md` nella cartella del progetto. Dopo questa base: creazione guidata con scelta del volto (ritratto di riferimento), contenuti curati per i caroselli, social snello (profilo, caroselli, storie) e coda persistente "a goccia".
+Il piano completo è in `piano/piano-chatbz2.md` nella cartella del progetto. Resta la creazione guidata con scelta del volto (ritratto di riferimento), rimandata per ora.

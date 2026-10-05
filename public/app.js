@@ -44,6 +44,11 @@ const P = {
   heart: '<path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.8 4.5c2.1 0 3.6 1.2 5.2 3 1.6-1.8 3.1-3 5.2-3 3.8 0 5.9 3.9 4.4 7.3C19.5 16.4 12 21 12 21z"/>',
   pin: '<path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  social: '<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".6" fill="currentColor"/>',
+  comment: '<path d="M21 12a8 8 0 0 1-11.8 7L3 21l2-6.2A8 8 0 1 1 21 12z"/>',
+  pause: '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',
+  play: '<path d="M7 4v16l13-8z"/>',
+  back: '<path d="m15 18-6-6 6-6"/>',
   open: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
 };
 const icon = (n, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${P[n] || ''}</svg>`;
@@ -128,6 +133,7 @@ $('#btn-new').onclick = () => { openCharModal(null); if (isMobile()) setSidebar(
 $('#btn-home').onclick = () => { showHome(); if (isMobile()) setSidebar(false); };
 $('#btn-gallery').onclick = () => { openGallery(); if (isMobile()) setSidebar(false); };
 $('#btn-studio').onclick = () => { openStudio(); if (isMobile()) setSidebar(false); };
+$('#btn-social').onclick = () => { openSocial(); if (isMobile()) setSidebar(false); };
 
 const timeLabel = (ts) => {
   if (!ts) return '';
@@ -163,8 +169,9 @@ async function loadConvs() {
 // ---------- Viste / routing ----------
 function showView(v) {
   state.view = v;
-  for (const name of ['home', 'chat', 'gallery']) $(`#view-${name}`).hidden = v !== name;
+  for (const name of ['home', 'chat', 'gallery', 'social']) $(`#view-${name}`).hidden = v !== name;
   $('#btn-gallery').classList.toggle('active', v === 'gallery');
+  $('#btn-social').classList.toggle('active', v === 'social');
   $('#btn-home').classList.toggle('active', v === 'home');
   $('#btn-studio').classList.toggle('active', v === 'chat' && !!state.conv?.studio);
   setStudioMode(v === 'chat' && !!state.conv?.studio);
@@ -217,6 +224,7 @@ function route() {
   if (m) openConv(m[1], false);
   else if (location.pathname.startsWith('/studio')) openStudio(false);
   else if (location.pathname.startsWith('/galleria')) openGallery(false);
+  else if (location.pathname.startsWith('/social')) openSocial(location.pathname.split('/')[2] || null, false);
   else showHome(false);
 }
 
@@ -224,6 +232,7 @@ function route() {
 function renderHead() {
   const c = state.conv;
   el.head.hidden = !c;
+  $('#btn-char-social').hidden = !c || !!c.studio;
   if (!c) { $('#btn-studio-clear').hidden = true; return; }
   $('#char-ava').innerHTML = avatarHtml(c);
   $('#char-name').textContent = c.name;
@@ -307,7 +316,8 @@ function renderMessage(m) {
     const TOOL_LABEL = { photo: ['image', 'Foto'], video: ['video', 'Video'] };
     const tl = TOOL_LABEL[m.tool];
     const tag = tl ? `<div class="tag">${icon(tl[0], 13)}${tl[1]}</div>` : m.studio ? studioTag(m.studio) : '';
-    const html = `${imgs ? `<div class="user-images">${imgs}</div>` : ''}${m.content || tag ? `<div class="bubble">${tag}${esc(m.content)}</div>` : ''}`;
+    const story = m.story ? `<div class="story-ref">${m.story.url ? `<img src="${esc(m.story.url)}" alt="">` : ''}<span>Risposta alla sua storia${m.story.caption ? ` «${esc(m.story.caption)}»` : ''}</span></div>` : '';
+    const html = `${story}${imgs ? `<div class="user-images">${imgs}</div>` : ''}${m.content || tag ? `<div class="bubble">${tag}${esc(m.content)}</div>` : ''}`;
     if (node) { node.innerHTML = html; return; }
     el.thread.insertAdjacentHTML('beforeend', `<div class="msg msg-user" id="m-${m.id}">${html}</div>`);
     return;
@@ -414,6 +424,7 @@ function connectEvents() {
 function onEvent(evt) {
   if (evt.type === 'gpu') return renderGpu(evt.state);
   if (evt.type === 'character') return setAvatar(evt.conversationId, evt.avatarUrl);
+  if (evt.type === 'social' || evt.postId) return onSocialEvent(evt);
   if (evt.type === 'done' || evt.type === 'message') clearTimeout(onEvent.t), (onEvent.t = setTimeout(loadConvs, 400));
   if (!state.conv || evt.conversationId !== state.conv.id) return;
 
@@ -679,6 +690,7 @@ function showBody() {
 function fillCard(card) {
   for (const k of CARD_FIELDS) if (cf[k] && card[k] !== undefined) cf[k].value = card[k];
   cf.initiative.checked = card.initiative !== false;
+  cf.social.checked = card.social !== false;
   cardBody = card.body ? { look: card.look, body: card.body } : null;
   showBody();
 }
@@ -687,6 +699,7 @@ function readCard() {
   for (const k of CARD_FIELDS) out[k] = cf[k].value;
   out.age = Number(out.age);
   out.initiative = cf.initiative.checked;
+  out.social = cf.social.checked;
   if (cardBody && cardBody.look === out.look) out.body = cardBody.body;
   return out;
 }
@@ -1108,6 +1121,431 @@ el.lightbox.onclick = (e) => {
   if (e.target === el.lightbox || e.target === el.lbBody) closeLightbox();
 };
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !el.lightbox.hidden) closeLightbox(); });
+
+// ---------- Social: feed, storie, profili, commenti e mi piace ----------
+const soc = {
+  mode: 'feed',          // feed | profile
+  characterId: null,
+  posts: new Map(),      // id -> post (ultima versione nota)
+  stories: [],
+  queue: null,
+  oldest: null,
+  replyTo: new Map(),    // postId -> commento a cui stai rispondendo
+};
+const feedEl = $('#feed'), storiesEl = $('#stories-row'), profileEl = $('#social-profile'), queuePanel = $('#queue-panel');
+
+const agoLabel = (ts) => {
+  if (!ts) return '';
+  const m = Math.round((Date.now() - ts) / 60000);
+  if (m < 1) return 'adesso';
+  if (m < 60) return `${m} min`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} h`;
+  const d = Math.round(h / 24);
+  return d < 7 ? `${d} g` : new Date(ts).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
+};
+const inLabel = (ts) => { const m = Math.max(1, Math.round((ts - Date.now()) / 60000)); return m < 60 ? `tra ${m} min` : `tra ${Math.round(m / 60)} h`; };
+const who = (ch, cls = '') => avatarHtml({ name: ch?.name, avatarUrl: ch?.avatarUrl }, cls);
+
+async function openSocial(characterId = null, push = true) {
+  state.conv = null;
+  soc.mode = characterId ? 'profile' : 'feed';
+  soc.characterId = characterId;
+  showView('social');
+  renderHead();
+  renderConvList();
+  const url = characterId ? `/social/${characterId}` : '/social';
+  if (push && location.pathname !== url) history.pushState(null, '', url);
+  $('#social-back').hidden = !characterId;
+  $('#social-title').textContent = 'Social';
+  document.title = 'Social · ChatBz';
+  storiesEl.hidden = true;
+  profileEl.hidden = !characterId;
+  profileEl.innerHTML = '';
+  feedEl.innerHTML = '<p class="hint center">Carico…</p>';
+  $('#feed-more').hidden = true;
+  refreshQueue();
+  if (characterId) return renderProfile();
+  loadStories();
+  soc.oldest = null;
+  const posts = await api('/api/social/feed').catch(() => []);
+  if (soc.mode !== 'feed' || state.view !== 'social') return;
+  feedEl.innerHTML = '';
+  renderFeed(posts, false);
+}
+$('#social-back').onclick = () => openSocial();
+$('#btn-char-social').onclick = () => { if (state.conv && !state.conv.studio) openSocial(state.conv.id); };
+
+function renderFeed(posts, append) {
+  if (!append && !posts.length) {
+    feedEl.innerHTML = `<div class="empty">${state.convs.length
+      ? 'Ancora nessun post. I personaggi pubblicano un po\' alla volta, quando la GPU è libera e non state chattando; oppure apri un profilo e chiedi un post.'
+      : 'Crea un personaggio: pubblicherà qui le sue foto.'}</div>`;
+  }
+  for (const p of posts) {
+    soc.posts.set(p.id, p);
+    feedEl.insertAdjacentHTML('beforeend', postHtml(p));
+  }
+  if (posts.length) soc.oldest = posts.at(-1).publishedAt;
+  $('#feed-more').hidden = posts.length < 10;
+}
+$('#feed-more').onclick = async () => {
+  renderFeed(await api(`/api/social/feed?before=${soc.oldest || ''}`).catch(() => []), true);
+};
+
+// ---- Post ----
+function mediaFrame(md) {
+  if (md.status === 'done' && md.url) return `<img src="${esc(md.url)}" alt="" loading="lazy" data-zoom="${md.id}">`;
+  const label = { engineering: 'Scrive la foto…', queued: 'In coda', running: 'Sta scattando…', error: 'Non riuscita', planned: 'Ci sta pensando…' }[md.status] || '';
+  return `<img class="preview" alt="" hidden><div class="shimmer"></div><div class="media-state"><div class="big">${icon('image', 24)}<span>${label}</span></div></div>
+    ${md.status === 'running' ? '<div class="media-overlay"><div class="bar"><i></i></div></div>' : ''}`;
+}
+
+function carouselHtml(p) {
+  const list = p.media.length ? p.media : [{ id: 'none', status: p.status === 'error' ? 'error' : 'planned' }];
+  const first = list[0];
+  const ratio = first.width && first.height ? `${first.width}/${first.height}` : p.kind === 'story' ? '9/16' : '3/4';
+  return `<div class="carousel" style="aspect-ratio:${ratio}">
+      <div class="track">${list.map((md) => `<div class="slide" data-media="${md.id}">${mediaFrame(md)}</div>`).join('')}</div>
+      ${list.length > 1 ? `<div class="dots">${list.map((_, i) => `<i class="${i ? '' : 'on'}"></i>`).join('')}</div><span class="count">1/${list.length}</span>` : ''}
+    </div>`;
+}
+
+function statusLine(p) {
+  if (p.status === 'published') return '';
+  const done = p.media.filter((m) => m.status === 'done').length;
+  const txt = p.status === 'planned' ? `${esc(p.character.name)} sta pensando ${p.kind === 'story' ? 'a una storia' : 'a un post'}…`
+    : p.status === 'generating' ? `${p.kind === 'story' ? 'Storia' : 'Post'} in preparazione: ${done}/${p.media.length} foto pronte`
+      : `Non riuscito: ${esc(p.error || 'errore')}`;
+  return `<div class="post-status ${p.status}">${txt}${p.status === 'error' ? ` <button class="link" data-post-act="retry">Riprova</button>` : ''}</div>`;
+}
+
+function commentsHtml(p) {
+  const byId = new Map(p.comments.map((c) => [c.id, c]));
+  const rootOf = (c) => { let r = c; while (r.replyTo && byId.get(r.replyTo)) r = byId.get(r.replyTo); return r.id; };
+  const roots = p.comments.filter((c) => !c.replyTo || !byId.get(c.replyTo));
+  const one = (c, reply) => {
+    const name = c.author.kind === 'user' ? 'Tu' : c.author.name;
+    return `<div class="comment ${reply ? 'reply' : ''}" data-comment="${c.id}">
+      ${c.author.kind === 'user' ? `<span class="ava ava-letter small">${initial(state.user?.displayName)}</span>` : `<button class="ava-btn" data-profile="${c.author.id}">${who(c.author, 'small')}</button>`}
+      <div class="c-body"><p><b>${esc(name)}</b> ${esc(c.content)}</p>
+      <small>${agoLabel(c.createdAt)}${c.author.kind === 'character' ? ` · <button class="link" data-reply="${c.id}" data-name="${esc(name)}">Rispondi</button>` : ''}${c.likedByAuthor ? ` · <span class="liked">${icon('heart', 11)} da ${esc(p.character.name)}</span>` : ''}</small></div>
+    </div>`;
+  };
+  return roots.map((r) => one(r, false) + p.comments.filter((c) => c.id !== r.id && rootOf(c) === r.id).map((c) => one(c, true)).join('')).join('');
+}
+
+function likesLine(p) {
+  if (!p.likes.count) return '';
+  const names = [...(p.likes.byUser ? ['te'] : []), ...p.likes.names];
+  const shown = names.slice(0, 2).map((x) => (x === 'te' ? 'te' : `<b>${esc(x)}</b>`));
+  return `<p class="likes">Piace a ${shown.join(' e ')}${names.length > 2 ? ` e altri ${names.length - 2}` : ''}</p>`;
+}
+
+function postHeadHtml(p) {
+  return `<button class="ava-btn" data-profile="${p.character.id}">${who(p.character)}</button>
+    <div class="ph-who"><button class="link strong" data-profile="${p.character.id}">${esc(p.character.username || p.character.name)}</button>
+    <small>${p.publishedAt ? agoLabel(p.publishedAt) : ''}${p.location ? ` · ${esc(p.location)}` : ''}${p.kind === 'story' ? ' · storia' : ''}</small></div>
+    <span class="spacer"></span><button class="icon-btn" data-post-act="delete" title="Elimina">${icon('trash', 16)}</button>`;
+}
+
+function postBodyHtml(p) {
+  const caption = p.caption ? `<p class="caption"><b>${esc(p.character.username || p.character.name)}</b> ${esc(p.caption)}</p>` : '';
+  if (p.status !== 'published') return `${statusLine(p)}${caption}`;
+  return `<div class="post-actions">
+      <button class="act like ${p.likes.byUser ? 'on' : ''}" data-post-act="like" title="Mi piace">${icon('heart', 22)}</button>
+      ${p.kind === 'post' ? `<button class="act" data-post-act="focus" title="Commenta">${icon('comment', 22)}</button>` : ''}
+    </div>
+    ${likesLine(p)}
+    ${caption}
+    <div class="comments">${commentsHtml(p)}</div>
+    ${p.typing.length ? `<p class="typing-line"><span class="typing"><i></i><i></i><i></i></span>${esc(p.typing.join(', '))} sta scrivendo…</p>` : ''}`;
+}
+
+const mediaSig = (p) => p.media.map((m) => `${m.id}:${m.status}`).join('|') || p.status;
+const canComment = (p) => p.status === 'published' && p.kind === 'post';
+
+function postHtml(p) {
+  return `<article class="post" data-post="${p.id}" data-sig="${mediaSig(p)}">
+    <header class="post-head">${postHeadHtml(p)}</header>
+    <div class="post-media">${carouselHtml(p)}</div>
+    <div class="post-body">${postBodyHtml(p)}</div>
+    <form class="comment-form" ${canComment(p) ? '' : 'hidden'}><input placeholder="Aggiungi un commento…" autocomplete="off" maxlength="600"><button class="link strong">Pubblica</button></form>
+  </article>`;
+}
+
+const timers = {};
+const debounce = (key, fn, ms) => { clearTimeout(timers[key]); timers[key] = setTimeout(fn, ms); };
+
+/** Aggiorna un post ovunque sia mostrato, senza toccare il commento che stai scrivendo. */
+function updatePost(p) {
+  soc.posts.set(p.id, p);
+  const nodes = $$(`.post[data-post="${p.id}"]`);
+  for (const node of nodes) {
+    $('.post-head', node).innerHTML = postHeadHtml(p);
+    if (node.dataset.sig !== mediaSig(p)) { $('.post-media', node).innerHTML = carouselHtml(p); node.dataset.sig = mediaSig(p); }
+    $('.post-body', node).innerHTML = postBodyHtml(p);
+    $('.comment-form', node).hidden = !canComment(p);
+  }
+  if (state.view !== 'social') return;
+  if (soc.mode === 'feed') {
+    // Post appena pubblicato: in cima al feed
+    if (!nodes.length && p.kind === 'post' && p.status === 'published') {
+      $('.empty', feedEl)?.remove();
+      feedEl.insertAdjacentHTML('afterbegin', postHtml(p));
+    }
+    if (p.kind === 'story' && p.status === 'published') debounce('stories', loadStories, 500);
+  } else if (p.character.id === soc.characterId && (p.status === 'published' || !nodes.length)) {
+    debounce('profile', renderProfile, 600);
+  }
+}
+
+function onSocialEvent(evt) {
+  if (evt.what === 'post') return updatePost(evt.post);
+  if (evt.what === 'removed') {
+    soc.posts.delete(evt.postId);
+    $$(`.post[data-post="${evt.postId}"], .pgrid [data-open="${evt.postId}"]`).forEach((n) => n.remove());
+    return;
+  }
+  if (evt.what === 'queue') return debounce('queue', refreshQueue, 700);
+  if (evt.type === 'preview' || evt.type === 'progress') {
+    const slide = document.querySelector(`.post[data-post="${evt.postId}"] .slide[data-media="${evt.mediaId}"]`);
+    if (!slide) return;
+    if (evt.type === 'preview') { const pv = $('.preview', slide); if (pv) { pv.src = evt.dataUrl; pv.hidden = false; } }
+    if (evt.max) { const bar = $('.bar i', slide); if (bar) bar.style.width = `${(evt.value / evt.max) * 100}%`; }
+  }
+}
+
+// Carosello: punti e contatore seguono lo scorrimento
+document.addEventListener('scroll', (e) => {
+  const track = e.target.closest?.('.track');
+  if (!track) return;
+  const i = Math.round(track.scrollLeft / track.clientWidth);
+  const car = track.closest('.carousel');
+  $$('.dots i', car).forEach((d, j) => d.classList.toggle('on', j === i));
+  const count = $('.count', car);
+  if (count) count.textContent = `${i + 1}/${track.children.length}`;
+}, true);
+
+document.addEventListener('click', async (e) => {
+  const prof = e.target.closest('[data-profile]');
+  if (prof && (state.view === 'social' || !$('#post-modal').hidden)) { $('#post-modal').hidden = true; return openSocial(prof.dataset.profile); }
+  const post = e.target.closest('.post');
+  if (!post) return;
+  const p = soc.posts.get(post.dataset.post);
+  if (!p) return;
+  const zoom = e.target.closest('[data-zoom]');
+  if (zoom) return openLightbox(p.media.find((m) => m.id === zoom.dataset.zoom));
+  const reply = e.target.closest('[data-reply]');
+  if (reply) {
+    soc.replyTo.set(p.id, reply.dataset.reply);
+    const input = $('.comment-form input', post);
+    input.placeholder = `Rispondi a ${reply.dataset.name}…`;
+    input.focus();
+    return;
+  }
+  const act = e.target.closest('[data-post-act]')?.dataset.postAct;
+  if (!act) return;
+  if (act === 'like') {
+    e.target.closest('.like').classList.toggle('on');           // subito, poi conferma dal server
+    return api(`/api/social/posts/${p.id}/like`, { method: 'POST' }).then(updatePost).catch((err) => alert(err.message));
+  }
+  if (act === 'focus') return $('.comment-form input', post).focus();
+  if (act === 'retry') return api(`/api/social/posts/${p.id}/retry`, { method: 'POST' }).then(updatePost).catch((err) => alert(err.message));
+  if (act === 'delete') {
+    if (!confirm(`Eliminare ${p.kind === 'story' ? 'questa storia' : 'questo post'} di ${p.character.name}?`)) return;
+    return api(`/api/social/posts/${p.id}`, { method: 'DELETE' }).catch((err) => alert(err.message));
+  }
+});
+
+document.addEventListener('submit', async (e) => {
+  const form = e.target.closest('.comment-form');
+  if (!form) return;
+  e.preventDefault();
+  const id = form.closest('.post').dataset.post;
+  const input = $('input', form);
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  const replyTo = soc.replyTo.get(id) || null;
+  soc.replyTo.delete(id);
+  input.placeholder = 'Aggiungi un commento…';
+  try { updatePost(await api(`/api/social/posts/${id}/comments`, { body: { text, replyTo } })); }
+  catch (err) { input.value = text; alert(err.message); }
+});
+
+// ---- Storie ----
+async function loadStories() {
+  soc.stories = await api('/api/social/stories').catch(() => []);
+  storiesEl.innerHTML = soc.stories.map((g, i) => `<button class="story-ring ${g.unseen ? 'unseen' : ''}" data-story="${i}">${who(g.character)}<span>${esc(g.character.name)}</span></button>`).join('');
+  storiesEl.hidden = soc.mode !== 'feed' || state.view !== 'social' || !soc.stories.length;
+}
+storiesEl.onclick = (e) => { const b = e.target.closest('[data-story]'); if (b) openStories(soc.stories, Number(b.dataset.story)); };
+
+const sv = { groups: [], g: 0, i: 0, timer: null, el: $('#story-viewer') };
+function openStories(groups, g = 0) {
+  if (!groups[g]?.stories.length) return;
+  sv.groups = groups;
+  sv.g = g;
+  sv.i = Math.max(0, groups[g].stories.findIndex((s) => !s.seen));
+  sv.el.hidden = false;
+  showStory();
+}
+function closeStories() {
+  clearTimeout(sv.timer);
+  sv.el.hidden = true;
+  if (state.view === 'social') { if (soc.mode === 'feed') loadStories(); else renderProfile(); }
+}
+function showStory() {
+  clearTimeout(sv.timer);
+  const group = sv.groups[sv.g];
+  const s = group?.stories[sv.i];
+  if (!s) return closeStories();
+  const md = s.media[0];
+  $('#sv-bars').innerHTML = group.stories.map((_, j) => `<i class="${j < sv.i ? 'done' : j === sv.i ? 'run' : ''}"></i>`).join('');
+  $('#sv-who').innerHTML = `<button class="ava-btn" data-sv-profile="${group.character.id}">${who(group.character, 'small')}</button><b>${esc(group.character.username || group.character.name)}</b><small>${agoLabel(s.publishedAt)}</small>`;
+  $('#sv-media').innerHTML = md?.url ? `<img src="${esc(md.url)}" alt="">` : '';
+  $('#sv-caption').textContent = s.caption || '';
+  $('#sv-caption').hidden = !s.caption;
+  $('#sv-input').placeholder = `Rispondi a ${group.character.name}…`;
+  if (!s.seen) { s.seen = true; api(`/api/social/posts/${s.id}/seen`, { method: 'POST' }).catch(() => {}); }
+  sv.timer = setTimeout(nextStory, 6000);
+}
+function nextStory() {
+  const group = sv.groups[sv.g];
+  if (sv.i + 1 < group.stories.length) sv.i++;
+  else if (sv.g + 1 < sv.groups.length) { sv.g++; sv.i = 0; }
+  else return closeStories();
+  showStory();
+}
+function prevStory() {
+  if (sv.i > 0) sv.i--;
+  else if (sv.g > 0) { sv.g--; sv.i = sv.groups[sv.g].stories.length - 1; }
+  showStory();
+}
+$('#sv-next').onclick = nextStory;
+$('#sv-prev').onclick = prevStory;
+$('#sv-close').onclick = closeStories;
+$('#sv-who').onclick = (e) => { const b = e.target.closest('[data-sv-profile]'); if (b) { closeStories(); openSocial(b.dataset.svProfile); } };
+$('#sv-input').addEventListener('focus', () => clearTimeout(sv.timer));
+$('#sv-input').addEventListener('blur', () => { if (!sv.el.hidden && !$('#sv-input').value) sv.timer = setTimeout(nextStory, 4000); });
+$('#sv-reply').onsubmit = async (e) => {
+  e.preventDefault();
+  const text = $('#sv-input').value.trim();
+  const s = sv.groups[sv.g]?.stories[sv.i];
+  if (!text || !s) return;
+  try {
+    const r = await api(`/api/social/posts/${s.id}/reply`, { body: { text, model: currentModel() } });
+    $('#sv-input').value = '';
+    clearTimeout(sv.timer);
+    sv.el.hidden = true;
+    openConv(r.characterId);          // rispondere a una storia è un messaggio in chat
+  } catch (err) { alert(err.message); }
+};
+document.addEventListener('keydown', (e) => {
+  if (sv.el.hidden || e.target === $('#sv-input')) return;
+  if (e.key === 'Escape') closeStories();
+  if (e.key === 'ArrowRight') nextStory();
+  if (e.key === 'ArrowLeft') prevStory();
+});
+
+// ---- Profilo ----
+async function renderProfile() {
+  const id = soc.characterId;
+  let pr;
+  try { pr = await api(`/api/social/profile/${id}`); }
+  catch { return openSocial(); }
+  if (soc.characterId !== id || state.view !== 'social' || soc.mode !== 'profile') return;
+  for (const p of [...pr.posts, ...pr.pending, ...pr.stories]) soc.posts.set(p.id, p);
+  $('#social-title').textContent = pr.username ? `@${pr.username}` : pr.character.name;
+  const he = state.convs.find((c) => c.id === id)?.card?.gender === 'uomo';
+  profileEl.innerHTML = `
+    <div class="prof-head">
+      <button class="prof-ava ${pr.stories.length ? `has-story ${pr.stories.some((s) => !s.seen) ? 'unseen' : ''}` : ''}" data-prof-stories title="${pr.stories.length ? 'Guarda le storie' : ''}">${who(pr.character, 'big')}</button>
+      <div class="prof-info">
+        <h3>${esc(pr.character.name)}</h3>
+        <p class="prof-stats"><b>${pr.stats.posts}</b> post · <b>${pr.stats.likes}</b> mi piace ricevuti</p>
+        ${pr.bio ? `<p class="prof-bio">${esc(pr.bio)}</p>` : '<p class="hint">La bio arriva con il primo post.</p>'}
+      </div>
+    </div>
+    ${pr.bonds.length ? `<div class="bonds">${pr.bonds.map((b) => `<button class="bond" data-profile="${b.id}" title="${esc(b.note)}">${who(b, 'small')}<span><b>${esc(b.name)}</b><small>${esc(b.note)}</small></span></button>`).join('')}</div>` : ''}
+    <div class="prof-actions">
+      <button class="btn" data-prof="chat">${icon('comment', 15)}${he ? 'Scrivigli' : 'Scrivile'}</button>
+      <button class="btn" data-prof="post">${icon('image', 15)}Nuovo post</button>
+      <button class="btn" data-prof="story">${icon('plus', 15)}Nuova storia</button>
+      <label class="check small"><input type="checkbox" data-prof="auto" ${pr.social ? 'checked' : ''}> Pubblica da ${he ? 'solo' : 'sola'}</label>
+    </div>
+    ${pr.pending.length ? `<div class="pending">${pr.pending.map(postHtml).join('')}</div>` : ''}
+    ${pr.posts.length ? `<div class="pgrid">${pr.posts.map((p) => `<button data-open="${p.id}">${p.media[0]?.url ? `<img src="${esc(p.media[0].url)}" loading="lazy" alt="">` : ''}${p.media.length > 1 ? `<span class="multi">${icon('gallery', 14)}</span>` : ''}</button>`).join('')}</div>`
+      : !pr.pending.length ? '<div class="empty">Ancora nessun post.</div>' : ''}`;
+  feedEl.innerHTML = '';
+  $('#feed-more').hidden = true;
+  profileEl._stories = pr.stories.length ? [{ character: pr.character, stories: pr.stories }] : [];
+}
+profileEl.addEventListener('click', async (e) => {
+  if (e.target.closest('[data-prof-stories]')) return profileEl._stories?.length && openStories(profileEl._stories);
+  const open = e.target.closest('[data-open]');
+  if (open) return openPostModal(soc.posts.get(open.dataset.open));
+  const b = e.target.closest('[data-prof]');
+  if (!b || b.dataset.prof === 'auto') return;
+  const id = soc.characterId;
+  if (b.dataset.prof === 'chat') return openConv(id);
+  const kind = b.dataset.prof;
+  const hint = prompt(`Un'idea per ${kind === 'story' ? 'la storia' : 'il post'}? (facoltativa: lascia vuoto e decide da sé)`, '');
+  if (hint === null) return;
+  try { await api(`/api/social/profile/${id}/posts`, { body: { kind, hint } }); renderProfile(); }
+  catch (err) { alert(err.message); }
+});
+profileEl.addEventListener('change', async (e) => {
+  if (e.target.dataset.prof !== 'auto') return;
+  await api(`/api/social/profile/${soc.characterId}`, { method: 'PATCH', body: { social: e.target.checked } }).catch((err) => alert(err.message));
+  loadConvs();
+});
+
+function openPostModal(p) {
+  if (!p) return;
+  $('#pm-title').textContent = p.character.name;
+  $('#pm-body').innerHTML = postHtml(p);
+  $('#post-modal').hidden = false;
+}
+$('#post-modal').addEventListener('click', (e) => { if (e.target.id === 'post-modal' || e.target.closest('[data-close]')) $('#post-modal').hidden = true; });
+
+// ---- Coda a goccia ----
+async function refreshQueue() {
+  const qv = await api('/api/social/queue').catch(() => null);
+  if (!qv) return;
+  soc.queue = qv;
+  const active = qv.jobs.filter((j) => j.status !== 'error');
+  const running = active.some((j) => j.status === 'running');
+  const btn = $('#btn-queue');
+  btn.classList.toggle('paused', qv.paused);
+  btn.classList.toggle('busy', running);
+  $('#queue-label').textContent = qv.paused ? 'In pausa' : running ? 'Al lavoro' : active.length ? `In coda: ${active.length}` : 'Coda vuota';
+  if (!queuePanel.hidden) renderQueue();
+}
+
+function renderQueue() {
+  const qv = soc.queue;
+  if (!qv) return;
+  const when = (j) => (j.status === 'running' ? '<b>in corso</b>'
+    : j.status === 'error' ? `<span class="err" title="${esc(j.error || '')}">non riuscito</span> · <button class="link" data-retry-job="${j.id}">Riprova</button>`
+      : j.runAfter > Date.now() + 30000 ? inLabel(j.runAfter) : 'in attesa');
+  queuePanel.innerHTML = `
+    <div class="qp-head">
+      <p>I contenuti si generano un pezzo alla volta, solo quando la GPU è libera e non stai chattando${qv.waitingForYou ? ' (ora aspetta: hai scritto da poco)' : ''}. In questa accensione: <b>${qv.counters.posts}/${qv.limits.posts}</b> post e <b>${qv.counters.stories}/${qv.limits.stories}</b> storie automatiche; quelli che chiedi tu non contano.</p>
+      <button class="btn" id="qp-pause">${icon(qv.paused ? 'play' : 'pause', 15)}${qv.paused ? 'Riprendi' : 'Metti in pausa'}</button>
+    </div>
+    ${qv.jobs.length ? `<ul class="qp-jobs">${qv.jobs.map((j) => `<li><span>${esc(j.label || j.kind)}</span><small>${when(j)}</small></li>`).join('')}</ul>` : '<p class="hint">Niente in coda.</p>'}`;
+}
+$('#btn-queue').onclick = () => { queuePanel.hidden = !queuePanel.hidden; renderQueue(); };
+queuePanel.addEventListener('click', async (e) => {
+  if (e.target.closest('#qp-pause')) {
+    soc.queue = await api('/api/social/queue/pause', { body: { paused: !soc.queue.paused } }).catch(() => soc.queue);
+    return refreshQueue();
+  }
+  const r = e.target.closest('[data-retry-job]');
+  if (r) { await api(`/api/social/queue/jobs/${r.dataset.retryJob}/retry`, { method: 'POST' }).catch(() => {}); refreshQueue(); }
+});
 
 // ---------- Stato servizi ----------
 async function pollStatus() {

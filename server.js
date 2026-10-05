@@ -15,6 +15,8 @@ import { workflows, loadWorkflows, publicInfo, checkAvailability } from './src/w
 import * as memory from './src/memory.js';
 import * as life from './src/life.js';
 import * as studio from './src/studio.js';
+import * as social from './src/social.js';
+import * as queue from './src/queue.js';
 import { publicCharacter, draftFromIdea, normalizeCard, RELATIONS, PACES, INTIMACY, STYLES } from './src/characters.js';
 import { analyzeBody, BODY, installedLoras } from './src/body.js';
 import { updateScene, initialState, DIM_LABEL, intimacyOpen, closeness } from './src/relationship.js';
@@ -118,7 +120,7 @@ app.get('/api/events', (req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   const userId = req.user.id;
   const send = (evt) => res.write(`data: ${JSON.stringify(evt)}\n\n`);
-  const onEvent = (evt) => { if (evt.conversationId === store.studioId(userId) || store.get(evt.conversationId)?.ownerId === userId) send(evt); };
+  const onEvent = (evt) => { if (evt.conversationId === store.studioId(userId) || evt.conversationId === queue.channel(userId) || store.get(evt.conversationId)?.ownerId === userId) send(evt); };
   const onGpu = (state) => send({ type: 'gpu', state });
   send({ type: 'gpu', state: gpu.state() });
   bus.on('event', onEvent);
@@ -176,6 +178,7 @@ app.delete('/api/characters/:id', wrap(async (req, res) => {
   const c = ownConv(req);
   chat.stop(c.id);
   for (const m of c.messages) for (const md of m.media || []) cancel(md.id);
+  await social.purgeCharacter(c.id);
   await store.remove(c.id);
   res.json({ ok: true });
 }));
@@ -280,7 +283,53 @@ app.post('/api/studio/messages/:messageId/media/:mediaId/animate', wrap(async (r
   res.json(await studio.animate(store.getStudio(req.user.id), req.params.messageId, req.params.mediaId, { text, seconds, model }));
 }));
 
-app.get('/api/media', (req, res) => res.json(store.allMedia(req.user.id).map((m) => ({ ...m, url: mediaUrl(m.file) }))));
+// ---- Social: feed, storie, profili, commenti e mi piace; coda a goccia ----
+/** Post dell'utente corrente (404 se non esiste o è di un altro utente). */
+function ownPost(req) {
+  const p = social.getPost(req.user.id, req.params.id);
+  if (!p) throw httpError(404, 'Post non trovato');
+  return p;
+}
+app.get('/api/social/feed', (req, res) => {
+  const characterId = req.query.character ? String(req.query.character) : null;
+  if (characterId && store.get(characterId)?.ownerId !== req.user.id) return res.json([]);
+  res.json(social.feed(req.user.id, { before: req.query.before, characterId, limit: Math.min(24, Number(req.query.limit) || 10) }));
+});
+app.get('/api/social/stories', (req, res) => res.json(social.stories(req.user.id)));
+app.get('/api/social/queue', (req, res) => res.json(social.queueView(req.user.id)));
+app.post('/api/social/queue/pause', (req, res) => { queue.setPaused(req.user.id, !!req.body?.paused); res.json(social.queueView(req.user.id)); });
+app.post('/api/social/queue/jobs/:id/retry', (req, res) => res.json({ ok: queue.retry(req.user.id, req.params.id) }));
+app.get('/api/social/profile/:id', wrap(async (req, res) => res.json(social.profileView(ownConv(req)))));
+app.patch('/api/social/profile/:id', wrap(async (req, res) => {
+  const c = ownConv(req);
+  const { username, bio, social: on } = req.body || {};
+  if (username !== undefined || bio !== undefined) social.updateProfile(c.id, { username, bio });
+  if (on !== undefined) { c.card = { ...c.card, social: !!on }; await store.save(c, { touch: false }); }
+  res.json(social.profileView(c));
+}));
+/** Nuovo post o storia su richiesta (fuori dal limite per accensione, prima dei contenuti automatici). */
+app.post('/api/social/profile/:id/posts', wrap(async (req, res) => {
+  const c = ownConv(req);
+  res.json(social.createPost(c, req.body?.kind === 'story' ? 'story' : 'post', { requested: true, hint: req.body?.hint }));
+}));
+app.get('/api/social/posts/:id', wrap(async (req, res) => res.json(social.publicPost(ownPost(req)))));
+app.delete('/api/social/posts/:id', wrap(async (req, res) => { await social.deletePost(ownPost(req)); res.json({ ok: true }); }));
+app.post('/api/social/posts/:id/like', wrap(async (req, res) => res.json(social.toggleLike(ownPost(req)))));
+app.post('/api/social/posts/:id/comments', wrap(async (req, res) => res.json(social.addUserComment(ownPost(req), req.body || {}))));
+app.post('/api/social/posts/:id/retry', wrap(async (req, res) => res.json(social.retryPost(ownPost(req)))));
+app.post('/api/social/posts/:id/seen', wrap(async (req, res) => { social.markSeen(ownPost(req)); res.json({ ok: true }); }));
+/** Rispondere a una storia è un messaggio in chat, come nella realtà. */
+app.post('/api/social/posts/:id/reply', wrap(async (req, res) => {
+  const p = ownPost(req);
+  const c = store.get(p.character_id);
+  if (!c || p.kind !== 'story') throw httpError(400, 'Si può rispondere solo alle storie');
+  const md = p.media[0];
+  const story = { postId: p.id, caption: p.caption, description: md?.description || '', file: md?.file || null, url: mediaUrl(md?.file) };
+  res.json({ characterId: c.id, ...(await chat.send(c, { text: req.body?.text, story, model: req.body?.model })) });
+}));
+
+app.get('/api/media', (req, res) => res.json([...store.allMedia(req.user.id), ...social.allMedia(req.user.id)]
+  .sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0)).map((m) => ({ ...m, url: mediaUrl(m.file) }))));
 
 // I file generati sono visibili solo al proprietario
 app.get('/media/:owner/:file', (req, res) => {
@@ -295,6 +344,7 @@ app.get('/{*path}', (req, res) => res.sendFile(path.join(config.paths.public, 'i
 
 recoverInterrupted();
 life.start();
+queue.start();
 const server = app.listen(config.port, config.host, () => {
   const ips = Object.values(os.networkInterfaces()).flat().filter((i) => i?.family === 'IPv4' && !i.internal).map((i) => i.address);
   console.log(`\n  ChatBz pronto`);

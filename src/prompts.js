@@ -69,7 +69,7 @@ const fmtGap = (ms) => {
 };
 
 /** Blocco variabile, messo in testa all'ultimo messaggio dell'utente. */
-export function nowBlock({ card, state, memories = [], lastGapMs, trimmed, initiative }) {
+export function nowBlock({ card, state, memories = [], lastGapMs, trimmed, initiative, social }) {
   const s = state.scene;
   const when = new Date().toLocaleString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
   const lines = [`Now: ${when}.${lastGapMs != null ? ` Previous message in this conversation: ${fmtGap(lastGapMs)}.` : ''}`];
@@ -87,6 +87,7 @@ export function nowBlock({ card, state, memories = [], lastGapMs, trimmed, initi
   const evo = memories.filter((m) => m.kind === 'evolution');
   if (evo.length) lines.push(`How you have changed lately:\n${evo.map((m) => `- ${m.content}`).join('\n')}`);
   if (trimmed && state.summary) lines.push(`Story so far (older messages you no longer see in full):\n${state.summary}`);
+  if (social) lines.push(social);
   if (state.hooks?.length) lines.push(`On your mind (bring up only if natural):\n${state.hooks.map((h) => `- ${h}`).join('\n')}`);
   if (initiative) lines.push('You are writing FIRST, on your own initiative, after a while without talking: one short, natural message (texting style) that fits your day and what is on your mind. Do not mention that you were "waiting".');
   return `<now>\n${lines.join('\n')}\n</now>`;
@@ -149,7 +150,7 @@ export function visualSignature(look, level) {
   return kept.join(' ').trim();
 }
 
-const LEVEL = {
+export const LEVEL = {
   neutral: 'CONTENT LEVEL: non-sexual. The person is fully and normally clothed for the situation, nothing revealing, no nudity, no sexual pose. If the description implies otherwise, keep it tasteful and clothed.',
   sensual: 'CONTENT LEVEL: sensual. Flirty, intimate atmosphere is fine (lingerie, suggestive pose, bare skin) but no explicit sexual acts.',
   explicit: 'CONTENT LEVEL: explicit adult content is allowed when the description asks for it. Be direct and anatomically precise, no euphemisms.',
