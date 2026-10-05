@@ -76,7 +76,8 @@ function history(conv, upTo) {
 
 /** Variante di riserva: il modello ha scritto [PHOTO: ...] / [VIDEO: ...] nel testo invece di usare lo strumento. */
 const TAG = /\[\s*(PHOTO|FOTO|SELFIE|IMAGE|IMMAGINE|VIDEO|CLIP)\s*[:：\-–—]\s*([^\]]+?)\s*(?:\]|$)/i;
-const SENT_NOTE = /\[\s*(?:you|tu)\s+sent\s+(?:a\s+)?(?:short\s+)?(?:photo|video)\s*:[^\]]*\]?/gi;
+// Nota "[you sent a photo: ...]" copiata dalla cronologia: il modello la scrive al posto dello strumento
+const SENT_NOTE = /\[\s*(?:you|tu)\s+sent\s+(?:a\s+)?(?:short\s+)?(photo|video)\s*:([^\]]*)\]?/gi;
 // Gemma spesso annuncia la foto e mette la descrizione tra parentesi: "*Ti mando una foto:* [selfie allo specchio...]"
 const MEDIA_WORD = /\b(?:foto\w*|selfie|scatt\w*|immagin\w*|pic|picture|photo\w*|snap|video\w*|clip)\b/i;
 const VIDEO_WORD = /\b(?:video\w*|clip)\b/i;
@@ -90,7 +91,12 @@ function cut(text, start, len) {
 }
 
 function extractTag(text, userText = '') {
-  let clean = text.replace(SENT_NOTE, '');
+  let noteCall = null;
+  let clean = text.replace(SENT_NOTE, (all, kind, desc) => {
+    if (!noteCall && desc.trim()) noteCall = { function: { name: /video/i.test(kind) ? 'send_video' : 'send_photo', arguments: { description: desc.trim() } } };
+    return '';
+  }).replace(/\n{3,}/g, '\n\n');
+  if (noteCall) return { text: clean.trim(), call: noteCall };
   const m = clean.match(TAG);
   if (m) {
     const video = /VIDEO|CLIP/i.test(m[1]);
