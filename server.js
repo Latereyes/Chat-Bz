@@ -14,6 +14,7 @@ import { bus, cancel, mediaUrl, recoverInterrupted } from './src/jobs.js';
 import { workflows, loadWorkflows, publicInfo, checkAvailability } from './src/workflows.js';
 import * as memory from './src/memory.js';
 import * as life from './src/life.js';
+import * as studio from './src/studio.js';
 import { publicCharacter, draftFromIdea, normalizeCard, RELATIONS, PACES, INTIMACY, STYLES } from './src/characters.js';
 import { updateScene, initialState, DIM_LABEL, intimacyOpen, closeness } from './src/relationship.js';
 
@@ -113,7 +114,7 @@ app.get('/api/events', (req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   const userId = req.user.id;
   const send = (evt) => res.write(`data: ${JSON.stringify(evt)}\n\n`);
-  const onEvent = (evt) => { if (store.get(evt.conversationId)?.ownerId === userId) send(evt); };
+  const onEvent = (evt) => { if (evt.conversationId === store.studioId(userId) || store.get(evt.conversationId)?.ownerId === userId) send(evt); };
   const onGpu = (state) => send({ type: 'gpu', state });
   send({ type: 'gpu', state: gpu.state() });
   bus.on('event', onEvent);
@@ -236,6 +237,28 @@ app.post('/api/characters/:id/media/:mediaId/cancel', wrap(async (req, res) => {
 
 app.post('/api/characters/:id/messages/:messageId/media/:mediaId/regenerate', wrap(async (req, res) => {
   res.json(chat.regenerateMedia(ownConv(req), req.params.messageId, req.params.mediaId, { prompt: req.body?.prompt }));
+}));
+
+// ---- Studio immagini (l'assistente immagini, separato dai personaggi) ----
+const studioWithUrls = (c) => ({
+  id: c.id, name: c.card.name, studio: true, running: studio.isRunning(c.ownerId),
+  messages: c.messages.map((m) => ({
+    ...m,
+    ...(m.media ? { media: m.media.map((md) => ({ ...md, url: mediaUrl(md.file), sourceUrl: mediaUrl(md.sourceFile) })) } : {}),
+    ...(m.attachments ? { attachments: m.attachments.map((a) => ({ ...a, url: mediaUrl(a.file) })) } : {}),
+  })),
+});
+app.get('/api/studio', (req, res) => res.json(studioWithUrls(store.getStudio(req.user.id))));
+app.post('/api/studio/messages', wrap(async (req, res) => res.json(studio.send(store.getStudio(req.user.id), req.body || {}))));
+app.post('/api/studio/stop', (req, res) => { studio.stop(req.user.id); res.json({ ok: true }); });
+app.delete('/api/studio', wrap(async (req, res) => { await studio.clear(store.getStudio(req.user.id)); res.json({ ok: true }); }));
+app.post('/api/studio/media/:mediaId/cancel', (req, res) => res.json({ ok: store.getStudio(req.user.id).messages.some((m) => m.media?.some((md) => md.id === req.params.mediaId)) && cancel(req.params.mediaId) }));
+app.post('/api/studio/messages/:messageId/media/:mediaId/regenerate', wrap(async (req, res) => {
+  res.json(chat.regenerateMedia(store.getStudio(req.user.id), req.params.messageId, req.params.mediaId, { prompt: req.body?.prompt }));
+}));
+app.post('/api/studio/messages/:messageId/media/:mediaId/animate', wrap(async (req, res) => {
+  const { text, seconds, model } = req.body || {};
+  res.json(await studio.animate(store.getStudio(req.user.id), req.params.messageId, req.params.mediaId, { text, seconds, model }));
 }));
 
 app.get('/api/media', (req, res) => res.json(store.allMedia(req.user.id).map((m) => ({ ...m, url: mediaUrl(m.file) }))));

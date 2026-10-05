@@ -110,7 +110,7 @@ const el = {
 };
 
 const initial = (name) => esc((name || '?').trim().slice(0, 1).toUpperCase());
-const avatarHtml = (c, cls = '') => (c?.avatarUrl
+const avatarHtml = (c, cls = '') => (c?.studio ? `<span class="ava ava-letter ${cls}">${icon('spark', 16)}</span>` : c?.avatarUrl
   ? `<img class="ava ${cls}" src="${esc(c.avatarUrl)}" alt="">`
   : `<span class="ava ava-letter ${cls}">${initial(c?.name)}</span>`);
 
@@ -127,6 +127,7 @@ $('#scrim').onclick = () => setSidebar(false);
 $('#btn-new').onclick = () => { openCharModal(null); if (isMobile()) setSidebar(false); };
 $('#btn-home').onclick = () => { showHome(); if (isMobile()) setSidebar(false); };
 $('#btn-gallery').onclick = () => { openGallery(); if (isMobile()) setSidebar(false); };
+$('#btn-studio').onclick = () => { openStudio(); if (isMobile()) setSidebar(false); };
 
 const timeLabel = (ts) => {
   if (!ts) return '';
@@ -165,6 +166,8 @@ function showView(v) {
   for (const name of ['home', 'chat', 'gallery']) $(`#view-${name}`).hidden = v !== name;
   $('#btn-gallery').classList.toggle('active', v === 'gallery');
   $('#btn-home').classList.toggle('active', v === 'home');
+  $('#btn-studio').classList.toggle('active', v === 'chat' && !!state.conv?.studio);
+  setStudioMode(v === 'chat' && !!state.conv?.studio);
 }
 
 function showHome(push = true) {
@@ -212,6 +215,7 @@ window.addEventListener('popstate', route);
 function route() {
   const m = location.pathname.match(/^\/c\/([\w-]+)/);
   if (m) openConv(m[1], false);
+  else if (location.pathname.startsWith('/studio')) openStudio(false);
   else if (location.pathname.startsWith('/galleria')) openGallery(false);
   else showHome(false);
 }
@@ -220,14 +224,17 @@ function route() {
 function renderHead() {
   const c = state.conv;
   el.head.hidden = !c;
-  if (!c) return;
+  if (!c) { $('#btn-studio-clear').hidden = true; return; }
   $('#char-ava').innerHTML = avatarHtml(c);
   $('#char-name').textContent = c.name;
+  $('#btn-studio-clear').hidden = !c.studio;
+  el.sceneChip.hidden = !!c.studio;
+  if (c.studio) return;
   const s = c.scene || c.state?.scene;
   el.sceneChip.innerHTML = `${icon(s?.presence === 'together' ? 'heart' : 'pin', 13)}<span>${esc(sceneLabel(s))}</span>`;
   el.sceneChip.classList.toggle('together', s?.presence === 'together');
 }
-$('#char-who').onclick = () => state.conv && openCharModal(state.conv);
+$('#char-who').onclick = () => state.conv && !state.conv.studio && openCharModal(state.conv);
 el.sceneChip.onclick = (e) => {
   e.stopPropagation();
   const s = state.conv?.scene || {};
@@ -287,17 +294,19 @@ function renderText(m) {
 }
 
 function isLastAi(m) {
+  if (state.conv?.studio) return false;
   const last = state.conv?.messages.at(-1);
   return last && last.id === m.id;
 }
 
 function renderMessage(m) {
   let node = document.getElementById(`m-${m.id}`);
+  $('.studio-empty', el.thread)?.remove();
   if (m.role === 'user') {
     const imgs = (m.attachments || []).map((a, i) => `<img src="${esc(a.url)}" alt="" data-att="${i}" loading="lazy">`).join('');
     const TOOL_LABEL = { photo: ['image', 'Foto'], video: ['video', 'Video'] };
     const tl = TOOL_LABEL[m.tool];
-    const tag = tl ? `<div class="tag">${icon(tl[0], 13)}${tl[1]}</div>` : '';
+    const tag = tl ? `<div class="tag">${icon(tl[0], 13)}${tl[1]}</div>` : m.studio ? studioTag(m.studio) : '';
     const html = `${imgs ? `<div class="user-images">${imgs}</div>` : ''}${m.content || tag ? `<div class="bubble">${tag}${esc(m.content)}</div>` : ''}`;
     if (node) { node.innerHTML = html; return; }
     el.thread.insertAdjacentHTML('beforeend', `<div class="msg msg-user" id="m-${m.id}">${html}</div>`);
@@ -396,7 +405,7 @@ function connectEvents() {
   if (es) es.close();
   es = new EventSource('/api/events');
   es.onopen = () => {
-    if (esWasOpen && state.conv) openConv(state.conv.id, false); // risincronizza dopo una disconnessione
+    if (esWasOpen && state.conv) { if (state.conv.studio) openStudio(false); else openConv(state.conv.id, false); } // risincronizza dopo una disconnessione
     esWasOpen = true;
   };
   es.onmessage = (e) => { try { onEvent(JSON.parse(e.data)); } catch (err) { console.error(err); } };
@@ -604,7 +613,7 @@ el.composer.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!state.conv) return;
   if (state.conv.running) {
-    return api(`/api/characters/${state.conv.id}/stop`, { method: 'POST' }).catch(() => {});
+    return api(`${convPath()}/stop`, { method: 'POST' }).catch(() => {});
   }
   let text = el.input.value.trim();
   if (!text && !state.attachments.length && !state.tool) return;
@@ -624,8 +633,9 @@ async function sendMessage(text, tool) {
     state.conv.running = true;
     updateSend();
     state.stick = true;
-    const out = await api(`/api/characters/${state.conv.id}/messages`, {
-      body: { text, tool, model: currentModel(), attachments: atts.map(({ file, width, height }) => ({ file, width, height })) },
+    const attachments = atts.map(({ file, width, height }) => ({ file, width, height }));
+    const out = await api(`${convPath()}/messages`, {
+      body: state.conv.studio ? { text, model: currentModel(), attachments, ...readStudioOpts() } : { text, tool, model: currentModel(), attachments },
     });
     // Gli eventi in tempo reale possono arrivare prima della risposta HTTP: non sovrascrivere ciò che è già arrivato
     for (const m of [out.userMessage, out.message]) if (!findMsg(m.id)) renderMessage(upsertMsg(m));
@@ -846,7 +856,8 @@ function mediaActions(md) {
     ${b('regenerate', 'refresh', md.status === 'done' ? 'Rigenera' : 'Riprova')}
     ${md.prompt ? b('prompt', 'text', 'Prompt') : ''}
     <span class="grow"></span>
-    ${md.status === 'done' && md.type === 'image' ? b('avatar', 'user', 'Profilo') : ''}
+    ${md.status === 'done' && md.type === 'image' && !state.conv?.studio ? b('avatar', 'user', 'Profilo') : ''}
+    ${md.status === 'done' && md.type === 'image' && state.conv?.studio ? b('animate', 'video', 'Anima') : ''}
     ${md.status === 'done' && md.type === 'image' ? b('zoom', 'open', '') : ''}
   </div>`;
 }
@@ -877,14 +888,20 @@ async function mediaAction(btn) {
   if (!md) return;
   const act = btn.dataset.mediaAct;
   const cid = state.conv.id;
-  if (act === 'cancel') return api(`/api/characters/${cid}/media/${md.id}/cancel`, { method: 'POST' });
+  const base = convPath();
+  if (act === 'cancel') return api(`${base}/media/${md.id}/cancel`, { method: 'POST' });
+  if (act === 'animate') {
+    const text = prompt('Come si muove la scena? (facoltativo: lascia vuoto e decide Gemma)', '');
+    if (text === null) return;
+    return api(`${base}/messages/${msg.id}/media/${md.id}/animate`, { body: { text, model: currentModel() } }).catch((e) => alert(e.message));
+  }
   if (act === 'zoom') return openLightbox(md);
   if (act === 'avatar') {
     return api(`/api/characters/${cid}/avatar`, { body: { file: md.file } })
       .then((r) => setAvatar(cid, r.avatarUrl)).catch((e) => alert(e.message));
   }
   if (act === 'regenerate') {
-    return api(`/api/characters/${cid}/messages/${msg.id}/media/${md.id}/regenerate`, { method: 'POST', body: {} })
+    return api(`${base}/messages/${msg.id}/media/${md.id}/regenerate`, { method: 'POST', body: {} })
       .catch((e) => alert(e.message));
   }
   if (act === 'prompt') {
@@ -903,7 +920,7 @@ async function mediaAction(btn) {
     const prompt = $('textarea', card).value;
     card.dataset.promptOpen = '';
     $('.media-prompt', card).hidden = true;
-    return api(`/api/characters/${cid}/messages/${msg.id}/media/${md.id}/regenerate`, { method: 'POST', body: { prompt } })
+    return api(`${base}/messages/${msg.id}/media/${md.id}/regenerate`, { method: 'POST', body: { prompt } })
       .catch((e) => alert(e.message));
   }
 }
@@ -961,6 +978,66 @@ async function prepareImage(file) {
   return { blob, width: w, height: h };
 }
 
+// ---------- Studio immagini (l'assistente immagini, separato dai personaggi) ----------
+const convPath = () => (state.conv?.studio ? '/api/studio' : `/api/characters/${state.conv.id}`);
+const so = { box: $('#studio-opts'), engine: $('#so-engine'), aspect: $('#so-aspect'), char: $('#so-char'), raw: $('#so-raw'), video: $('#so-video'), seed: $('#so-seed') };
+const SO_ASPECTS = { '3:4': '3:4 verticale', '9:16': '9:16 storia', '1:1': '1:1 quadrato', '4:3': '4:3 orizzontale', '16:9': '16:9 panoramico', '2:3': '2:3 ritratto', '3:2': '3:2 foto' };
+
+function fillStudioOpts() {
+  const p = prefs.studio || {};
+  const engines = (state.config?.workflows || []).filter((w) => w.type === 'image' && w.mode === 'text2img' && w.available);
+  so.engine.innerHTML = '<option value="">Automatico</option>' + engines.map((w) => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('');
+  so.aspect.innerHTML = Object.entries(SO_ASPECTS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+  so.char.innerHTML = '<option value="">Nessun personaggio</option>' + state.convs.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  so.engine.value = engines.some((w) => w.id === p.engine) ? p.engine : '';
+  so.aspect.value = SO_ASPECTS[p.aspect] ? p.aspect : '3:4';
+  so.char.value = state.convs.some((c) => c.id === p.characterId) ? p.characterId : '';
+  so.raw.checked = !!p.raw;
+  so.video.checked = !!p.video;
+}
+function readStudioOpts() {
+  return { engine: so.engine.value, aspect: so.aspect.value, characterId: so.char.value, raw: so.raw.checked, video: so.video.checked, seed: so.seed.value.trim() };
+}
+so.box.addEventListener('change', () => { const { seed, ...p } = readStudioOpts(); prefs.studio = p; savePrefs(); });
+
+function setStudioMode(on) {
+  so.box.hidden = !on;
+  el.composer.classList.toggle('studio', on);
+  el.input.placeholder = on ? "Descrivi l'immagine che vuoi… (allega una foto per modificarla)" : 'Scrivi un messaggio…';
+  if (on) fillStudioOpts();
+}
+
+function studioTag(o) {
+  const names = Object.fromEntries((state.config?.workflows || []).map((w) => [w.id, w.name]));
+  const bits = [o.engine ? names[o.engine] || o.engine : 'Automatico', o.aspect, o.characterName, o.raw && 'prompt diretto', o.video && '+ video', o.seed != null && `seed ${o.seed}`].filter(Boolean);
+  return `<div class="tag">${icon('spark', 13)}${esc(bits.join(' · '))}</div>`;
+}
+
+async function openStudio(push = true) {
+  let c;
+  try { c = await api('/api/studio'); }
+  catch { return showHome(); }
+  state.conv = c;
+  showView('chat');
+  el.thread.innerHTML = c.messages.length ? '' : `<div class="studio-empty"><h2>Studio immagini</h2>
+    <p>Descrivi quello che vuoi vedere, anche in due parole: Gemma scrive il prompt adatto al motore scelto e ComfyUI genera.
+    Puoi ritrarre uno dei tuoi personaggi, allegare una foto da modificare o animare il risultato.</p></div>`;
+  for (const m of c.messages) renderMessage(m);
+  document.title = 'Studio immagini · ChatBz';
+  if (push && location.pathname !== '/studio') history.pushState(null, '', '/studio');
+  renderHead();
+  renderConvList();
+  updateSend();
+  scrollToBottom(true);
+  if (!isMobile()) el.input.focus();
+}
+
+$('#btn-studio-clear').onclick = async () => {
+  if (!state.conv?.studio || !confirm('Svuotare lo studio? Le richieste e tutte le immagini e i video generati qui verranno eliminati.')) return;
+  await api('/api/studio', { method: 'DELETE' }).catch((e) => alert(e.message));
+  openStudio(false);
+};
+
 // ---------- Galleria ----------
 async function openGallery(push = true) {
   showView('gallery');
@@ -975,7 +1052,7 @@ async function openGallery(push = true) {
     ? items.map((m, i) => `<div class="tile" data-i="${i}">${m.type === 'video'
         ? `<video src="${m.url}#t=0.5" muted preload="metadata" playsinline></video><span class="badge">${icon('video', 12)}${m.seconds || ''}s</span>`
         : `<img src="${m.url}" loading="lazy" alt="">`}</div>`).join('')
-    : '<div class="empty">Le foto e i video dei tuoi personaggi compariranno qui.</div>';
+    : '<div class="empty">Le foto e i video dei tuoi personaggi e dello studio compariranno qui.</div>';
 }
 el.gallery.addEventListener('click', (e) => {
   const t = e.target.closest('.tile'); if (!t) return;
@@ -1002,7 +1079,7 @@ function closeLightbox() { el.lightbox.hidden = true; el.lbBody.innerHTML = ''; 
 $('#lb-close').onclick = closeLightbox;
 el.lightbox.onclick = (e) => {
   const g = e.target.closest('[data-goto]');
-  if (g) { closeLightbox(); openConv(g.dataset.goto); return; }
+  if (g) { closeLightbox(); if (g.dataset.goto.startsWith('studio-')) openStudio(); else openConv(g.dataset.goto); return; }
   if (e.target === el.lightbox || e.target === el.lbBody) closeLightbox();
 };
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !el.lightbox.hidden) closeLightbox(); });

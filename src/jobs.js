@@ -78,7 +78,7 @@ export function enqueue(conv, msg, media) {
     media.status = 'done';
     media.finishedAt = Date.now();
     // La prima foto diventa l'immagine del profilo, se il personaggio non ne ha ancora una
-    if (media.type === 'image' && !conv.avatar) {
+    if (media.type === 'image' && !conv.avatar && !conv.studio) {
       conv.avatar = name;
       emit(conv.id, { type: 'character', avatarUrl: mediaUrl(name) });
     }
@@ -102,7 +102,7 @@ export function cancel(mediaId) {
 
 /** All'avvio: i lavori rimasti a metà (server riavviato) vengono marcati come interrotti. */
 export function recoverInterrupted() {
-  for (const c of store.list()) {
+  for (const c of [...store.list(), ...store.listStudios()]) {
     let dirty = false;
     for (const m of c.messages) {
       if (m.status === 'streaming' || m.status === 'pending') { m.status = 'stopped'; dirty = true; }
