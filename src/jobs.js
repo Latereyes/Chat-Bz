@@ -55,9 +55,11 @@ export function enqueue(conv, msg, media) {
       width: media.width, height: media.height, frames: media.frames,
       image, image2, image3, denoise: media.denoise,
     });
-    // LoRA del corpo del personaggio (solo nei grafi Krea Real e solo se installate su ComfyUI)
+    // LoRA del corpo del personaggio (solo nei grafi Krea Real e solo se installate su ComfyUI);
+    // nello Studio immagini quelle del personaggio scelto come soggetto, se c'è
     if (media.type === 'image') {
-      const loras = await installedLoras(bodyLoras(conv.card));
+      const who = conv.studio ? store.get(media.characterId || '')?.card : conv.card;
+      const loras = await installedLoras(bodyLoras(who));
       if (applyBodyLoras(graph, loras)) media.loras = loras.map(({ part, strength }) => ({ part, strength }));
     }
 

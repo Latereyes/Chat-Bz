@@ -9,8 +9,8 @@ import { promptEngineerSystem, visualSignature, cleanPrompt } from './prompts.js
 /**
  * Studio immagini: l'"Image Assistant" di ChatBz 1, non più come personaggio ma come strumento a parte.
  * Descrivi cosa vuoi vedere → Gemma scrive il prompt per il modello scelto → ComfyUI genera.
- * Opzioni: motore, formato, prompt diretto (senza Gemma), seed, un personaggio da ritrarre,
- * foto di partenza da modificare, video dalla foto.
+ * Opzioni: motore (immagine o video), formato, prompt diretto (senza Gemma), seed, un personaggio da ritrarre
+ * (aspetto nel prompt e LoRA del corpo), foto di partenza da modificare o animare, video dalla foto.
  */
 
 const running = new Map(); // ownerId -> AbortController (solo la scrittura dei prompt)
@@ -49,6 +49,17 @@ function request({ text, card, media, sourceDescription, sources }) {
 }
 
 const pickAspect = (a) => (ASPECTS[a] ? a : '3:4');
+
+/**
+ * Workflow della richiesta: il motore scelto (testo → immagine o testo → video); con una foto allegata
+ * la si modifica (o rielabora), oppure la si anima se il motore scelto è un video.
+ */
+function pickWorkflow(engine, attachments) {
+  const chosen = engine && workflows().find((w) => w.id === engine && w.available !== false);
+  const video = chosen?.type === 'video';
+  if (attachments.length) return video ? getWorkflow(null, 'video', 'img2video') : getWorkflow(null, 'image', 'edit') || getWorkflow(chosen?.id, 'image', 'img2img');
+  return video ? getWorkflow(chosen.id, 'video') : getWorkflow(chosen?.id || engine, 'image');
+}
 
 /** Personaggio da ritrarre (solo tra quelli dell'utente). */
 function characterCard(ownerId, id) {
@@ -89,28 +100,29 @@ export function send(conv, opts = {}) {
   const raw = !!opts.raw;
   const aspect = pickAspect(opts.aspect);
 
-  // Foto allegate → modifica (Qwen-Image-Edit); altrimenti testo → immagine col motore scelto
-  let w;
-  if (attachments.length) w = getWorkflow(null, 'image', 'edit');
-  else w = getWorkflow(opts.engine || (owner && BY_STYLE[owner.card.style]) || null, 'image');
-  if (!w) throw new Error('Nessun workflow immagine disponibile su ComfyUI');
+  const w = pickWorkflow(opts.engine || (owner && BY_STYLE[owner.card.style]) || null, attachments);
+  if (!w) throw new Error('Nessun workflow adatto disponibile su ComfyUI');
 
   const seed = /^\d{1,15}$/.test(String(opts.seed ?? '').trim()) ? Number(opts.seed) : randomSeed();
-  const settings = { engine: opts.engine || '', aspect, raw, video: !!opts.video, seconds: opts.seconds || 5, characterId: owner?.id || null, characterName: owner?.card.name || null, seed: opts.seed ? seed : null };
+  const settings = { engine: opts.engine || '', aspect, raw, video: !!opts.video && w.type === 'image', seconds: opts.seconds || 5, characterId: owner?.id || null, characterName: owner?.card.name || null, seed: opts.seed ? seed : null };
   const userMsg = { id: store.newId(), role: 'user', content: text, attachments: attachments.length ? attachments : undefined, studio: settings, createdAt: Date.now() };
   conv.messages.push(userMsg);
   emit(conv.id, { type: 'message', message: userMsg });
 
   const base = { toolName: 'studio', description: text, prompt: raw ? text : '', seed, status: 'engineering', createdAt: Date.now(), characterId: owner?.id || null };
-  const image = {
-    ...base, id: store.newId(), type: 'image', mode: w.mode, workflow: w.id, workflowName: w.name,
-    ...(attachments.length
-      ? { aspect: null, ...dimensionsForRatio(w, (attachments[0].width || 3) / (attachments[0].height || 4)),
-        sourceFile: attachments[0].file, sourceUrl: attachments[0].url, extraSources: attachments.slice(1).map((a) => a.file) }
-      : { aspect, ...dimensions(w, aspect) }),
-  };
-  const media = [image];
-  if (opts.video) { const v = videoFrom({ ...base, seed: randomSeed() }, image, opts.seconds); if (v) media.push(v); }
+  const first = { ...base, id: store.newId(), type: w.type, mode: w.mode, workflow: w.id, workflowName: w.name };
+  if (!attachments.length) Object.assign(first, { aspect, ...dimensions(w, aspect) });
+  else {
+    // Foto allegata: modifica (Qwen-Image-Edit), rielaborazione, oppure video che parte da lì
+    const a = attachments[0];
+    Object.assign(first, { aspect: null, ...dimensionsForRatio(w, (a.width || 3) / (a.height || 4)), sourceFile: a.file, sourceUrl: a.url });
+    if (w.mode === 'edit') first.extraSources = attachments.slice(1).map((x) => x.file);
+    if (w.mode === 'img2img') first.denoise = 0.6;
+    if (w.mode === 'img2video') first.sourceDescription = 'the photo attached by the user (not described: keep it as it is)';
+  }
+  if (w.type === 'video') Object.assign(first, frameCount(w, opts.seconds || 5));
+  const media = [first];
+  if (settings.video) { const v = videoFrom({ ...base, seed: randomSeed() }, first, opts.seconds); if (v) media.push(v); }
 
   const msg = { id: store.newId(), role: 'assistant', content: '', media, status: 'pending', createdAt: Date.now() };
   conv.messages.push(msg);
@@ -128,7 +140,7 @@ async function engineer(conv, msg, md, { text, card, model, signal, sources }) {
     options: { temperature: 0.7 },
     messages: [
       { role: 'system', content: `${promptEngineerSystem(w)}\n\n${STUDIO_RULES}` },
-      { role: 'user', content: request({ text, card, media: md, sources, sourceDescription: md.type === 'video' ? md.sourceDescription : undefined }) },
+      { role: 'user', content: request({ text, card, media: md, sources, sourceDescription: md.mode === 'img2video' ? md.sourceDescription : undefined }) },
     ],
     onChunk: (c) => {
       if (!c.content) return;
@@ -151,7 +163,7 @@ async function run(conv, msg, { text, card, raw, model, sources }) {
         for (const md of msg.media) {
           const src = md.sourceMediaId && msg.media.find((x) => x.id === md.sourceMediaId);
           if (src) md.sourceDescription = src.prompt || src.description;
-          md.prompt = await engineer(conv, msg, md, { text, card, model, signal: ac.signal, sources: md.type === 'image' ? sources : 0 });
+          md.prompt = await engineer(conv, msg, md, { text, card, model, signal: ac.signal, sources: md.type === 'image' && md.sourceFile ? sources : 0 });
           emitMedia(conv, msg, md);
         }
       }, { onWait: (active) => emit(conv.id, { type: 'status', messageId: msg.id, status: 'waiting', reason: active.label }) });

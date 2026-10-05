@@ -1003,8 +1003,8 @@ const SO_ASPECTS = { '3:4': '3:4 verticale', '9:16': '9:16 storia', '1:1': '1:1 
 
 function fillStudioOpts() {
   const p = prefs.studio || {};
-  const engines = (state.config?.workflows || []).filter((w) => w.type === 'image' && w.mode === 'text2img' && w.available);
-  so.engine.innerHTML = '<option value="">Automatico</option>' + engines.map((w) => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('');
+  const engines = (state.config?.workflows || []).filter((w) => w.available && ((w.type === 'image' && w.mode === 'text2img') || (w.type === 'video' && w.mode === 'text2video')));
+  so.engine.innerHTML = '<option value="">Automatico</option>' + engines.map((w) => `<option value="${esc(w.id)}">${w.type === 'video' ? '🎬 ' : ''}${esc(w.name)}</option>`).join('');
   so.aspect.innerHTML = Object.entries(SO_ASPECTS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
   so.char.innerHTML = '<option value="">Nessun personaggio</option>' + state.convs.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
   so.engine.value = engines.some((w) => w.id === p.engine) ? p.engine : '';
@@ -1012,16 +1012,23 @@ function fillStudioOpts() {
   so.char.value = state.convs.some((c) => c.id === p.characterId) ? p.characterId : '';
   so.raw.checked = !!p.raw;
   so.video.checked = !!p.video;
+  syncVideoOpt();
+}
+/** Con un motore video la richiesta è già un video: «Anche video» non serve. */
+function syncVideoOpt() {
+  const video = (state.config?.workflows || []).some((w) => w.id === so.engine.value && w.type === 'video');
+  so.video.disabled = video;
+  so.video.closest('label').style.opacity = video ? 0.45 : '';
 }
 function readStudioOpts() {
   return { engine: so.engine.value, aspect: so.aspect.value, characterId: so.char.value, raw: so.raw.checked, video: so.video.checked, seed: so.seed.value.trim() };
 }
-so.box.addEventListener('change', () => { const { seed, ...p } = readStudioOpts(); prefs.studio = p; savePrefs(); });
+so.box.addEventListener('change', () => { const { seed, ...p } = readStudioOpts(); prefs.studio = p; savePrefs(); syncVideoOpt(); });
 
 function setStudioMode(on) {
   so.box.hidden = !on;
   el.composer.classList.toggle('studio', on);
-  el.input.placeholder = on ? "Descrivi l'immagine che vuoi… (allega una foto per modificarla)" : 'Scrivi un messaggio…';
+  el.input.placeholder = on ? "Descrivi l'immagine o il video che vuoi… (allega una foto per modificarla o animarla)" : 'Scrivi un messaggio…';
   if (on) fillStudioOpts();
 }
 
