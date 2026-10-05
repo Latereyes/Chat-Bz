@@ -5,12 +5,13 @@ import config from './config.js';
 /**
  * LoRA del corpo (seno, glutei, magra↔morbida), come in ChatBz 1 ma scelte in automatico:
  * dalla descrizione dell'aspetto si ricava una taglia per ogni parte, e la taglia diventa la forza della LoRA.
+ * Forze tarate su foto reali (Krea 2 Real, 2026-10-05).
  * Funzionano solo con Krea 2: vengono agganciate dopo la LoRA Lenovo (fine della catena Krea Real).
  */
 export const BODY = {
   breast: {
     label: 'Seno', file: 'breast_size_v2_krea2_loraholic.safetensors',
-    sizes: { small: ['piccolo', -2], medium: ['medio', 0], large: ['grande', 2.5], huge: ['molto grande', 4.5] },
+    sizes: { small: ['piccolo', -2], medium: ['medio', 0], large: ['grande', 1.5], huge: ['molto grande', 3] },
   },
   butt: {
     label: 'Glutei', file: 'ass_krea2_loraholic.safetensors',
@@ -18,7 +19,7 @@ export const BODY = {
   },
   build: {
     label: 'Corporatura', file: 'skinny_fat_v2_loraholic.safetensors',
-    sizes: { very_slim: ['molto magra', -4], slim: ['magra', -2], athletic: ['atletica', -1], average: ['media', 0], curvy: ['morbida', 2], plump: ['in carne', 4.5] },
+    sizes: { very_slim: ['molto magra', -3], slim: ['magra', -2], athletic: ['atletica', -1], average: ['media', 0], curvy: ['morbida', 2], plump: ['in carne', 4.5] },
   },
 };
 const ANCHOR = 'lenovo_krea2';
