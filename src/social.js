@@ -75,6 +75,8 @@ const q = {
 const DAY = 86400 * 1000;
 const STORY_MS = DAY;
 const short = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+/** Anteprima per le notifiche: tagliata a fine parola, con i puntini. */
+const preview = (s, n) => { const t = short(s, 1000); return t.length <= n ? t : `${t.slice(0, n).replace(/\s+\S*$/, '')}…`; };
 const rand = (a, b) => a + Math.random() * (b - a);
 const minutes = (a, b) => Math.round(rand(a, b) * 60 * 1000);
 const shuffle = (arr) => arr.map((x) => [Math.random(), x]).sort((a, b) => a[0] - b[0]).map(([, x]) => x);
@@ -388,8 +390,8 @@ function finish(post, conv) {
   changed(post);
   const friend = post.tags[0] ? store.get(post.tags[0]) : null;
   const name = conv.card.name;
-  if (friend) notify.add(post.owner_id, { kind: 'tag', characterId: conv.id, postId: post.id, text: `${name} ha pubblicato una foto con ${friend.card.name}: «${short(post.caption, 90)}»` });
-  else if (post.kind === 'post') notify.add(post.owner_id, { kind: 'post', characterId: conv.id, postId: post.id, text: `${name} ha pubblicato un post: «${short(post.caption, 90)}»` });
+  if (friend) notify.add(post.owner_id, { kind: 'tag', characterId: conv.id, postId: post.id, text: `${name} ha pubblicato una foto con ${friend.card.name}: «${preview(post.caption, 90)}»` });
+  else if (post.kind === 'post') notify.add(post.owner_id, { kind: 'post', characterId: conv.id, postId: post.id, text: `${name} ha pubblicato un post: «${preview(post.caption, 90)}»` });
   else if (post.requested) notify.add(post.owner_id, { kind: 'post', characterId: conv.id, postId: post.id, text: `La storia di ${name} è pronta` });
   engage(post);
 }
@@ -497,8 +499,8 @@ queue.register('social.comment', async (job, { postId, characterId, replyTo, for
 
   // Notifiche: ti ha risposto, oppure ha scritto in una conversazione dove avevi scritto anche tu
   const whose = post.character_id === conv.id ? 'al tuo commento' : `al tuo commento sotto il post di ${author.card.name}`;
-  if (target && !target.character_id) notify.add(post.owner_id, { kind: 'reply', characterId: conv.id, postId, commentId: id, text: `${conv.card.name} ha risposto ${whose}: «${short(text, 100)}»` });
-  else if (root && threadOf(comments, root).some((c) => !c.character_id)) notify.add(post.owner_id, { kind: 'comment', characterId: conv.id, postId, commentId: id, text: `${conv.card.name} ha scritto nella conversazione sotto ${conv.id === author.id ? 'il suo post' : `il post di ${author.card.name}`}: «${short(text, 100)}»` });
+  if (target && !target.character_id) notify.add(post.owner_id, { kind: 'reply', characterId: conv.id, postId, commentId: id, text: `${conv.card.name} ha risposto ${whose}: «${preview(text, 100)}»` });
+  else if (root && threadOf(comments, root).some((c) => !c.character_id)) notify.add(post.owner_id, { kind: 'comment', characterId: conv.id, postId, commentId: id, text: `${conv.card.name} ha scritto nella conversazione sotto ${conv.id === author.id ? 'il suo post' : `il post di ${author.card.name}`}: «${preview(text, 100)}»` });
 
   // La conversazione va avanti da sola, un po' alla volta: chi è stato chiamato in causa risponde, a volte si aggiunge qualcun altro
   if (depth >= 3) return;
@@ -579,7 +581,7 @@ queue.register('life.catchup', async (job, { characterId, from, to }) => {
   const metName = String(j.met || '').trim().toLowerCase();
   const met = metName ? bonds.find((b) => b.name.toLowerCase() === metName || b.name.toLowerCase().startsWith(metName)) : null;
   q.insertLife.run(store.newId(), conv.id, from, to, summary, short(j.post_idea, 300), met?.id || null, Date.now());
-  notify.add(conv.ownerId, { kind: 'life', characterId: conv.id, text: `Mentre eri via, ${conv.card.name}: ${short(summary, 220)}` });
+  notify.add(conv.ownerId, { kind: 'life', characterId: conv.id, text: `Mentre eri via, ${conv.card.name}: ${preview(summary, 220)}` });
 });
 
 const beat = () => q.setMeta.run('alive_at', String(Date.now()));

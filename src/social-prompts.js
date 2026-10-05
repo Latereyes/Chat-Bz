@@ -63,7 +63,7 @@ Rules:
 - caption: spontaneous and specific (a concrete detail, a name, a place, a small complaint or joke), in their own voice and way of writing. No slogans, no clichés ("vibes", "magia", "viaggio"), no hashtags inside it, emojis only if natural (0-2). Don't explain the photo.${together ? ` Tag your friend in the caption as @${together.username}.` : ''}
 - photo description: ONLY the scene: framing, what is happening, outfits of who appears, the place with concrete everyday details, light matching the time of day and season. Do NOT describe faces, hair or bodies (added automatically) and never use names.
 - ${together ? 'who: who appears in the photo.' : `shows_me: true if ${card.name} appears in the photo (selfie, mirror selfie, someone else took it); false for a detail, a place, food, an object, a view (no face; a hand or arm at most).`}
-- It must fit their real life and this moment of the day, and be different from their recent posts. Coffee and breakfast are overused.
+- ${story ? '' : 'All photos of a post are from the same occasion and the same place (the location), not from home if the post is about going out. '}It must fit their real life and this moment of the day, and be different from their recent posts in topic AND mood: real people post about many things (food, friends, work, a funny detail, something they bought, a place), not their inner feelings every time. Coffee and breakfast are overused.
 - The feed is public: clothed and presentable, no nudity.`;
   const user = [
     who(card),
@@ -105,6 +105,7 @@ export function socialPhotoRequest({ card, friend, profile, photo, media, kind, 
     `Context: ${kind === 'story' ? 'a story on a social profile: vertical, spontaneous, taken right now with a phone' : 'one photo of a carousel post on a social profile, a real moment, not a photoshoot'}. Local time: ${momentText()}.`,
     profile?.world?.home && /home|kitchen|bedroom|living|sofa|bathroom|casa/i.test(photo.description) ? `Their home: ${profile.world.home}` : null,
     `What the photo should show (written by the person): ${photo.description}`,
+    fromImage && subject !== 'none' ? 'The input image is only for identity (face, hair, body): describe a NEW outfit that fits this place and moment, and do not keep the clothes, accessories, props (bottles, bags, phones) or background of the input image.' : null,
     LEVEL[level],
     card.style === 'krea' ? 'Look: a real, candid, unretouched photo (phone camera), natural light and skin texture, slightly imperfect framing.' : 'Look: polished, flattering, well-lit photo.',
     `Output format: ${media.width}x${media.height}.`,
