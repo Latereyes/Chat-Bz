@@ -1,11 +1,13 @@
 import * as ollama from './ollama.js';
 import config from './config.js';
+import { BODY, normalizeBody } from './body.js';
 
 /**
  * Scheda del personaggio, a strati:
  *  - nucleo:   personality (carattere, valori, ferite, desideri), speech (come parla e scrive), boundaries
  *  - vita:     life (lavoro, routine, persone, progetti in corso)
- *  - aspetto:  look (descrizione visiva in inglese, usata per foto e video), style (motore immagini)
+ *  - aspetto:  look (descrizione visiva in inglese, usata per foto e video), style (motore immagini),
+ *              body (taglie ricavate in automatico dall'aspetto → LoRA del corpo, vedi body.js)
  *  - rapporto: relation (punto di partenza), pace (quanto in fretta si apre), intimacy (tetto deciso dall'utente)
  */
 export const RELATIONS = {
@@ -34,6 +36,7 @@ export function normalizeCard(c = {}) {
     boundaries: str(c.boundaries, 1500),
     look: str(c.look, 1500),
     style: pick(c.style, STYLES, 'krea'),
+    body: normalizeBody(c.body),
     relation: pick(c.relation, RELATIONS, 'sconosciuti'),
     pace: pick(c.pace, PACES, 'media'),
     intimacy: pick(c.intimacy, INTIMACY, 'confidenza'),
@@ -57,7 +60,8 @@ Reply ONLY with JSON with these keys (Italian text unless stated):
  "life": "4-6 sentences: job, city, routine, people in their life, something going on right now (a project, a problem, a plan)",
  "speech": "2-3 sentences: how they talk and text (register, slang, emoji, length, typical expressions)",
  "boundaries": "1-2 sentences: things they don't like or won't do, topics they avoid",
- "look": "ENGLISH, 50-90 words, for an image model: apparent age, ethnicity, build and body shape, face, eyes, hair (color, length, style), skin, distinctive marks, usual style of clothes. No pose, no background, no camera words",
+ "look": "ENGLISH, 50-90 words, for an image model: apparent age, ethnicity, build and body shape (say explicitly how slim or curvy, breast size and butt size), face, eyes, hair (color, length, style), skin, distinctive marks, usual style of clothes. No pose, no background, no camera words",
+ "body": {"breast": "${Object.keys(BODY.breast.sizes).join('|')}", "butt": "${Object.keys(BODY.butt.sizes).join('|')}", "build": "${Object.keys(BODY.build.sizes).join('|')}"} (must match the look),
  "style": "krea" (realistic candid photos) | "zimage" (polished, glamorous or stylised),
  "pace": "lenta" | "media" | "rapida" (how fast they open up emotionally and physically),
  "startPlace": "where they are when the story begins (short, Italian)",
@@ -75,7 +79,8 @@ Reply ONLY with JSON with these keys (Italian text unless stated):
   });
   let j;
   try { j = JSON.parse(out); } catch { throw new Error('Gemma non ha restituito una scheda valida, riprova'); }
-  return normalizeCard({ ...(current || {}), ...j });
+  // senza taglie nella risposta si ricavano al salvataggio dall'aspetto nuovo
+  return normalizeCard({ ...(current || {}), ...j, body: j.body || null });
 }
 
 /** Dati pubblici per l'interfaccia. */
