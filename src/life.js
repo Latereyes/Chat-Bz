@@ -4,6 +4,7 @@ import * as memory from './memory.js';
 import * as chat from './chat.js';
 import { gpu } from './gpu.js';
 import { emit } from './jobs.js';
+import { asleep } from './social.js';
 
 /**
  * La "vita" dei personaggi quando non stai chattando:
@@ -35,8 +36,8 @@ async function tick() {
 }
 
 /** Alla riaccensione: chi ha qualcosa in sospeso e non sente l'utente da un po' può scrivere per primo. */
-function initiatives() {
-  if (!config.initiative.enabled) return;
+function initiatives(chance = 0.6) {
+  if (!config.initiative.enabled || asleep()) return;
   const now = Date.now();
   const minGap = config.initiative.minHours * 3600 * 1000;
   const candidates = store.list().filter((c) => {
@@ -49,11 +50,13 @@ function initiatives() {
   }).slice(0, 2);
   for (const c of candidates) {
     c.state.lastInitiativeAt = now;
-    if (Math.random() < 0.6) chat.initiate(c);              // non sempre: un po' di imprevedibilità
+    if (Math.random() < chance) chat.initiate(c);           // non sempre: un po' di imprevedibilità
   }
 }
 
 export function start() {
   setInterval(() => tick().catch(() => {}), 60 * 1000);
   setTimeout(initiatives, 45 * 1000);
+  // Anche con il server sempre acceso: ogni mezz'ora, di giorno, chi non ti sente da ore può scriverti
+  setInterval(() => initiatives(0.15), 30 * 60 * 1000);
 }

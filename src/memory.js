@@ -31,12 +31,17 @@ export function add(characterId, kind, content, weight = 3) {
 }
 
 /** Memorie da mettere nel prompt: le più importanti e le più recenti, entro un limite. */
-export function forPrompt(characterId, max = 14) {
+const COMMON = new Set('come sono anche della delle dello degli questo questa quello quella perché quando molto ancora fatto cosa tutto tutti oggi dopo prima sempre però solo hai ho stai sei siamo essere avere fare detto dire voglio vuoi puoi posso bene male allora quindi magari forse adesso proprio niente nulla qualcosa user utente'.split(' '));
+const words = (t) => new Set((String(t || '').toLowerCase().match(/\p{L}{4,}/gu) || []).filter((w) => !COMMON.has(w)));
+/** query: l'ultimo messaggio dell'utente; le memorie che ne condividono le parole salgono (se ne parla, se lo ricorda). */
+export function forPrompt(characterId, max = 14, query = '') {
   const all = list(characterId);
+  const topic = words(query);
   const evo = all.filter((m) => m.kind === 'evolution').slice(-3);
   const rest = all.filter((m) => m.kind !== 'evolution');
   const now = Date.now();
-  const score = (m) => m.weight * 2 + Math.max(0, 6 - (now - m.created_at) / 86400000); // peso + freschezza (giorni)
+  const hits = (m) => { let n = 0; for (const w of words(m.content)) if (topic.has(w)) n++; return Math.min(n, 3); };
+  const score = (m) => m.weight * 2 + Math.max(0, 6 - (now - m.created_at) / 86400000) + hits(m) * 4; // peso + freschezza (giorni) + argomento
   const top = [...rest].sort((a, b) => score(b) - score(a)).slice(0, max);
   top.sort((a, b) => a.created_at - b.created_at);
   return [...top, ...evo];

@@ -765,7 +765,9 @@ const ago = (ts) => {
 
 export function chatContext(conv) {
   const life = q.lifeRecent.all(conv.id, Date.now() - 2 * DAY)[0];
-  const lifeLine = life ? `What you did in the last ${Math.max(1, Math.round((life.to_ts - life.from_ts) / 3600000))} hours, while you two were not in touch: ${short(life.summary, 400)}` : '';
+  const known = bondsOf(conv.id).slice(0, 6);
+  const lifeLine = [life ? `What you did in the last ${Math.max(1, Math.round((life.to_ts - life.from_ts) / 3600000))} hours, while you two were not in touch: ${short(life.summary, 400)}` : '',
+    known.length ? `People you know (the user may know them too): ${known.map((b) => `${b.name} (${b.gender === 'uomo' ? 'man' : b.gender === 'altro' ? 'non-binary' : 'woman'}): ${short(b.note, 120)}`).join('; ')}` : ''].filter(Boolean).join('\n');
   const prof = profile(conv.id);
   if (!prof) return lifeLine;
   const lines = [lifeLine, `Your social account: @${prof.username}; the user follows it.`].filter(Boolean);
