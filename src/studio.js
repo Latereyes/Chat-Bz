@@ -6,6 +6,7 @@ import * as queue from './queue.js';
 import { emit, emitMedia, enqueue, mediaUrl } from './jobs.js';
 import { workflows, getWorkflow, dimensions, dimensionsForRatio, frameCount, randomSeed, ASPECTS } from './workflows.js';
 import { promptEngineerSystem, visualSignature, cleanPrompt } from './prompts.js';
+import { manualBodyLoras } from './body.js';
 
 /**
  * Studio immagini: l'"Image Assistant" di ChatBz 1, non più come personaggio ma come strumento a parte.
@@ -20,6 +21,8 @@ export function stop(ownerId) { running.get(ownerId)?.abort(); }
 
 // Motore automatico con un personaggio: lo stesso delle sue foto in chat
 const BY_STYLE = { krea: 'krea2-real', zimage: 'zimage-turbo' };
+// Le LoRA del corpo si agganciano solo ai grafi Krea Real (dopo la LoRA Lenovo): col fisico a mano si usa uno di questi
+const KREA_REAL = ['krea2-real', 'reflex-real'];
 const MAX_ATTACHMENTS = 3;
 
 const STUDIO_RULES = `## Studio rules
@@ -102,17 +105,24 @@ export function send(conv, opts = {}) {
   const raw = !!opts.raw;
   const aspect = pickAspect(opts.aspect);
 
-  const w = pickWorkflow(opts.engine || (owner && BY_STYLE[owner.card.style]) || null, attachments);
+  const manualBody = manualBodyLoras(opts.body);
+  let w = pickWorkflow(opts.engine || (owner && BY_STYLE[owner.card.style]) || null, attachments);
+  // Fisico a mano: da testo a immagine si passa a Krea Real se il motore scelto non regge le LoRA del corpo
+  if (manualBody && w?.type === 'image' && !attachments.length && !KREA_REAL.includes(w.id)) {
+    const krea = getWorkflow('krea2-real', 'image');
+    if (krea?.id !== 'krea2-real') throw new Error('Per regolare il fisico serve il workflow Krea 2 Real, che non risulta disponibile');
+    w = krea;
+  }
   if (!w) throw new Error('Nessun workflow adatto disponibile su ComfyUI');
 
   const seed = /^\d{1,15}$/.test(String(opts.seed ?? '').trim()) ? Number(opts.seed) : randomSeed();
-  const settings = { engine: opts.engine || '', aspect, raw, video: !!opts.video && w.type === 'image', seconds: opts.seconds || 5, characterId: owner?.id || null, characterName: owner?.card.name || null, seed: opts.seed ? seed : null };
+  const settings = { engine: opts.engine || '', aspect, raw, video: !!opts.video && w.type === 'image', seconds: opts.seconds || 5, characterId: owner?.id || null, characterName: owner?.card.name || null, seed: opts.seed ? seed : null, body: manualBody ? Object.fromEntries(manualBody.map((l) => [l.part, l.strength])) : null, engineUsed: w.id !== (opts.engine || '') && manualBody ? w.id : null };
   const userMsg = { id: store.newId(), role: 'user', content: text, attachments: attachments.length ? attachments : undefined, studio: settings, createdAt: Date.now() };
   conv.messages.push(userMsg);
   emit(conv.id, { type: 'message', message: userMsg });
 
   const base = { toolName: 'studio', description: text, prompt: raw ? text : '', seed, status: 'engineering', createdAt: Date.now(), characterId: owner?.id || null };
-  const first = { ...base, id: store.newId(), type: w.type, mode: w.mode, workflow: w.id, workflowName: w.name };
+  const first = { ...base, id: store.newId(), type: w.type, mode: w.mode, workflow: w.id, workflowName: w.name, ...(manualBody && w.type === 'image' ? { manualBody } : {}) };
   if (!attachments.length) Object.assign(first, { aspect, ...dimensions(w, aspect) });
   else {
     // Foto allegata: modifica (Qwen-Image-Edit), rielaborazione, oppure video che parte da lì

@@ -593,6 +593,12 @@ body:not(.is-admin) .admin-only { display: none; }
 .studio-opts label { display: inline-flex; align-items: center; gap: 5px; }
 .studio-opts select, .studio-opts input:not([type]) { font: inherit; color: var(--text); background: var(--bg-sunk); border: 1px solid var(--border); border-radius: 8px; padding: 3px 6px; max-width: 190px; }
 .studio-opts .so-check { cursor: pointer; }
+.so-body { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
+.so-body[hidden] { display: none; }
+.so-body label { gap: 6px; }
+.so-body input[type=range] { width: 110px; accent-color: var(--accent); }
+.so-body output { min-width: 2.6em; color: var(--text); font-variant-numeric: tabular-nums; }
+.so-body .hint { margin: 0; font-size: 12px; }
 .composer.studio .chip[data-tool], .composer.studio .camera-only { display: none; }
 .studio-empty { max-width: 520px; margin: 12vh auto 0; padding: 0 16px; text-align: center; color: var(--muted); }
 .studio-empty h2 { color: var(--text); margin-bottom: 8px; }

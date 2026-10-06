@@ -111,6 +111,23 @@ export function figureText(card) {
   return Object.entries(body).map(([k, size]) => FIGURE[k]?.[size]).filter(Boolean).join(', ');
 }
 
+/** Forza minima e massima di ogni LoRA (quelle delle taglie): limiti dei cursori a mano dello studio. */
+export const bodyRange = (part) => { const v = Object.values(BODY[part].sizes).map(([, s]) => s); return [Math.min(...v), Math.max(...v)]; };
+
+/** LoRA scelte a mano (studio): { breast: 1.5, ... } → [{ part, file, strength }], forze limitate e diverse da 0. */
+export function manualBodyLoras(values) {
+  if (!values || typeof values !== 'object') return null;
+  const out = [];
+  for (const part of Object.keys(BODY)) {
+    const n = Number(values[part]);
+    if (!Number.isFinite(n)) continue;
+    const [lo, hi] = bodyRange(part);
+    const strength = Math.round(Math.min(hi, Math.max(lo, n)) * 10) / 10;
+    if (strength !== 0) out.push({ part, file: BODY[part].file, strength });
+  }
+  return out;
+}
+
 /** LoRA da applicare per questo personaggio: [{ part, file, strength }] (solo quelle diverse da 0). */
 export function bodyLoras(card) {
   if (!card || card.gender === 'uomo') return [];   // LoRA addestrate su corpi femminili

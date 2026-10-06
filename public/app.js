@@ -1109,7 +1109,7 @@ async function prepareImage(file) {
 
 // ---------- Studio immagini (l'assistente immagini, separato dai personaggi) ----------
 const convPath = () => (state.conv?.studio ? '/api/studio' : `/api/characters/${state.conv.id}`);
-const so = { box: $('#studio-opts'), engine: $('#so-engine'), aspect: $('#so-aspect'), char: $('#so-char'), raw: $('#so-raw'), video: $('#so-video'), seed: $('#so-seed') };
+const so = { box: $('#studio-opts'), engine: $('#so-engine'), aspect: $('#so-aspect'), char: $('#so-char'), raw: $('#so-raw'), video: $('#so-video'), seed: $('#so-seed'), body: $('#so-body'), bodyBox: $('#so-body-box') };
 const SO_ASPECTS = { '3:4': '3:4 verticale', '9:16': '9:16 storia', '1:1': '1:1 quadrato', '4:3': '4:3 orizzontale', '16:9': '16:9 panoramico', '2:3': '2:3 ritratto', '3:2': '3:2 foto' };
 
 function fillStudioOpts() {
@@ -1123,6 +1123,14 @@ function fillStudioOpts() {
   so.char.value = state.convs.some((c) => c.id === p.characterId) ? p.characterId : '';
   so.raw.checked = !!p.raw;
   so.video.checked = !!p.video;
+  so.body.checked = !!p.bodyOn;
+  // Cursori delle LoRA del corpo: limiti dalle taglie (stesse forze delle schede), 0 = LoRA spenta
+  const parts = state.config?.options?.body || {};
+  so.bodyBox.innerHTML = Object.entries(parts).map(([k, b]) => {
+    const [lo, hi] = b.range || [-3, 3];
+    const v = Math.min(hi, Math.max(lo, Number(p.body?.[k]) || 0));
+    return `<label title="${esc(b.label)}: negativo = più piccolo, 0 = spento, positivo = più grande"><span>${esc(b.label)}</span><input type="range" data-part="${k}" min="${lo}" max="${hi}" step="0.5" value="${v}"><output>${v}</output></label>`;
+  }).join('') + '<small class="hint">Valgono solo con Krea 2 Real (scelto in automatico) e sostituiscono il fisico del personaggio.</small>';
   syncVideoOpt();
 }
 /** Con un motore video la richiesta è già un video: «Anche video» non serve. */
@@ -1130,11 +1138,18 @@ function syncVideoOpt() {
   const video = (state.config?.workflows || []).some((w) => w.id === so.engine.value && w.type === 'video');
   so.video.disabled = video;
   so.video.closest('label').style.opacity = video ? 0.45 : '';
+  so.bodyBox.hidden = !so.body.checked || video;
 }
+const bodyValues = () => Object.fromEntries($$('input[data-part]', so.bodyBox).map((i) => [i.dataset.part, Number(i.value)]));
+so.bodyBox.addEventListener('input', (e) => { const i = e.target.closest('input[data-part]'); if (i) i.nextElementSibling.textContent = i.value; });
 function readStudioOpts() {
-  return { engine: so.engine.value, aspect: so.aspect.value, characterId: so.char.value, raw: so.raw.checked, video: so.video.checked, seed: so.seed.value.trim() };
+  return { engine: so.engine.value, aspect: so.aspect.value, characterId: so.char.value, raw: so.raw.checked, video: so.video.checked, seed: so.seed.value.trim(), body: so.body.checked ? bodyValues() : null };
 }
-so.box.addEventListener('change', () => { const { seed, ...p } = readStudioOpts(); prefs.studio = p; savePrefs(); syncVideoOpt(); });
+so.box.addEventListener('change', () => {
+  const { seed, body, ...p } = readStudioOpts();
+  prefs.studio = { ...p, bodyOn: so.body.checked, body: bodyValues() };
+  savePrefs(); syncVideoOpt();
+});
 
 function setStudioMode(on) {
   so.box.hidden = !on;
@@ -1143,9 +1158,13 @@ function setStudioMode(on) {
   if (on) fillStudioOpts();
 }
 
+function bodyTag(b) {
+  const parts = state.config?.options?.body || {};
+  return Object.entries(b).map(([k, v]) => `${(parts[k]?.label || k).toLowerCase()} ${v > 0 ? '+' : ''}${v}`).join(', ') || 'tutto a 0';
+}
 function studioTag(o) {
   const names = Object.fromEntries((state.config?.workflows || []).map((w) => [w.id, w.name]));
-  const bits = [o.engine ? names[o.engine] || o.engine : 'Automatico', o.aspect, o.characterName, o.raw && 'prompt diretto', o.video && '+ video', o.seed != null && `seed ${o.seed}`].filter(Boolean);
+  const bits = [o.engineUsed ? names[o.engineUsed] || o.engineUsed : o.engine ? names[o.engine] || o.engine : 'Automatico', o.aspect, o.characterName, o.raw && 'prompt diretto', o.video && '+ video', o.seed != null && `seed ${o.seed}`, o.body && `fisico: ${bodyTag(o.body)}`].filter(Boolean);
   return `<div class="tag">${icon('spark', 13)}${esc(bits.join(' · '))}</div>`;
 }
 

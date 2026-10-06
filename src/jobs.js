@@ -83,7 +83,8 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
   });
   // LoRA del corpo del personaggio (solo nei grafi Krea Real e solo se installate su ComfyUI)
   if (media.type === 'image') {
-    const loras = await installedLoras(bodyLoras(card));
+    // fisico regolato a mano nello studio (anche tutto a 0 = nessuna LoRA), altrimenti quello del personaggio
+    const loras = await installedLoras(media.manualBody ? media.manualBody : bodyLoras(card));
     if (applyBodyLoras(graph, loras)) media.loras = loras.map(({ part, strength }) => ({ part, strength }));
   }
 

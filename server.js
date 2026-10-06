@@ -19,7 +19,7 @@ import * as social from './src/social.js';
 import * as queue from './src/queue.js';
 import * as notify from './src/notify.js';
 import { publicCharacter, draftFromIdea, draftFromPhoto, PHOTO_QUESTION, normalizeCard, RELATIONS, PACES, INTIMACY, STYLES } from './src/characters.js';
-import { analyzeBody, BODY, installedLoras } from './src/body.js';
+import { analyzeBody, BODY, bodyRange, installedLoras } from './src/body.js';
 import { updateScene, initialState, DIM_LABEL, intimacyOpen, closeness } from './src/relationship.js';
 
 const app = express();
@@ -102,7 +102,7 @@ app.get('/api/config', wrap(async (req, res) => {
     defaultModel: config.ollama.model,
     options: {
       relations: RELATIONS, paces: PACES, intimacy: INTIMACY, styles: STYLES, dims: DIM_LABEL,
-      body: Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, { label: b.label, sizes: Object.fromEntries(Object.entries(b.sizes).map(([s, [l]]) => [s, l])) }])),
+      body: Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, { label: b.label, range: bodyRange(k), sizes: Object.fromEntries(Object.entries(b.sizes).map(([s, [l]]) => [s, l])) }])),
     },
     models,
     workflows: workflows().map(publicInfo),
