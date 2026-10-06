@@ -15,6 +15,7 @@ import { workflows, loadWorkflows, publicInfo, checkAvailability } from './src/w
 import * as memory from './src/memory.js';
 import * as life from './src/life.js';
 import { publicCharacter, draftFromIdea, normalizeCard, RELATIONS, PACES, INTIMACY, STYLES } from './src/characters.js';
+import { analyzeBody, BODY, installedLoras } from './src/body.js';
 import { updateScene, initialState, DIM_LABEL, intimacyOpen, closeness } from './src/relationship.js';
 
 const app = express();
@@ -95,7 +96,10 @@ app.get('/api/config', wrap(async (req, res) => {
   try { models = (await ollama.listModels()).filter((m) => m.tools); } catch {}
   res.json({
     defaultModel: config.ollama.model,
-    options: { relations: RELATIONS, paces: PACES, intimacy: INTIMACY, styles: STYLES, dims: DIM_LABEL },
+    options: {
+      relations: RELATIONS, paces: PACES, intimacy: INTIMACY, styles: STYLES, dims: DIM_LABEL,
+      body: Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, { label: b.label, sizes: Object.fromEntries(Object.entries(b.sizes).map(([s, [l]]) => [s, l])) }])),
+    },
     models,
     workflows: workflows().map(publicInfo),
   });
@@ -131,8 +135,20 @@ app.post('/api/characters/draft', wrap(async (req, res) => {
   res.json(card);
 }));
 
+/**
+ * Taglie del corpo (→ LoRA delle foto): si tengono finché l'aspetto non cambia; altrimenti quelle della bozza
+ * di Gemma per questo aspetto, oppure Gemma le ricava dall'aspetto al salvataggio.
+ */
+async function withBody(card, prev, model) {
+  if (prev?.body && prev.look === card.look) return { ...card, body: prev.body };
+  if (card.body || !card.look) return card;
+  const body = await gpu.run('ollama', 'Leggo il fisico del personaggio', () => analyzeBody(card, { model }));
+  return { ...card, body };
+}
+
 app.post('/api/characters', wrap(async (req, res) => {
-  const c = store.create(req.user.id, req.body || {});
+  const { model, ...body } = req.body || {};
+  const c = store.create(req.user.id, await withBody(normalizeCard(body), null, model));
   if (c.card.greeting) {
     c.messages.push({ id: store.newId(), role: 'assistant', content: c.card.greeting, media: [], status: 'done', presence: c.state.scene.presence, createdAt: Date.now() });
   }
@@ -145,7 +161,10 @@ app.get('/api/characters/:id', wrap(async (req, res) => res.json(withUrls(ownCon
 app.patch('/api/characters/:id', wrap(async (req, res) => {
   const c = ownConv(req);
   const prev = c.card;
-  c.card = normalizeCard({ ...prev, ...(req.body || {}) });
+  const { model, ...body } = req.body || {};
+  // la bozza manda body solo per l'aspetto da cui è nata: senza, si ricalcola se l'aspetto è cambiato
+  const next = normalizeCard({ ...prev, ...body, body: body.body ?? (body.look === undefined || body.look === prev.look ? prev.body : null) });
+  c.card = await withBody(next, prev, model);
   // Cambiare il rapporto di partenza ha senso solo prima di iniziare: altrimenti il rapporto è quello vissuto
   if (c.card.relation !== prev.relation && !c.messages.some((m) => m.role === 'user')) c.state.rel = initialState(c.card).rel;
   await store.save(c, { touch: false });
@@ -266,6 +285,10 @@ const server = app.listen(config.port, config.host, () => {
   const refresh = () => checkAvailability(comfy.listModels).then((list) => {
     const off = list.filter((w) => w.available === false);
     if (off.length) console.log(`  Workflow non disponibili (modelli mancanti): ${off.map((w) => `${w.name} → ${w.missing.join(', ')}`).join(' | ')}`);
+  }).then(async () => {
+    const all = Object.entries(BODY).map(([part, b]) => ({ part, file: b.file }));
+    const found = await installedLoras(all);
+    if (found.length < all.length) console.log(`  LoRA del corpo non trovate su ComfyUI (le foto escono senza): ${all.filter((l) => !found.some((f) => f.part === l.part)).map((l) => l.file).join(', ')}`);
   });
   refresh();
   setInterval(refresh, 5 * 60 * 1000);
