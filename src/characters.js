@@ -44,6 +44,7 @@ export function normalizeCard(c = {}) {
     startPlace: str(c.startPlace, 200),
     greeting: str(c.greeting, 1500),
     initiative: c.initiative !== false,
+    social: c.social !== false,                       // pubblica post e storie sul social (coda a goccia)
   };
 }
 

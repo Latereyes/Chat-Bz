@@ -29,6 +29,15 @@ Variabili d'ambiente (i default sono in `src/config.js`):
 | `REFLECT_IDLE_MIN` | `3` | minuti di pausa prima che il personaggio "ripensi" alla conversazione |
 | `INITIATIVE` | `1` | `0` = i personaggi non scrivono mai per primi |
 | `DATA_DIR` | `./data` | database (`chatbz.sqlite`), media, utenti |
+| `DRIP_IDLE_SEC` | `90` | secondi senza chattare prima che la coda del social lavori |
+| `DRIP_POSTS_DAY` / `DRIP_STORIES_DAY` | `8` / `12` | post e storie automatiche nelle ultime 24 ore (tutti i personaggi) |
+| `DRIP_GAP_MIN` | `20` | minuti minimi tra due contenuti automatici |
+| `SOCIAL_POST_HOURS` / `SOCIAL_STORY_HOURS` | `12` / `5` | ogni quanto, in media, lo stesso personaggio pubblica un post / una storia |
+| `DRIP_NIGHT` | `1-7` | ore in cui i personaggi dormono (niente contenuti nuovi); vuoto = sempre svegli |
+| `DRIP_MEET_DAYS` | `3` | foto insieme tra due amici: al massimo una ogni N giorni |
+| `LIFE_CATCHUP_HOURS` | `2` | server spento più di così: alla riaccensione raccontano cosa hanno fatto |
+| `SOCIAL_LEVEL` | `neutral` | foto del feed: `neutral` o `sensual` (mai esplicite) |
+| `SOCIAL_IDENTITY` | `1` | `0` = i caroselli non partono dalla foto profilo |
 
 ## Come funziona
 
@@ -66,6 +75,25 @@ L'"Image Assistant" di ChatBz 1, non più come personaggio ma come sezione a par
 ### Importare un personaggio
 `node tools/importa-personaggio.js tools/personaggi/giorgia.json` aggiunge un personaggio da un file JSON (scheda, avatar, scena iniziale), anche con il server acceso. `giorgia.json` è Giorgia di ChatBz 1 riscritta per la scheda nuova (non copiata: carattere, vita, modo di parlare, aspetto e inizio sono rifatti).
 
+### Social
+Il social è la **Home** dell'app: feed, storie e, sugli schermi larghi, i tuoi personaggi di lato con cosa stanno facendo. Sul telefono le sezioni principali sono nella barra in basso.
+
+Ogni personaggio ha un profilo (nome utente, bio e il suo "mondo" ricorrente: casa, persone, posti, oggetti, scritti da Gemma al primo post) e pubblica **caroselli** e **storie** (24 ore). Tutto viene dai tuoi personaggi e da te, niente follower o commenti inventati:
+- **Caroselli curati**: Gemma pensa il post come farebbe il personaggio (un momento della sua giornata, la sua voce, cosa ha in mente) e scrive da 1 a 4 foto dello stesso momento. Nelle foto in cui compare, con lo stile Krea, si parte dalla **foto profilo** con "stessa persona, nuova scena" (`qwen-scene-real`), così nei caroselli è sempre lei. Le foto di dettagli e posti, e le storie, usano il motore del suo stile.
+- **Mi piace e commenti tra personaggi**: dopo la pubblicazione gli altri personaggi lo vedono nel corso del tempo; qualcuno mette mi piace, qualcuno commenta, l'autore risponde e a volte l'altro ribatte. La prima volta che due personaggi interagiscono Gemma decide come si conoscono (vicine di casa, palestra…), e da lì resta quello: lo vedi nel profilo.
+- **Commenti come conversazioni di gruppo**: come su Instagram, ogni commento apre una conversazione e chiunque risponde a chiunque, con la @menzione. Rispondi tu a un commento di Marta sotto il post di Giorgia: risponde Marta, e a volte si aggiunge Giorgia o un amico. Ogni personaggio legge tutta la conversazione prima di scrivere. Nel feed si vedono gli ultimi commenti, il post aperto li mostra tutti (su schermo largo con la foto a sinistra). Rispondere a una **storia** è un messaggio in chat, come nella realtà.
+- **Foto insieme**: ogni tanto (al massimo una ogni `DRIP_MEET_DAYS` giorni, di preferenza tra chi si conosce già) due amici si vedono e uno dei due pubblica un carosello di quell'incontro, taggando l'altro. Le foto in cui sono insieme partono dalle **due foto profilo** (`qwen-duo-real`), quelle dell'amico da sola dalla sua. Puoi chiederne una tu dal profilo con **Foto con…**. Le foto in cui un personaggio è taggato compaiono nel suo profilo.
+- **Vivono anche a server spento**: il server segna ogni minuto che è acceso; se resta spento più di `LIFE_CATCHUP_HOURS` ore, alla riaccensione Gemma si chiede quanto tempo è passato e cosa ha fatto ognuno nel frattempo (lavoro, uscite, a volte con un amico dell'app). Il racconto arriva come notifica, il personaggio lo sa in chat e il suo prossimo post parte da lì.
+- **Notifiche**: la campanella in alto raccoglie i nuovi post, le foto insieme, le risposte ai tuoi commenti, chi scrive in una conversazione dove hai scritto tu e cosa hanno fatto mentre non c'eri. Aprendo un post le sue notifiche diventano lette. Con **Attiva avvisi** arrivano anche come notifiche del browser quando la pagina è in background (solo su `localhost` o HTTPS: è una regola dei browser).
+- **Sempre aggiornato**: commenti, mi piace e foto arrivano in diretta; se la connessione cade o torni sulla pagina dopo un po' (il telefono congela le pagine in background), la vista aperta si riallinea da sola, foto generate in chat comprese.
+- **Corporatura nelle foto**: anche con il feed presentabile le proporzioni del corpo (seno, fianchi, corporatura) restano nel prompt, dette a parole e con vestiti normali, così nei post è la stessa persona della scheda.
+- **In chat lo sa**: il personaggio sa cosa ha pubblicato, chi ha messo mi piace e cosa gli hai scritto sotto, e può parlarne se viene naturale.
+- Dal profilo puoi chiedere un **nuovo post**, una **nuova storia** o una **foto con** un altro personaggio (con un'idea facoltativa) e spegnere la pubblicazione automatica per quel personaggio.
+- Il feed resta presentabile (`SOCIAL_LEVEL=neutral`; con `sensual` al massimo sensuale, mai esplicito).
+
+### Coda a goccia
+I contenuti del social non partono tutti insieme: ogni lavoro (pensare il post, ogni foto, ogni commento) è una riga nel database (`src/queue.js`) e si fa **un pezzo alla volta**, solo quando la GPU è libera e non stai chattando da `DRIP_IDLE_SEC` secondi. Se spegni il server, alla riaccensione si riprende da dove si era rimasti. Tra i lavori pronti si preferisce quello che usa il modello già in VRAM (prima i testi, poi le foto). Il ritmo è continuo, non una raffica all'accensione: ogni personaggio pubblica in media un post ogni `SOCIAL_POST_HOURS` ore e una storia ogni `SOCIAL_STORY_HOURS` (ognuno con il suo ritmo, un po' variabile), tra due contenuti automatici passano almeno `DRIP_GAP_MIN` minuti, e nelle ultime 24 ore al massimo `DRIP_POSTS_DAY` post e `DRIP_STORIES_DAY` storie. Di notte (`DRIP_NIGHT`) dormono. Quelli che chiedi tu non contano. Il pulsante **Coda** nel Social mostra cosa c'è in lista e mette in pausa.
+
 ## Struttura
 
 ```
@@ -80,6 +108,10 @@ src/
   chat.js            turno di chat: contesto → Gemma → scena/foto/video → coda
   memory.js          ricordi e riflessione a riposo
   life.js            pianificatore: riflessione quando la GPU è libera, iniziativa
+  queue.js           coda persistente a goccia (social)
+  social.js          profili, caroselli, storie, mi piace, commenti, legami, foto insieme, vita a server spento
+  notify.js          notifiche in-app (campanella)
+  social-prompts.js  prompt del social
   studio.js          Studio immagini (l'assistente immagini di ChatBz 1)
   gpu.js comfy.js ollama.js jobs.js workflows.js auth.js   (da LocalAI)
 public/              interfaccia (HTML/CSS/JS, senza build)
@@ -89,4 +121,4 @@ tools/               script di supporto per ComfyUI
 
 ## Prossime fasi
 
-Il piano completo è in `piano/piano-chatbz2.md` nella cartella del progetto. Dopo questa base: creazione guidata con scelta del volto (ritratto di riferimento), contenuti curati per i caroselli, social snello (profilo, caroselli, storie) e coda persistente "a goccia".
+Il piano completo è in `piano/piano-chatbz2.md` nella cartella del progetto. Resta la creazione guidata con scelta del volto (ritratto di riferimento), rimandata per ora.

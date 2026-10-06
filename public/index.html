@@ -17,6 +17,7 @@
         <button class="new-chat" id="btn-new"><span data-icon="plus"></span>Nuovo personaggio</button>
       </div>
       <nav class="sidebar-nav">
+        <button class="nav-item" id="btn-social"><span data-icon="home"></span>Home</button>
         <button class="nav-item" id="btn-home"><span data-icon="users"></span>Personaggi</button>
         <button class="nav-item" id="btn-studio"><span data-icon="spark"></span>Studio immagini</button>
         <button class="nav-item" id="btn-gallery"><span data-icon="gallery"></span>Galleria</button>
@@ -62,7 +63,13 @@
           </div>
         </div>
         <div class="spacer"></div>
+        <button class="icon-btn" id="btn-char-social" title="Profilo social" data-icon="social" hidden></button>
         <button class="icon-btn" id="btn-studio-clear" title="Svuota lo studio" data-icon="trash" hidden></button>
+        <button class="icon-btn bell" id="btn-notif" title="Notifiche" data-icon="bell"><b class="badge" id="notif-badge" hidden></b></button>
+        <div class="menu menu-right notif-menu" id="notif-menu" hidden>
+          <div class="nm-head"><b>Notifiche</b><span class="spacer"></span><button class="link" id="nm-browser" hidden title="Notifiche del browser anche quando la pagina è in background">Attiva avvisi</button><button class="link" id="nm-all">Segna come lette</button></div>
+          <div class="nm-list" id="nm-list"></div>
+        </div>
         <button class="gpu-pill" id="gpu-pill" title="Stato della GPU"><i></i><span id="gpu-label">GPU</span></button>
         <div class="menu menu-right" id="gpu-menu" hidden></div>
       </header>
@@ -107,10 +114,39 @@
         </div>
       </section>
 
+      <section class="view" id="view-social" hidden>
+        <div class="social-scroll" id="social-scroll">
+          <div class="social-wrap">
+          <div class="social">
+            <div class="social-head">
+              <button class="icon-btn" id="social-back" data-icon="back" title="Torna al feed" hidden></button>
+              <h2 id="social-title">Social</h2>
+              <span class="spacer"></span>
+              <button class="queue-btn" id="btn-queue" title="Coda dei contenuti"><i></i><span id="queue-label">Coda</span></button>
+            </div>
+            <div class="queue-panel" id="queue-panel" hidden></div>
+            <div class="stories-row" id="stories-row"></div>
+            <div class="profile" id="social-profile" hidden></div>
+            <div class="feed" id="feed"></div>
+            <button class="btn wide ghost" id="feed-more" hidden>Altri post</button>
+          </div>
+          <aside class="social-side" id="social-side"></aside>
+          </div>
+        </div>
+      </section>
+
       <section class="view" id="view-gallery" hidden>
         <div class="gallery-head"><h2>Galleria</h2></div>
         <div class="gallery" id="gallery"></div>
       </section>
+      <!-- Mobile: le sezioni principali sempre a portata di pollice -->
+      <nav class="tabbar" id="tabbar">
+        <button data-tab-go="social"><span data-icon="home"></span><small>Home</small></button>
+        <button data-tab-go="home"><span data-icon="users"></span><small>Personaggi</small></button>
+        <button data-tab-go="new"><span data-icon="plus"></span><small>Nuovo</small></button>
+        <button data-tab-go="studio"><span data-icon="spark"></span><small>Studio</small></button>
+        <button data-tab-go="gallery"><span data-icon="gallery"></span><small>Galleria</small></button>
+      </nav>
     </main>
   </div>
 
@@ -162,6 +198,7 @@
         </div>
         <label class="fld">Primo messaggio<small>facoltativo</small><textarea name="greeting" rows="2"></textarea></label>
         <label class="check"><input type="checkbox" name="initiative" checked> Può scriverti per prima quando riaccendi il server</label>
+        <label class="check"><input type="checkbox" name="social" checked> Pubblica post e storie sul social da sola, un po' alla volta</label>
 
         <p class="auth-error" hidden></p>
         <div class="row-end">
@@ -229,6 +266,27 @@
         <p class="auth-hint">Al primo accesso l'utente dovrà scegliere una password personale.</p>
         <p class="auth-error" hidden></p>
       </form>
+    </div>
+  </div>
+
+  <!-- Post aperto da un profilo -->
+  <div class="modal" id="post-modal" hidden>
+    <div class="modal-card post-modal-card">
+      <div class="modal-head"><h2 id="pm-title">Post</h2><button class="icon-btn" data-close data-icon="close" title="Chiudi"></button></div>
+      <div id="pm-body"></div>
+    </div>
+  </div>
+
+  <!-- Storie -->
+  <div class="story-viewer" id="story-viewer" hidden>
+    <div class="sv-frame">
+      <div class="sv-bars" id="sv-bars"></div>
+      <div class="sv-head"><span id="sv-who"></span><span class="spacer"></span><button class="icon-btn" id="sv-close" data-icon="close" title="Chiudi"></button></div>
+      <div class="sv-media" id="sv-media"></div>
+      <div class="sv-caption" id="sv-caption"></div>
+      <button class="sv-nav prev" id="sv-prev" aria-label="Precedente"></button>
+      <button class="sv-nav next" id="sv-next" aria-label="Successiva"></button>
+      <form class="sv-reply" id="sv-reply"><input id="sv-input" placeholder="Rispondi…" autocomplete="off"><button class="send" data-icon="send" title="Invia"></button></form>
     </div>
   </div>
 

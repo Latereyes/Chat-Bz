@@ -29,7 +29,6 @@ export function enqueue(conv, msg, media) {
   emitMedia(conv, msg, media);
   store.save(conv);
 
-  const w = getWorkflow(media.workflow, media.type, media.mode);
   const label = media.type === 'video' ? 'Generazione video' : 'Generazione immagine';
 
   return gpu.run('comfy', label, async () => {
@@ -45,50 +44,13 @@ export function enqueue(conv, msg, media) {
       media.sourceFile = src.file;
       media.sourceUrl = mediaUrl(src.file);
     }
-    // Immagine di partenza (image to image / image to video): va caricata su ComfyUI
-    const upload = async (file) => comfy.uploadImage(await fs.readFile(path.join(config.paths.media, file)), `chatbz_${path.basename(file)}`);
-    const image = media.sourceFile ? await upload(media.sourceFile) : undefined;
-    const [image2, image3] = await Promise.all((media.extraSources || []).slice(0, 2).map(upload));
-
-    const graph = buildGraph(w, {
-      prompt: media.prompt, seed: media.seed,
-      width: media.width, height: media.height, frames: media.frames,
-      image, image2, image3, denoise: media.denoise,
-    });
-    // LoRA del corpo del personaggio (solo nei grafi Krea Real e solo se installate su ComfyUI);
-    // nello Studio immagini quelle del personaggio scelto come soggetto, se c'è
-    if (media.type === 'image') {
-      const who = conv.studio ? store.get(media.characterId || '')?.card : conv.card;
-      const loras = await installedLoras(bodyLoras(who));
-      if (applyBodyLoras(graph, loras)) media.loras = loras.map(({ part, strength }) => ({ part, strength }));
-    }
-
-    let lastPreview = 0;
-    const { files } = await comfy.run(graph, {
-      signal: ac.signal,
-      onEvent: (e) => {
-        if (e.type === 'progress') emit(conv.id, { type: 'progress', mediaId: media.id, value: e.value, max: e.max });
-        else if (e.type === 'node') emit(conv.id, { type: 'progress', mediaId: media.id, phase: e.title });
-        else if (e.type === 'preview' && Date.now() - lastPreview > 350) {
-          lastPreview = Date.now();
-          emit(conv.id, { type: 'preview', mediaId: media.id, dataUrl: e.dataUrl });
-        }
-      },
-    });
-
-    const out = files.find((f) => /\.(mp4|webm|mov|gif)$/i.test(f.filename)) || files[0];
-    if (!out) throw new Error('ComfyUI non ha restituito alcun file');
-    const buf = await comfy.fetchFile(out);
-    const name = `${conv.ownerId}/${media.id}${path.extname(out.filename).toLowerCase()}`;
-    await fs.mkdir(path.join(config.paths.media, conv.ownerId), { recursive: true });
-    await fs.writeFile(path.join(config.paths.media, name), buf);
-    media.file = name;
-    media.status = 'done';
-    media.finishedAt = Date.now();
+    // LoRA del corpo: nello Studio immagini quelle del personaggio scelto come soggetto, se c'è
+    const card = conv.studio ? store.get(media.characterId || '')?.card : conv.card;
+    await renderMedia(media, { ownerId: conv.ownerId, card, signal: ac.signal, onEvent: (e) => emit(conv.id, e) });
     // La prima foto diventa l'immagine del profilo, se il personaggio non ne ha ancora una
     if (media.type === 'image' && !conv.avatar && !conv.studio) {
-      conv.avatar = name;
-      emit(conv.id, { type: 'character', avatarUrl: mediaUrl(name) });
+      conv.avatar = media.file;
+      emit(conv.id, { type: 'character', avatarUrl: mediaUrl(media.file) });
     }
   }).catch((e) => {
     media.status = e.aborted || ac.signal.aborted ? 'cancelled' : 'error';
@@ -99,6 +61,55 @@ export function enqueue(conv, msg, media) {
     emitMedia(conv, msg, media);
     store.save(conv, { touch: false });
   });
+}
+
+/**
+ * Genera un media già preparato (prompt pronto) su ComfyUI e lo salva in data/media/<owner>/.
+ * Va chiamata con la GPU già assegnata a ComfyUI (dentro gpu.run('comfy', ...)).
+ * Usata dalla chat, dallo studio e dalla coda a goccia del social.
+ */
+export async function renderMedia(media, { ownerId, card, signal, onEvent = () => {} }) {
+  const w = getWorkflow(media.workflow, media.type, media.mode);
+  if (!w) throw new Error('Workflow non disponibile su ComfyUI');
+  // Immagine di partenza (image to image / image to video / stessa persona): va caricata su ComfyUI
+  const upload = async (file) => comfy.uploadImage(await fs.readFile(path.join(config.paths.media, file)), `chatbz_${path.basename(file)}`);
+  const image = media.sourceFile ? await upload(media.sourceFile) : undefined;
+  const [image2, image3] = await Promise.all((media.extraSources || []).slice(0, 2).map(upload));
+
+  const graph = buildGraph(w, {
+    prompt: media.prompt, seed: media.seed,
+    width: media.width, height: media.height, frames: media.frames,
+    image, image2, image3, denoise: media.denoise,
+  });
+  // LoRA del corpo del personaggio (solo nei grafi Krea Real e solo se installate su ComfyUI)
+  if (media.type === 'image') {
+    const loras = await installedLoras(bodyLoras(card));
+    if (applyBodyLoras(graph, loras)) media.loras = loras.map(({ part, strength }) => ({ part, strength }));
+  }
+
+  let lastPreview = 0;
+  const { files } = await comfy.run(graph, {
+    signal,
+    onEvent: (e) => {
+      if (e.type === 'progress') onEvent({ type: 'progress', mediaId: media.id, value: e.value, max: e.max });
+      else if (e.type === 'node') onEvent({ type: 'progress', mediaId: media.id, phase: e.title });
+      else if (e.type === 'preview' && Date.now() - lastPreview > 350) {
+        lastPreview = Date.now();
+        onEvent({ type: 'preview', mediaId: media.id, dataUrl: e.dataUrl });
+      }
+    },
+  });
+
+  const out = files.find((f) => /\.(mp4|webm|mov|gif)$/i.test(f.filename)) || files[0];
+  if (!out) throw new Error('ComfyUI non ha restituito alcun file');
+  const buf = await comfy.fetchFile(out);
+  const name = `${ownerId}/${media.id}${path.extname(out.filename).toLowerCase()}`;
+  await fs.mkdir(path.join(config.paths.media, ownerId), { recursive: true });
+  await fs.writeFile(path.join(config.paths.media, name), buf);
+  media.file = name;
+  media.status = 'done';
+  media.finishedAt = Date.now();
+  return media;
 }
 
 export function cancel(mediaId) {

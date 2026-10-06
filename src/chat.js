@@ -9,6 +9,8 @@ import { emit, emitMedia, enqueue, describeImage, mediaUrl, cancel } from './job
 import { workflows, getWorkflow, dimensions, dimensionsForRatio, frameCount, randomSeed, ASPECTS } from './workflows.js';
 import { systemPrompt, nowBlock, tools, promptEngineerSystem, characterMediaRequest, cleanPrompt, sceneCheckPrompt } from './prompts.js';
 import { updateScene } from './relationship.js';
+import * as queue from './queue.js';
+import * as social from './social.js';
 
 const running = new Map(); // characterId -> AbortController
 
@@ -49,7 +51,8 @@ function history(conv, upTo) {
   for (const m of conv.messages.slice(0, upTo)) {
     if (m.role === 'user') {
       const atts = (m.attachments || []);
-      msgs.push({ role: 'user', content: `${m.content || ''}${attachmentNote(atts)}`.trim() || '…', at: m.createdAt });
+      const story = m.story ? `\n[they replied to your story${m.story.caption ? ` "${m.story.caption}"` : ''}: ${m.story.description || 'a photo of you'}]` : '';
+      msgs.push({ role: 'user', content: `${m.content || ''}${attachmentNote(atts)}${story}`.trim() || '…', at: m.createdAt });
       continue;
     }
     if (m.status === 'pending' || m.status === 'streaming') continue;
@@ -73,7 +76,8 @@ function history(conv, upTo) {
 
 /** Variante di riserva: il modello ha scritto [PHOTO: ...] / [VIDEO: ...] nel testo invece di usare lo strumento. */
 const TAG = /\[\s*(PHOTO|FOTO|SELFIE|IMAGE|IMMAGINE|VIDEO|CLIP)\s*[:：\-–—]\s*([^\]]+?)\s*(?:\]|$)/i;
-const SENT_NOTE = /\[\s*(?:you|tu)\s+sent\s+(?:a\s+)?(?:short\s+)?(?:photo|video)\s*:[^\]]*\]?/gi;
+// Nota "[you sent a photo: ...]" copiata dalla cronologia: il modello la scrive al posto dello strumento
+const SENT_NOTE = /\[\s*(?:you|tu)\s+sent\s+(?:a\s+)?(?:short\s+)?(photo|video)\s*:([^\]]*)\]?/gi;
 // Gemma spesso annuncia la foto e mette la descrizione tra parentesi: "*Ti mando una foto:* [selfie allo specchio...]"
 const MEDIA_WORD = /\b(?:foto\w*|selfie|scatt\w*|immagin\w*|pic|picture|photo\w*|snap|video\w*|clip)\b/i;
 const VIDEO_WORD = /\b(?:video\w*|clip)\b/i;
@@ -87,7 +91,12 @@ function cut(text, start, len) {
 }
 
 function extractTag(text, userText = '') {
-  let clean = text.replace(SENT_NOTE, '');
+  let noteCall = null;
+  let clean = text.replace(SENT_NOTE, (all, kind, desc) => {
+    if (!noteCall && desc.trim()) noteCall = { function: { name: /video/i.test(kind) ? 'send_video' : 'send_photo', arguments: { description: desc.trim() } } };
+    return '';
+  }).replace(/\n{3,}/g, '\n\n');
+  if (noteCall) return { text: clean.trim(), call: noteCall };
   const m = clean.match(TAG);
   if (m) {
     const video = /VIDEO|CLIP/i.test(m[1]);
@@ -210,7 +219,8 @@ export async function send(conv, opts) {
   const text = String(opts.text || '').trim();
   const attachments = checkAttachments(conv, opts.attachments);
   if (!text && !attachments.length) throw new Error('Messaggio vuoto');
-  const userMsg = { id: store.newId(), role: 'user', content: text, attachments: attachments.length ? attachments : undefined, tool: opts.tool || null, createdAt: Date.now() };
+  const userMsg = { id: store.newId(), role: 'user', content: text, attachments: attachments.length ? attachments : undefined, tool: opts.tool || null, story: opts.story || undefined, createdAt: Date.now() };
+  queue.touch();
   conv.messages.push(userMsg);
   emit(conv.id, { type: 'message', message: userMsg });
   const msg = startTurn(conv, { tool: opts.tool, model: opts.model });
@@ -279,7 +289,7 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       const { msgs, trimmed } = history(conv, idx);
       const prevAt = initiative ? conv.messages[idx - 1]?.createdAt : conv.messages.slice(0, Math.max(0, idx - 1)).findLast((m) => m.status !== 'pending')?.createdAt;
       const memories = memory.forPrompt(conv.id);
-      const block = nowBlock({ card: conv.card, state: conv.state, memories, lastGapMs: prevAt ? Date.now() - prevAt : null, trimmed, initiative });
+      const block = nowBlock({ card: conv.card, state: conv.state, memories, lastGapMs: prevAt ? Date.now() - prevAt : null, trimmed, initiative, social: social.chatContext(conv) });
       const convo = [{ role: 'system', content: systemPrompt(conv.card) }, ...msgs.map(({ role, content }) => ({ role, content }))];
       if (initiative || convo.at(-1).role !== 'user') convo.push({ role: 'user', content: block });
       else convo.at(-1).content = `${block}\n\n${convo.at(-1).content}${FORCE_NOTE[tool] || ''}`;

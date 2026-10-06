@@ -59,7 +59,128 @@ db.exec(`
     created_at   INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_studio_owner ON studio_messages(owner_id, seq);
+
+  -- Coda persistente "a goccia": contenuti generati un po' alla volta quando la GPU è libera.
+  -- Sopravvive ai riavvii: un lavoro rimasto a metà torna in attesa e riparte.
+  CREATE TABLE IF NOT EXISTS queue_jobs (
+    id           TEXT PRIMARY KEY,
+    owner_id     TEXT NOT NULL,
+    character_id TEXT,
+    kind         TEXT NOT NULL,           -- post.plan | post.image | social.comment | social.like
+    gpu          TEXT NOT NULL,           -- ollama | comfy | none
+    priority     INTEGER NOT NULL,        -- più basso = prima
+    status       TEXT NOT NULL,           -- pending | running | done | error
+    payload      TEXT NOT NULL,           -- JSON
+    label        TEXT,
+    run_after    INTEGER NOT NULL,
+    attempts     INTEGER NOT NULL DEFAULT 0,
+    error        TEXT,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_queue_status ON queue_jobs(status, priority, run_after);
+
+  -- Social: profilo pubblico del personaggio (nome utente, bio, il suo "mondo" ricorrente per foto coerenti)
+  CREATE TABLE IF NOT EXISTS social_profiles (
+    character_id TEXT PRIMARY KEY REFERENCES characters(id) ON DELETE CASCADE,
+    username     TEXT NOT NULL,
+    bio          TEXT NOT NULL DEFAULT '',
+    world        TEXT NOT NULL DEFAULT '{}',   -- JSON: casa, persone, posti, oggetti ricorrenti
+    updated_at   INTEGER NOT NULL
+  );
+
+  -- Post (carosello di foto) e storie (una foto, 24 ore)
+  CREATE TABLE IF NOT EXISTS posts (
+    id           TEXT PRIMARY KEY,
+    owner_id     TEXT NOT NULL,
+    character_id TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+    kind         TEXT NOT NULL,           -- post | story
+    status       TEXT NOT NULL,           -- planned | generating | published | error
+    caption      TEXT NOT NULL DEFAULT '',
+    location     TEXT NOT NULL DEFAULT '',
+    media        TEXT NOT NULL DEFAULT '[]',  -- JSON: le foto, come i media della chat
+    requested    INTEGER NOT NULL DEFAULT 0,  -- chiesto dall'utente (fuori dal limite per accensione)
+    seen_at      INTEGER,                 -- storie: viste dall'utente
+    error        TEXT,
+    created_at   INTEGER NOT NULL,
+    published_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_posts_owner ON posts(owner_id, status, published_at);
+  CREATE INDEX IF NOT EXISTS idx_posts_char ON posts(character_id, kind, published_at);
+
+  -- Mi piace: dell'utente (liker = 'user') o di un personaggio (liker = id del personaggio)
+  CREATE TABLE IF NOT EXISTS post_likes (
+    post_id      TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    liker        TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    PRIMARY KEY (post_id, liker)
+  );
+
+  -- Commenti: dell'utente (character_id NULL) o di un personaggio; reply_to per le risposte
+  CREATE TABLE IF NOT EXISTS post_comments (
+    id           TEXT PRIMARY KEY,
+    post_id      TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    character_id TEXT REFERENCES characters(id) ON DELETE CASCADE,
+    reply_to     TEXT,
+    content      TEXT NOT NULL,
+    liked_by_author INTEGER NOT NULL DEFAULT 0,
+    created_at   INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_comments_post ON post_comments(post_id, created_at);
+
+  -- Come si conoscono due personaggi (scritto la prima volta che interagiscono, poi riusato)
+  CREATE TABLE IF NOT EXISTS character_bonds (
+    a            TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+    b            TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+    note         TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    PRIMARY KEY (a, b)
+  );
+
+  -- Impostazioni social per utente (pausa della coda)
+  CREATE TABLE IF NOT EXISTS social_settings (
+    owner_id     TEXT PRIMARY KEY,
+    paused       INTEGER NOT NULL DEFAULT 0
+  );
+
+  -- Notifiche in-app: nuovi post, risposte ai tuoi commenti, foto insieme, cosa è successo a server spento
+  CREATE TABLE IF NOT EXISTS notifications (
+    id           TEXT PRIMARY KEY,
+    owner_id     TEXT NOT NULL,
+    kind         TEXT NOT NULL,           -- post | tag | reply | comment | like | life
+    character_id TEXT REFERENCES characters(id) ON DELETE CASCADE,
+    post_id      TEXT REFERENCES posts(id) ON DELETE CASCADE,
+    comment_id   TEXT,
+    text         TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    read_at      INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_notifications_owner ON notifications(owner_id, created_at);
+
+  -- Vita dei personaggi mentre il server era spento (scritta da Gemma alla riaccensione)
+  CREATE TABLE IF NOT EXISTS life_log (
+    id           TEXT PRIMARY KEY,
+    character_id TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+    from_ts      INTEGER NOT NULL,
+    to_ts        INTEGER NOT NULL,
+    summary      TEXT NOT NULL,
+    post_idea    TEXT NOT NULL DEFAULT '',
+    met_id       TEXT,                    -- un personaggio dell'app con cui ha passato del tempo
+    idea_used    INTEGER NOT NULL DEFAULT 0,
+    created_at   INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_life_char ON life_log(character_id, created_at);
+
+  -- Valori sparsi del server (es. ultimo segno di vita, per sapere quanto è rimasto spento)
+  CREATE TABLE IF NOT EXISTS app_meta (
+    key          TEXT PRIMARY KEY,
+    value        TEXT
+  );
 `);
+
+// Colonne aggiunte dopo la prima versione delle tabelle
+const hasColumn = (table, col) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col);
+if (!hasColumn('posts', 'tags')) db.exec(`ALTER TABLE posts ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'`);   // personaggi taggati (foto insieme)
 
 /** Esegue fn in una transazione. */
 export function tx(fn) {

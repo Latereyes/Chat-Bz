@@ -97,6 +97,20 @@ export function bodySummary(body) {
   return Object.entries(b).map(([k, s]) => `${BODY[k].label} ${BODY[k].sizes[s][0]}`).join(' · ');
 }
 
+// Proporzioni dette a parole (inglese, senza nudità): le foto "presentabili" del social le perdevano
+const FIGURE = {
+  breast: { small: 'small bust', large: 'large full bust', huge: 'very large heavy bust' },
+  butt: { small: 'narrow hips', large: 'wide hips and a round full bottom', huge: 'very wide hips and a big round bottom' },
+  build: { very_slim: 'very slim frame', slim: 'slim figure', athletic: 'athletic toned figure', curvy: 'curvy hourglass figure', plump: 'soft, full plump figure' },
+};
+
+/** «large full bust, curvy hourglass figure»: corporatura per le foto vestite (solo personaggi femminili). */
+export function figureText(card) {
+  if (!card || card.gender === 'uomo') return '';
+  const body = normalizeBody(card.body) || bodyFromKeywords(card.look) || {};
+  return Object.entries(body).map(([k, size]) => FIGURE[k]?.[size]).filter(Boolean).join(', ');
+}
+
 /** LoRA da applicare per questo personaggio: [{ part, file, strength }] (solo quelle diverse da 0). */
 export function bodyLoras(card) {
   if (!card || card.gender === 'uomo') return [];   // LoRA addestrate su corpi femminili

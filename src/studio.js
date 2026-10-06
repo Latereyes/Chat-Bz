@@ -2,6 +2,7 @@ import config from './config.js';
 import * as ollama from './ollama.js';
 import * as store from './store.js';
 import { gpu } from './gpu.js';
+import * as queue from './queue.js';
 import { emit, emitMedia, enqueue, mediaUrl } from './jobs.js';
 import { workflows, getWorkflow, dimensions, dimensionsForRatio, frameCount, randomSeed, ASPECTS } from './workflows.js';
 import { promptEngineerSystem, visualSignature, cleanPrompt } from './prompts.js';
@@ -96,6 +97,7 @@ export function send(conv, opts = {}) {
   const text = String(opts.text || '').trim().slice(0, 6000);
   const attachments = checkAttachments(conv, opts.attachments);
   if (!text) throw new Error('Descrivi cosa vuoi vedere');
+  queue.touch();
   const owner = characterCard(conv.ownerId, opts.characterId);
   const raw = !!opts.raw;
   const aspect = pickAspect(opts.aspect);
