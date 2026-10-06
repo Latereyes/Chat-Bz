@@ -19,7 +19,7 @@ import * as social from './src/social.js';
 import * as queue from './src/queue.js';
 import * as notify from './src/notify.js';
 import { publicCharacter, draftFromIdea, draftFromPhoto, PHOTO_QUESTION, normalizeCard, RELATIONS, PACES, INTIMACY, STYLES } from './src/characters.js';
-import { analyzeBody, BODY, bodyRange, installedLoras, normalizeManual } from './src/body.js';
+import { analyzeBody, BODY, bodyRange, figureText, installedLoras, normalizeManual } from './src/body.js';
 import { updateScene, initialState, DIM_LABEL, intimacyOpen, closeness } from './src/relationship.js';
 
 const app = express();
@@ -163,7 +163,9 @@ app.post('/api/characters/draft-from-photo', wrap(async (req, res) => {
     if (!vision) throw httpError(503, `Non riesco a leggere la foto: ${e.message}`);
   }
   const images = vision ? [(await fs.readFile(path.join(config.paths.media, file))).toString('base64')] : null;
-  const card = await gpu.run('ollama', 'Scrivo la scheda dalla foto', () => draftFromPhoto({ description, images, idea: String(idea || '').slice(0, 2000), model }));
+  const figure = bodyManual ? figureText({ gender: 'donna', bodyManual }) : '';
+  const takenNames = store.list(req.user.id).map((c) => c.card?.name || c.name).filter(Boolean);
+  const card = await gpu.run('ollama', 'Scrivo la scheda dalla foto', () => draftFromPhoto({ description, images, idea: String(idea || '').slice(0, 2000), model, figure, takenNames }));
   // foto dello studio fatta col fisico a mano: il personaggio tiene quelle forze
   if (bodyManual) card.bodyManual = normalizeManual(bodyManual);
   res.json({ card, description, file, url: mediaUrl(file) });

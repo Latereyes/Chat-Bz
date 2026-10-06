@@ -6,7 +6,7 @@ import * as queue from './queue.js';
 import { emit, emitMedia, enqueue, mediaUrl } from './jobs.js';
 import { workflows, getWorkflow, dimensions, dimensionsForRatio, frameCount, randomSeed, ASPECTS } from './workflows.js';
 import { promptEngineerSystem, visualSignature, cleanPrompt } from './prompts.js';
-import { manualBodyLoras } from './body.js';
+import { figureText, manualBodyLoras } from './body.js';
 
 /**
  * Studio immagini: l'"Image Assistant" di ChatBz 1, non più come personaggio ma come strumento a parte.
@@ -40,10 +40,18 @@ function subjectLine(card) {
   return `Main subject: ${who}. Appearance (keep it exactly, it defines who this is): ${visualSignature(card.look, 'explicit') || '(not specified)'}`;
 }
 
+/** Fisico a mano: le LoRA da sole non bastano se il prompt parla di vestiti larghi, quindi lo si dice anche a parole. */
+function figureLine(card, manualBody) {
+  if (!manualBody || card?.gender === 'uomo') return null;
+  const fig = figureText({ gender: 'donna', bodyManual: Object.fromEntries(manualBody.map((l) => [l.part, l.strength])) });
+  return fig ? `Figure (set by the user, it must be clearly visible): ${fig}. Describe exactly this figure for the woman, and choose clothes and a pose that show it (fitted, not loose or baggy) unless the request says otherwise.` : null;
+}
+
 function request({ text, card, media, sourceDescription, sources }) {
   return [
     `Request: ${text}`,
     subjectLine(card),
+    figureLine(card, media.manualBody),
     sources ? `The user attached ${sources} image${sources > 1 ? 's' : ''} to edit: write an editing instruction that changes only what the request asks and keeps everything else (identity, composition, light) unchanged.` : null,
     sourceDescription !== undefined ? `Starting image (the video starts exactly from it): ${sourceDescription || '(no description)'}` : null,
     LEVEL,
