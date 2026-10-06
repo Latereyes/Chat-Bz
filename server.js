@@ -1,7 +1,7 @@
 import express from 'express';
 import os from 'node:os';
 import fs from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual, createHash } from 'node:crypto';
 import path from 'node:path';
 import config from './src/config.js';
 import * as auth from './src/auth.js';
@@ -10,6 +10,7 @@ import * as ollama from './src/ollama.js';
 import * as comfy from './src/comfy.js';
 import * as chat from './src/chat.js';
 import { gpu } from './src/gpu.js';
+import { db } from './src/db.js';
 import { bus, cancel, mediaUrl, recoverInterrupted } from './src/jobs.js';
 import { workflows, loadWorkflows, publicInfo, checkAvailability } from './src/workflows.js';
 import * as memory from './src/memory.js';
@@ -75,6 +76,23 @@ app.post('/api/auth/password', wrap(async (req, res) => {
 }));
 
 // Tutto ciò che segue richiede un utente autenticato con password definitiva
+// ---- Controllo dall'agent del PC (remote-app-controller) ----
+// Salute senza login: dice solo che il server risponde.
+app.get('/api/health', (req, res) => res.json({ ok: true }));
+
+// Chiusura pulita, solo da questo PC e solo con il token che l'agent passa in CONTROL_TOKEN all'avvio.
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+const sha = (s) => createHash('sha256').update(String(s)).digest();
+app.post('/api/control/shutdown', (req, res) => {
+  const token = process.env.CONTROL_TOKEN;
+  const given = req.get('X-Control-Token');
+  if (!token || !given || !LOOPBACK.has(req.socket.remoteAddress) || !timingSafeEqual(sha(given), sha(token))) {
+    return res.status(403).json({ error: 'Non consentito' });
+  }
+  res.json({ ok: true });
+  shutdown('richiesta dall\'agent');
+});
+
 app.use('/api', auth.requireUser);
 
 // ---- Amministrazione utenti ----
@@ -275,3 +293,19 @@ server.on('error', (e) => {
   else console.error(e);
   process.exit(1);
 });
+
+// Chiusura pulita: smette di accettare richieste, chiude le connessioni aperte (SSE) e il database.
+let closing = false;
+function shutdown(reason) {
+  if (closing) return;
+  closing = true;
+  console.log(`\n  ChatBz si chiude (${reason})`);
+  server.close(() => {
+    try { db.close(); } catch {}
+    process.exit(0);
+  });
+  server.closeAllConnections();
+  setTimeout(() => process.exit(0), 5000).unref();
+}
+process.on('SIGINT', () => shutdown('Ctrl+C'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));

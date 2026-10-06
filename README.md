@@ -30,6 +30,13 @@ Variabili d'ambiente (i default sono in `src/config.js`):
 | `INITIATIVE` | `1` | `0` = i personaggi non scrivono mai per primi |
 | `DATA_DIR` | `./data` | database (`chatbz.sqlite`), media, utenti |
 
+### Controllo dal PC remoto
+
+ChatBz si può avviare e fermare con l'agent di [remote-app-controller](https://github.com/Latereyes/remote-app-controller-):
+- `GET /api/health` risponde senza login, così l'agent sa quando il server è pronto;
+- `POST /api/control/shutdown` chiude ChatBz in modo pulito (database compreso). Funziona solo da questo PC e solo con l'header `X-Control-Token` uguale alla variabile `CONTROL_TOKEN` che l'agent imposta all'avvio; senza `CONTROL_TOKEN` è disattivato;
+- anche Ctrl+C chiude in modo pulito.
+
 ## Come funziona
 
 ### Un ambiente unico
