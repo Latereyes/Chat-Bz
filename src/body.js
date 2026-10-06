@@ -107,13 +107,43 @@ const FIGURE = {
 /** «large full bust, curvy hourglass figure»: corporatura per le foto vestite (solo personaggi femminili). */
 export function figureText(card) {
   if (!card || card.gender === 'uomo') return '';
-  const body = normalizeBody(card.body) || bodyFromKeywords(card.look) || {};
+  const manual = normalizeManual(card.bodyManual);
+  const body = manual ? Object.fromEntries(Object.entries(manual).map(([k, s]) => [k, nearestSize(k, s)]))
+    : normalizeBody(card.body) || bodyFromKeywords(card.look) || {};
   return Object.entries(body).map(([k, size]) => FIGURE[k]?.[size]).filter(Boolean).join(', ');
+}
+
+/** Forza minima e massima di ogni LoRA (quelle delle taglie): limiti dei cursori a mano dello studio. */
+export const bodyRange = (part) => { const v = Object.values(BODY[part].sizes).map(([, s]) => s); return [Math.min(...v), Math.max(...v)]; };
+
+/** Forze scelte a mano { breast: 1.5, ... }: tutte le parti, limitate (0 se mancano); null se non è un oggetto. */
+export function normalizeManual(values) {
+  if (!values || typeof values !== 'object' || Array.isArray(values)) return null;
+  const out = {};
+  for (const part of Object.keys(BODY)) {
+    const n = Number(values[part]);
+    const [lo, hi] = bodyRange(part);
+    out[part] = Number.isFinite(n) ? Math.round(Math.min(hi, Math.max(lo, n)) * 10) / 10 : 0;
+  }
+  return out;
+}
+
+/** LoRA scelte a mano (studio o scheda): { breast: 1.5, ... } → [{ part, file, strength }] diverse da 0. */
+export function manualBodyLoras(values) {
+  const v = normalizeManual(values);
+  if (!v) return null;
+  return Object.entries(v).filter(([, s]) => s !== 0).map(([part, strength]) => ({ part, file: BODY[part].file, strength }));
+}
+
+/** Taglia più vicina a una forza a mano (per le proporzioni dette a parole). */
+function nearestSize(part, strength) {
+  return Object.entries(BODY[part].sizes).reduce((best, [size, [, s]]) => (Math.abs(s - strength) < Math.abs(BODY[part].sizes[best][1] - strength) ? size : best), Object.keys(BODY[part].sizes)[0]);
 }
 
 /** LoRA da applicare per questo personaggio: [{ part, file, strength }] (solo quelle diverse da 0). */
 export function bodyLoras(card) {
   if (!card || card.gender === 'uomo') return [];   // LoRA addestrate su corpi femminili
+  if (card.bodyManual) return manualBodyLoras(card.bodyManual) || [];   // regolato a mano: vince sull'aspetto
   const body = normalizeBody(card.body) || bodyFromKeywords(card.look) || {};
   return Object.entries(body)
     .map(([part, size]) => ({ part, file: BODY[part].file, strength: BODY[part].sizes[size][1] }))

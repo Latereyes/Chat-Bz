@@ -10,7 +10,7 @@ import * as ollama from './src/ollama.js';
 import * as comfy from './src/comfy.js';
 import * as chat from './src/chat.js';
 import { gpu } from './src/gpu.js';
-import { bus, cancel, mediaUrl, recoverInterrupted } from './src/jobs.js';
+import { bus, cancel, mediaUrl, recoverInterrupted, describeImage } from './src/jobs.js';
 import { workflows, loadWorkflows, publicInfo, checkAvailability } from './src/workflows.js';
 import * as memory from './src/memory.js';
 import * as life from './src/life.js';
@@ -18,8 +18,8 @@ import * as studio from './src/studio.js';
 import * as social from './src/social.js';
 import * as queue from './src/queue.js';
 import * as notify from './src/notify.js';
-import { publicCharacter, draftFromIdea, normalizeCard, RELATIONS, PACES, INTIMACY, STYLES } from './src/characters.js';
-import { analyzeBody, BODY, installedLoras } from './src/body.js';
+import { publicCharacter, draftFromIdea, draftFromPhoto, PHOTO_QUESTION, normalizeCard, RELATIONS, PACES, INTIMACY, STYLES } from './src/characters.js';
+import { analyzeBody, BODY, bodyRange, figureText, installedLoras, normalizeManual } from './src/body.js';
 import { updateScene, initialState, DIM_LABEL, intimacyOpen, closeness } from './src/relationship.js';
 
 const app = express();
@@ -102,7 +102,7 @@ app.get('/api/config', wrap(async (req, res) => {
     defaultModel: config.ollama.model,
     options: {
       relations: RELATIONS, paces: PACES, intimacy: INTIMACY, styles: STYLES, dims: DIM_LABEL,
-      body: Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, { label: b.label, sizes: Object.fromEntries(Object.entries(b.sizes).map(([s, [l]]) => [s, l])) }])),
+      body: Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, { label: b.label, range: bodyRange(k), sizes: Object.fromEntries(Object.entries(b.sizes).map(([s, [l]]) => [s, l])) }])),
     },
     models,
     workflows: workflows().map(publicInfo),
@@ -139,6 +139,44 @@ app.post('/api/characters/draft', wrap(async (req, res) => {
   res.json(card);
 }));
 
+/** Una foto dell'utente (caricata o generata da lui, in chat o nello studio): percorso in data/media. */
+async function ownImage(req, file) {
+  file = String(file || '');
+  if (!new RegExp(`^${req.user.id}/[\\w.-]+\\.(png|jpe?g|webp)$`, 'i').test(file) || file.includes('..')) throw httpError(400, 'Foto non valida');
+  await fs.access(path.join(config.paths.media, file)).catch(() => { throw httpError(404, 'Foto non trovata'); });
+  return file;
+}
+
+/**
+ * Bozza della scheda da una foto: il modello visivo di ComfyUI legge la persona (Gemma uncensored non vede
+ * le immagini; se il modello scelto le vede, riceve anche la foto), poi Gemma scrive la scheda attorno a lei.
+ */
+app.post('/api/characters/draft-from-photo', wrap(async (req, res) => {
+  const { file: raw, idea, model, bodyManual } = req.body || {};
+  const file = await ownImage(req, raw);
+  const vision = (await ollama.capabilities(model || config.ollama.model).catch(() => [])).includes('vision');
+  let description = '';
+  try {
+    description = await gpu.run('comfy', 'Guardo la foto', () => describeImage(file, null, { prompt: PHOTO_QUESTION }));
+  } catch (e) {
+    if (!vision) throw httpError(503, `Non riesco a leggere la foto: ${e.message}`);
+  }
+  const images = vision ? [(await fs.readFile(path.join(config.paths.media, file))).toString('base64')] : null;
+  const figure = bodyManual ? figureText({ gender: 'donna', bodyManual }) : '';
+  const takenNames = store.list(req.user.id).map((c) => c.card?.name || c.name).filter(Boolean);
+  const card = await gpu.run('ollama', 'Scrivo la scheda dalla foto', () => draftFromPhoto({ description, images, idea: String(idea || '').slice(0, 2000), model, figure, takenNames }));
+  // foto dello studio fatta col fisico a mano: il personaggio tiene quelle forze
+  if (bodyManual) card.bodyManual = normalizeManual(bodyManual);
+  res.json({ card, description, file, url: mediaUrl(file) });
+}));
+
+/** Copia la foto scelta come profilo: il personaggio ne ha una sua (eliminarlo non tocca studio o chat). */
+async function copyAsAvatar(userId, file) {
+  const name = `${userId}/ava-${randomUUID()}${path.extname(file).toLowerCase()}`;
+  await fs.copyFile(path.join(config.paths.media, file), path.join(config.paths.media, name));
+  return name;
+}
+
 /**
  * Taglie del corpo (→ LoRA delle foto): si tengono finché l'aspetto non cambia; altrimenti quelle della bozza
  * di Gemma per questo aspetto, oppure Gemma le ricava dall'aspetto al salvataggio.
@@ -151,8 +189,10 @@ async function withBody(card, prev, model) {
 }
 
 app.post('/api/characters', wrap(async (req, res) => {
-  const { model, ...body } = req.body || {};
+  const { model, avatarFile, ...body } = req.body || {};
+  const photo = avatarFile ? await ownImage(req, avatarFile) : null;
   const c = store.create(req.user.id, await withBody(normalizeCard(body), null, model));
+  if (photo) c.avatar = await copyAsAvatar(req.user.id, photo);
   if (c.card.greeting) {
     c.messages.push({ id: store.newId(), role: 'assistant', content: c.card.greeting, media: [], status: 'done', presence: c.state.scene.presence, createdAt: Date.now() });
   }
