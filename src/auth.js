@@ -74,7 +74,7 @@ export const publicUser = (u) => u && ({
 export const GENDERS = ['uomo', 'donna', 'altro'];
 function profileOf(u) {
   const p = u?.profile || {};
-  return { name: p.name || '', gender: GENDERS.includes(p.gender) ? p.gender : '', about: p.about || '' };
+  return { name: p.name || '', gender: GENDERS.includes(p.gender) ? p.gender : '', about: p.about || '', look: p.look || '' };
 }
 
 /** Il profilo da dare ai prompt: il nome ricade sul nome visualizzato. */
@@ -86,13 +86,14 @@ export function promptProfile(userId) {
 }
 
 /** L'utente aggiorna il proprio profilo. */
-export function updateProfile(user, { name, gender, about } = {}) {
+export function updateProfile(user, { name, gender, about, look } = {}) {
   if (gender && !GENDERS.includes(gender)) throw httpError(400, 'Genere non valido');
   const p = profileOf(user);
   user.profile = {
     name: name !== undefined ? String(name).trim().slice(0, 40) : p.name,
     gender: gender !== undefined ? gender || '' : p.gender,
     about: about !== undefined ? String(about).trim().slice(0, 600) : p.about,
+    look: look !== undefined ? String(look).trim().slice(0, 600) : p.look,
   };
   saveUsers();
   return publicUser(user);

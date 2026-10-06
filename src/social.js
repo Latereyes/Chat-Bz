@@ -60,6 +60,11 @@ const q = {
   bondsOf: db.prepare('SELECT * FROM character_bonds WHERE a = ? OR b = ?'),
   seen: db.prepare('UPDATE posts SET seen_at = ? WHERE id = ? AND seen_at IS NULL'),
   setTags: db.prepare('UPDATE posts SET tags = ? WHERE id = ?'),
+  // Attenzioni dell'utente ai post degli ALTRI personaggi (per gelosia, curiosità, battute)
+  userLikesElsewhere: db.prepare(`SELECT p.character_id, COUNT(*) AS n FROM post_likes l JOIN posts p ON p.id = l.post_id
+    WHERE l.liker = 'user' AND p.owner_id = ? AND p.character_id != ? AND l.created_at > ? GROUP BY p.character_id ORDER BY n DESC LIMIT 3`),
+  userCommentsElsewhere: db.prepare(`SELECT p.character_id, c.content FROM post_comments c JOIN posts p ON p.id = c.post_id
+    WHERE c.character_id IS NULL AND p.owner_id = ? AND p.character_id != ? AND c.created_at > ? ORDER BY c.created_at DESC LIMIT 3`),
   tagged: db.prepare(`SELECT * FROM posts WHERE owner_id = ? AND kind = 'post' AND status = 'published' AND tags LIKE ? ORDER BY published_at DESC`),
   lastJoint: db.prepare(`SELECT MAX(created_at) AS at FROM posts WHERE owner_id = ? AND tags != '[]'`),
   lastAuto: db.prepare(`SELECT MAX(created_at) AS at FROM posts WHERE owner_id = ? AND requested = 0`),
@@ -779,6 +784,16 @@ export function chatContext(conv) {
     const others = likes.filter((l) => l !== 'user').map((id) => store.get(id)?.card.name).filter(Boolean);
     const comments = q.comments.all(r.id);
     lines.push(`- your ${r.kind} ${ago(r.published_at)}: "${short(r.caption, 140)}" (${likes.includes('user') ? 'the user liked it' : 'the user has not liked it'}${others.length ? `; liked by ${others.join(', ')}` : ''}${comments.length ? `; ${comments.length} comments` : ''})`);
+  }
+  // Cosa fa l'utente sui profili degli altri: il personaggio lo vede, come su Instagram
+  const since = Date.now() - 3 * DAY, nm = (id) => store.get(id)?.card.name;
+  const liked = q.userLikesElsewhere.all(conv.ownerId, conv.id, since).filter((r) => nm(r.character_id));
+  const commented = q.userCommentsElsewhere.all(conv.ownerId, conv.id, since).filter((r) => nm(r.character_id));
+  if (liked.length || commented.length) {
+    lines.push(`You saw the user being active on other people's profiles: ${[
+      ...liked.map((r) => `liked ${r.n} ${r.n === 1 ? 'post' : 'posts'} of ${nm(r.character_id)}`),
+      ...commented.map((r) => `commented "${short(r.content, 80)}" under ${nm(r.character_id)}'s post`),
+    ].join('; ')}. React only if it fits your personality and your relationship (indifference, curiosity, teasing, a bit of jealousy if you care and feel neglected); never make a scene out of nothing.`);
   }
   const mine = q.userComments.all(conv.id, Date.now() - 3 * DAY);
   if (mine.length) lines.push(`The user's recent comments on your posts: ${mine.map((c) => `"${short(c.content, 120)}" (${ago(c.created_at)})`).join('; ')}`);

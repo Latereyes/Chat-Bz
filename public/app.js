@@ -1921,15 +1921,31 @@ function openProfile() {
   profileForm.name.value = p.name || state.user?.displayName || '';
   profileForm.gender.value = p.gender || '';
   profileForm.about.value = p.about || '';
+  profileForm.look.value = p.look || '';
+  $('#profile-look-status').textContent = '';
   showErr(profileForm);
   profileModal.hidden = false;
 }
+$('#profile-look-photo').onclick = () => $('#profile-look-file').click();
+$('#profile-look-file').onchange = async (e) => {
+  const f = e.target.files?.[0]; e.target.value = '';
+  if (!f) return;
+  const btn = $('#profile-look-photo'), status = $('#profile-look-status');
+  btn.disabled = true; status.textContent = 'Leggo la foto…'; showErr(profileForm);
+  try {
+    const up = await uploadImage(f);
+    const { look } = await api('/api/me/look-from-photo', { body: { file: up.file } });
+    profileForm.look.value = look;
+    status.textContent = 'Rileggi e correggi se serve, poi salva.';
+  } catch (err) { status.textContent = ''; showErr(profileForm, err.message); }
+  btn.disabled = false;
+};
 profileModal.addEventListener('click', (e) => { if (e.target === profileModal || e.target.closest('[data-close]')) profileModal.hidden = true; });
 profileForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   showErr(profileForm);
   try {
-    const { user } = await api('/api/me/profile', { method: 'PUT', body: { name: profileForm.name.value, gender: profileForm.gender.value, about: profileForm.about.value } });
+    const { user } = await api('/api/me/profile', { method: 'PUT', body: { name: profileForm.name.value, gender: profileForm.gender.value, about: profileForm.about.value, look: profileForm.look.value } });
     state.user = user;
     profileModal.hidden = true;
   } catch (err) { showErr(profileForm, err.message); }

@@ -84,6 +84,15 @@ app.use('/api', auth.requireUser);
 
 app.put('/api/me/profile', wrap(async (req, res) => res.json({ user: auth.updateProfile(req.user, req.body || {}) })));
 
+/** Il tuo aspetto da una foto: il modello visivo lo descrive, tu lo rileggi e salvi. */
+const LOOK_QUESTION = `Descrivi l'aspetto fisico della persona principale in questa foto, in italiano, in 2-4 frasi oggettive: genere ed età apparente, corporatura e altezza apparente, carnagione, viso, occhi, capelli (colore, lunghezza, taglio), barba o trucco, segni particolari come tatuaggi o occhiali. Non descrivere vestiti, posa, sfondo o espressione. Niente giudizi.`;
+app.post('/api/me/look-from-photo', wrap(async (req, res) => {
+  const file = await ownImage(req, req.body?.file);
+  const look = await gpu.run('comfy', 'Guardo la tua foto', () => describeImage(file, null, { prompt: LOOK_QUESTION }))
+    .catch((e) => { throw httpError(503, `Non riesco a leggere la foto: ${e.message}`); });
+  res.json({ look: look.slice(0, 600) });
+}));
+
 // ---- Amministrazione utenti ----
 app.get('/api/users', auth.requireAdmin, (req, res) => res.json(auth.listUsers()));
 app.post('/api/users', auth.requireAdmin, wrap(async (req, res) => res.json(auth.createUser(req.body || {}))));

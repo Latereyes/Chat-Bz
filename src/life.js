@@ -9,6 +9,7 @@ import { asleep } from './social.js';
 /**
  * La "vita" dei personaggi quando non stai chattando:
  *  - riflessione a riposo: conversazione ferma da qualche minuto + GPU libera → aggiorna rapporto e memorie
+ *    (e quando i ricordi sono tanti li riordina: doppioni uniti, contraddizioni risolte)
  *  - iniziativa: alla riaccensione del server, un personaggio può scriverti per primo (al massimo un messaggio)
  * Lavora un personaggio alla volta e solo quando la GPU non serve ad altro.
  */
@@ -26,6 +27,10 @@ async function tick() {
   busy = true;
   try {
     await gpu.run('ollama', `${conv.card.name} ripensa alla conversazione`, () => memory.reflect(conv));
+    if (memory.needsConsolidation(conv)) {
+      await gpu.run('ollama', `${conv.card.name} riordina i ricordi`, () => memory.consolidate(conv))
+        .catch((e) => console.warn(`[memorie] ${conv.card.name}: ${e.message}`));
+    }
     emit(conv.id, { type: 'state', state: conv.state });
   } catch (e) {
     console.warn(`[riflessione] ${conv.card.name}: ${e.message}`);

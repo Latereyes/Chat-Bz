@@ -23,6 +23,7 @@ export function userText(user, { short = false } = {}) {
   }[user.gender] || '';
   const lines = [user.name ? `The user (the person you talk with) is called ${user.name}.` : '', forms];
   if (!short && user.about) lines.push(`What ${name} told about themselves: ${user.about}`);
+  if (!short && user.look) lines.push(`What ${name} looks like (when you are together in person you see it; mention details only when natural): ${user.look}`);
   return lines.filter(Boolean).join(' ');
 }
 
@@ -99,6 +100,10 @@ export function nowBlock({ card, state, memories = [], lastGapMs, trimmed, initi
   const s = state.scene;
   const when = new Date().toLocaleString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
   const lines = [`Now: ${when}.${lastGapMs != null ? ` Previous message in this conversation: ${fmtGap(lastGapMs)}.` : ''}`];
+  // Lontananza: giorni senza sentirsi pesano, in modo diverso secondo il rapporto e il carattere
+  if (lastGapMs > 2 * 86400000) {
+    lines.push(`You have not heard from the user for ${Math.round(lastGapMs / 86400000)} days. Let it show in a way that fits who you are and how close you are: you missed them, you are a bit hurt or cold and make them earn the warmth back, you are curious where they were, or you simply had your own busy life. Don't pretend no time has passed, and don't make it a drama if the bond is light.`);
+  }
   lines.push(s.presence === 'together'
     ? `Situation: you are TOGETHER in person${s.place ? `, at ${s.place}` : ''}. Write in the in-person style.`
     : `Situation: you are APART and texting${s.place ? `; you are at ${s.place}` : ''}. Write in the texting style.`);
@@ -238,7 +243,7 @@ export function reflectionPrompt({ card, state, transcript, memories, user }) {
  "summary": "the story so far, updated: 4-8 sentences in Italian, the most important things that happened between you",
  "story_idea": "only if this conversation left you with a strong feeling (angry, hurt, jealous, happy, excited, in love, relieved after making up): one sentence in Italian, an idea for a social story that lets that feeling show the way a real person would (a cryptic phrase, a song, a sarcastic or radiant caption, a photo that matches the mood), without naming the user or revealing private details; otherwise empty string"
 }
-Rules: deltas are small and earned (0 when nothing happened). Tension rises with conflict or pressure and falls when things are resolved. Memories: only new and meaningful things (facts about the user, important moments, promises, inside jokes), never duplicates of what you already remember. Keep sexual details out of memories unless they matter emotionally.` },
+Rules: deltas are small and earned (0 when nothing happened). Tension rises with conflict or pressure and falls when things are resolved. A long silence ([N days without talking]) can lower familiarity or trust a little, or raise affection if they were missed, according to your personality and the bond. Memories: only new and meaningful things (facts about the user, important moments, promises, inside jokes), never duplicates of what you already remember. Keep sexual details out of memories unless they matter emotionally.` },
     { role: 'user', content: `Your current relationship: ${DIMS.map((k) => `${k} ${state.rel[k]}`).join(', ')}.
 Previous note: ${state.relNote || '(none)'}
 Story so far: ${state.summary || '(none)'}
@@ -247,6 +252,19 @@ ${memories.map((m) => `- ${m.content}`).join('\n') || '(nothing)'}
 
 Recent conversation:
 ${transcript}` },
+  ];
+}
+
+/** Riordino delle memorie: unisce i doppioni, risolve le contraddizioni (vince la più recente), lascia cadere il superfluo. */
+export function consolidationPrompt({ card, memories }) {
+  return [
+    { role: 'system', content: `You tidy up the long-term memory of ${card.name}, a character in an ongoing relationship with the user. You receive numbered memories, oldest first. Rewrite them as a clean list:
+- merge memories that say the same thing or are about the same detail into one sentence;
+- when two memories contradict each other, keep the more recent one (higher number), unless the older one says why it changed;
+- drop only trivial memories that no longer matter; keep every fact about the user, every promise, inside joke and important moment;
+- never invent anything new. Keep the language of the memories (Italian).
+Reply ONLY with JSON: {"memories": [{"from": [numbers of the source memories], "kind": "fact|moment|promise|joke", "content": "one sentence", "weight": 1-5}]}` },
+    { role: 'user', content: memories.map((m, i) => `${i + 1}. [${m.kind}, weight ${m.weight}] ${m.content}`).join('\n') },
   ];
 }
 
