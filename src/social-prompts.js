@@ -1,4 +1,4 @@
-import { LEVEL, visualSignature } from './prompts.js';
+import { LEVEL, visualSignature, userText, genderWord, selfGenderText } from './prompts.js';
 import { stageText } from './relationship.js';
 import { figureText } from './body.js';
 
@@ -17,7 +17,8 @@ export function momentText(date = new Date()) {
   return `${date.toLocaleDateString('en-GB', { weekday: 'long', month: 'long' })}, ${part} (${date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })})`;
 }
 
-const who = (card) => `${card.name}, ${card.age}. Personality: ${short(card.personality, 900)}
+const who = (card) => `${card.name}, ${card.age}, a ${genderWord(card.gender)}. ${selfGenderText(card).replace(/^You are [^:]+: about yourself/, 'When writing about yourself')}
+Personality: ${short(card.personality, 900)}
 Life: ${short(card.life, 700)}
 How they write: ${short(card.speech, 300)}`;
 
@@ -48,7 +49,7 @@ const worldText = (world) => (world?.home ? `Their recurring world (reuse natura
  * together: l'amico con cui si sono visti (foto insieme, raro) → { name, username, gender, note } (note vuota = da decidere).
  * lately: cosa hanno fatto di recente mentre il server era spento (scritto alla riaccensione).
  */
-export function composePrompt({ card, state, profile, kind, recent, bonds, hint, memories, together, lately }) {
+export function composePrompt({ card, state, profile, kind, recent, bonds, hint, memories, together, lately, evolution }) {
   const story = kind === 'story';
   const photoShape = together
     ? '{"description": "ENGLISH, 30-70 words", "who": "both|me|friend|none"}'
@@ -71,10 +72,12 @@ Rules:
     worldText(profile?.world),
     `Right now: ${momentText()}.${state?.scene?.mood ? ` Mood: ${state.scene.mood}.` : ''}`,
     state?.summary ? `What has been happening in their private life lately (don't reveal private details, at most hint at them): ${short(state.summary, 600)}` : '',
+    state?.relNote ? `How things are going with the person they text in private (never name them or reveal details, but if it is a strong feeling, like a fight, being hurt, or being happy and in love, it can colour the mood of the caption and the choice of photo): ${short(state.relNote, 300)}` : '',
+    evolution?.length ? `How they have changed lately: ${evolution.map((e) => short(e, 150)).join(' / ')}` : '',
     lately?.length ? `What they did recently: ${lately.map((l) => short(l, 300)).join(' / ')}` : '',
     memories?.length ? `On their mind: ${memories.map((m) => short(m, 120)).join(' / ')}` : '',
     together ? `You just spent time with ${together.name} (${together.gender === 'uomo' ? 'a man' : together.gender === 'altro' ? 'a person' : 'a woman'}, @${together.username}). ${together.note ? `How you know each other: ${together.note}` : 'You have never posted together before: decide how you know each other.'}${together.about ? ` About ${together.name}: ${short(together.about, 300)}` : ''}` : '',
-    !together && bonds?.length ? `People they know on the app (can be mentioned in the caption, only if natural): ${bonds.map((b) => `${b.name} (${b.note})`).join('; ')}` : '',
+    !together && bonds?.length ? `People they know on the app (can be mentioned in the caption, only if natural): ${bonds.map((b) => `${b.name} (${b.gender ? `${genderWord(b.gender)}, ` : ''}${b.note})`).join('; ')}` : '',
     recent?.length ? `Their recent captions, do NOT repeat topics, mood or wording:\n${recent.map((c) => `- ${short(c, 160)}`).join('\n')}` : '',
     hint ? `Idea for this ${story ? 'story' : 'post'}: ${short(hint, 300)}` : '',
   ].filter(Boolean).join('\n');
@@ -118,21 +121,22 @@ export function socialPhotoRequest({ card, friend, profile, photo, media, kind, 
  * Instagram: chiunque risponde a chiunque, citando con @ chi ha scritto. Se i due personaggi non si conoscono
  * ancora, Gemma decide anche come si conoscono ("bond"), e da lì in poi resta quello.
  */
-export function commentPrompt({ card, state, author, post, thread, target, bond, needsBond, userName, tagged }) {
+export function commentPrompt({ card, state, author, post, thread, target, bond, needsBond, userName, user, tagged, people }) {
   const own = author.id === card.id;
   const toUser = target?.kind === 'user';
   const system = `You are ${card.name} on a social network (Instagram-like) where you and people you know post photos. Comments under a post are a group conversation: everybody reads everything and anyone can reply to anyone. Write as yourself, a real person with your own personality and way of writing: in Italian, short and natural (one sentence, two at most), specific to the post or to what was just said, at most one emoji. Never generic ("bellissima foto!", "che bello!"), never formal, never mention AI, never repeat what others already said. You can joke, tease, ask something, agree or disagree with someone else in the thread, be a bit jealous or dry, according to who you are and how you know them.
 Reply ONLY with JSON: {"comment": "..."${needsBond ? ', "bond": "one sentence in Italian: how you and the other person know each other (neighbours, gym, old classmates, colleague, friend of a friend...), specific and consistent with both your lives"' : ''}}`;
   const lines = [
     who(card),
-    own ? `This is YOUR post (${post.kind === 'story' ? 'story' : 'post'}).` : `This is a ${post.kind === 'story' ? 'story' : 'post'} by ${author.name}.`,
+    own ? `This is YOUR post (${post.kind === 'story' ? 'story' : 'post'}).` : `This is a ${post.kind === 'story' ? 'story' : 'post'} by ${author.name} (a ${genderWord(author.gender)}).`,
     tagged?.length ? `Tagged in the post: ${tagged.join(', ')}${tagged.includes(card.name) ? ' (you were there)' : ''}.` : null,
     `Caption: "${short(post.caption, 500)}"${post.location ? ` · ${post.location}` : ''}`,
     `Photos: ${post.photos.map((p) => short(p, 200)).join(' / ') || '(none)'}`,
     !own ? `About ${author.name}: ${short(author.personality, 400)} ${short(author.life, 300)}` : null,
     bond ? `How you know ${bond.name}: ${bond.note}` : null,
     needsBond && !bond ? `You have never interacted with ${needsBond} on the app before: decide how you two know each other.` : null,
-    toUser || thread.some((c) => c.isUser) ? `${userName || 'The user'} is the person you talk with in private chat. Your relationship: ${stageText(state.rel)}${state.relNote ? ` ${state.relNote}` : ''} Comments are public: everyone can read them.` : null,
+    toUser || thread.some((c) => c.isUser) ? `${userName || 'The user'} is the person you talk with in private chat.${user ? ` ${userText(user, { short: true })}` : ''} Your relationship: ${stageText(state.rel)}${state.relNote ? ` ${state.relNote}` : ''} Comments are public: everyone can read them.` : null,
+    people?.length ? `Who is who (use the right masculine/feminine forms with each): ${people.map((p) => `${p.name} is a ${genderWord(p.gender)}`).join('; ')}.` : null,
     thread.length ? `${target ? 'This conversation' : 'Comments so far'}:\n${thread.map((c) => `- ${c.name}${c.to ? ` (to ${c.to})` : ''}: ${short(c.content, 200)}`).join('\n')}` : null,
     target ? `Write your reply to ${target.name}'s last comment: "${short(target.content, 300)}"` : 'Write your comment.',
   ];
@@ -159,7 +163,7 @@ Reply ONLY with JSON:
     state?.summary ? `Their life lately: ${short(state.summary, 500)}` : '',
     state?.hooks?.length ? `On their mind: ${state.hooks.map((m) => short(m, 120)).join(' / ')}` : '',
     recent?.length ? `Their last posts: ${recent.map((c) => `"${short(c, 120)}"`).join('; ')}` : '',
-    bonds?.length ? `People they know on the app: ${bonds.map((b) => `${b.name} (${b.note})`).join('; ')}` : 'They know nobody on the app yet: "met" must be empty.',
+    bonds?.length ? `People they know on the app: ${bonds.map((b) => `${b.name} (${b.gender ? `${genderWord(b.gender)}, ` : ''}${b.note})`).join('; ')}` : 'They know nobody on the app yet: "met" must be empty.',
   ].filter(Boolean).join('\n');
   return [{ role: 'system', content: system }, { role: 'user', content: user }];
 }

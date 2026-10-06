@@ -5,12 +5,13 @@ import { db } from './db.js';
 import * as ollama from './ollama.js';
 import * as store from './store.js';
 import * as queue from './queue.js';
-import { listUsers } from './auth.js';
+import { promptProfile } from './auth.js';
 import { emit, mediaUrl, renderMedia } from './jobs.js';
 import { getWorkflow, dimensions, dimensionsForRatio, randomSeed } from './workflows.js';
 import { promptEngineerSystem, cleanPrompt } from './prompts.js';
 import { profilePrompt, composePrompt, socialPhotoRequest, commentPrompt, catchupPrompt } from './social-prompts.js';
 import * as notify from './notify.js';
+import * as memory from './memory.js';
 
 /**
  * Social dei personaggi: profilo, caroselli curati, storie, mi piace e commenti.
@@ -59,6 +60,11 @@ const q = {
   bondsOf: db.prepare('SELECT * FROM character_bonds WHERE a = ? OR b = ?'),
   seen: db.prepare('UPDATE posts SET seen_at = ? WHERE id = ? AND seen_at IS NULL'),
   setTags: db.prepare('UPDATE posts SET tags = ? WHERE id = ?'),
+  // Attenzioni dell'utente ai post degli ALTRI personaggi (per gelosia, curiosità, battute)
+  userLikesElsewhere: db.prepare(`SELECT p.character_id, COUNT(*) AS n FROM post_likes l JOIN posts p ON p.id = l.post_id
+    WHERE l.liker = 'user' AND p.owner_id = ? AND p.character_id != ? AND l.created_at > ? GROUP BY p.character_id ORDER BY n DESC LIMIT 3`),
+  userCommentsElsewhere: db.prepare(`SELECT p.character_id, c.content FROM post_comments c JOIN posts p ON p.id = c.post_id
+    WHERE c.character_id IS NULL AND p.owner_id = ? AND p.character_id != ? AND c.created_at > ? ORDER BY c.created_at DESC LIMIT 3`),
   tagged: db.prepare(`SELECT * FROM posts WHERE owner_id = ? AND kind = 'post' AND status = 'published' AND tags LIKE ? ORDER BY published_at DESC`),
   lastJoint: db.prepare(`SELECT MAX(created_at) AS at FROM posts WHERE owner_id = ? AND tags != '[]'`),
   lastAuto: db.prepare(`SELECT MAX(created_at) AS at FROM posts WHERE owner_id = ? AND requested = 0`),
@@ -135,7 +141,7 @@ function bondNote(x, y) { return q.bond.get(...pair(x, y))?.note || null; }
 function bondsOf(characterId) {
   return q.bondsOf.all(characterId, characterId).map((b) => {
     const other = store.get(b.a === characterId ? b.b : b.a);
-    return other ? { id: other.id, name: other.card.name, note: b.note, avatarUrl: mediaUrl(other.avatar) } : null;
+    return other ? { id: other.id, name: other.card.name, gender: other.card.gender, note: b.note, avatarUrl: mediaUrl(other.avatar) } : null;
   }).filter(Boolean);
 }
 
@@ -145,7 +151,7 @@ const charInfo = (id) => {
   return { id, name: c.card.name, avatarUrl: mediaUrl(c.avatar), username: profile(id)?.username || null };
 };
 
-const userName = (ownerId) => listUsers().find((u) => u.id === ownerId)?.displayName || 'the user';
+const userName = (ownerId) => promptProfile(ownerId)?.name || 'the user';
 
 // ---------------------------------------------------------------------------
 // Post: lettura, salvataggio, eventi
@@ -292,6 +298,7 @@ async function plan({ postId, hint }) {
     model, format: 'json', timeout: 150000, options: { temperature: 0.95, num_predict: 1000 },
     messages: composePrompt({
       card: conv.card, state: conv.state, profile: prof, kind: post.kind, hint,
+      evolution: memory.forPrompt(conv.id).filter((m) => m.kind === 'evolution').map((m) => m.content),
       recent: q.recentCaptions.all(conv.id).map((r) => r.caption),
       bonds: bondsOf(conv.id), memories: conv.state.hooks || [],
       lately: q.lifeRecent.all(conv.id, Date.now() - 2 * DAY).map((l) => l.summary),
@@ -482,6 +489,9 @@ queue.register('social.comment', async (job, { postId, characterId, replyTo, for
       bond: note ? { name: other.card.name, note } : null,
       needsBond: other && !note ? other.card.name : null,
       userName: uname,
+      user: promptProfile(post.owner_id),
+      people: [...new Set([author.id, ...comments.map((c) => c.character_id).filter(Boolean)])].filter((id) => id !== conv.id)
+        .map((id) => store.get(id)?.card).filter(Boolean).map((c) => ({ name: c.name, gender: c.gender })),
       tagged: post.tags.map((id) => store.get(id)?.card.name).filter(Boolean),
     }),
   });
@@ -539,6 +549,9 @@ function meetFriend(c, chars) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
+/** Chi è uscito da una conversazione con un'emozione forte (dalla riflessione): la sua storia viene prima del turno. */
+const feeling = (chars) => chars.find((c) => c.state.storyIdea && Date.now() - c.state.storyIdea.at < 12 * 3600 * 1000);
+
 queue.onIdle(async (ownerId) => {
   if (asleep()) return;
   if (queue.find(ownerId, (j) => (j.kind.startsWith('post.') || j.kind === 'life.catchup') && j.status !== 'error').length) return;
@@ -557,8 +570,10 @@ queue.onIdle(async (ownerId) => {
     if (idea) q.useIdea.run(idea.id);
     const met = idea?.met_id && canMeet(ownerId) ? chars.find((x) => x.id === idea.met_id) : null;
     createPost(c, 'post', { hint: idea?.post_idea || '', withId: (met || meetFriend(c, chars))?.id });
-  } else if (n.stories < config.drip.storiesPerDay && (c = due('story', config.drip.storyEveryHours))) {
-    createPost(c, 'story');
+  } else if (n.stories < config.drip.storiesPerDay && (c = feeling(chars) || due('story', config.drip.storyEveryHours))) {
+    const hint = c.state.storyIdea?.text || '';
+    if (c.state.storyIdea) { delete c.state.storyIdea; store.save(c, { touch: false }); }
+    createPost(c, 'story', { hint });
   }
 });
 
@@ -755,10 +770,23 @@ const ago = (ts) => {
 
 export function chatContext(conv) {
   const life = q.lifeRecent.all(conv.id, Date.now() - 2 * DAY)[0];
-  const lifeLine = life ? `What you did in the last ${Math.max(1, Math.round((life.to_ts - life.from_ts) / 3600000))} hours, while you two were not in touch: ${short(life.summary, 400)}` : '';
+  const known = bondsOf(conv.id).slice(0, 6);
+  const lifeLine = [life ? `What you did in the last ${Math.max(1, Math.round((life.to_ts - life.from_ts) / 3600000))} hours, while you two were not in touch: ${short(life.summary, 400)}` : '',
+    known.length ? `People you know (the user may know them too): ${known.map((b) => `${b.name} (${b.gender === 'uomo' ? 'man' : b.gender === 'altro' ? 'non-binary' : 'woman'}): ${short(b.note, 120)}`).join('; ')}` : ''].filter(Boolean).join('\n');
+  const seen = [];
+  // Cosa fa l'utente sui profili degli altri: il personaggio lo vede, come su Instagram (anche se non ha ancora un profilo suo)
+  const since = Date.now() - 3 * DAY, nm = (id) => store.get(id)?.card.name;
+  const liked = q.userLikesElsewhere.all(conv.ownerId, conv.id, since).filter((r) => nm(r.character_id));
+  const commented = q.userCommentsElsewhere.all(conv.ownerId, conv.id, since).filter((r) => nm(r.character_id));
+  if (liked.length || commented.length) {
+    seen.push(`You saw the user being active on other people's profiles: ${[
+      ...liked.map((r) => `liked ${r.n} ${r.n === 1 ? 'post' : 'posts'} of ${nm(r.character_id)}`),
+      ...commented.map((r) => `commented "${short(r.content, 80)}" under ${nm(r.character_id)}'s post`),
+    ].join('; ')}. React only if it fits your personality and your relationship (indifference, curiosity, teasing, a bit of jealousy if you care and feel neglected); never make a scene out of nothing.`);
+  }
   const prof = profile(conv.id);
-  if (!prof) return lifeLine;
-  const lines = [lifeLine, `Your social account: @${prof.username}; the user follows it.`].filter(Boolean);
+  if (!prof) return [lifeLine, ...seen].filter(Boolean).join('\n');
+  const lines = [lifeLine, `Your social account: @${prof.username}; the user follows it.`, ...seen].filter(Boolean);
   for (const r of q.tagged.all(conv.ownerId, `%"${conv.id}"%`).filter((p) => p.published_at > Date.now() - 4 * DAY).slice(0, 1)) {
     lines.push(`- ${store.get(r.character_id)?.card.name || 'A friend'} posted a photo of the two of you together ${ago(r.published_at)}: "${short(r.caption, 140)}"`);
   }

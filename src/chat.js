@@ -7,6 +7,7 @@ import * as memory from './memory.js';
 import { gpu } from './gpu.js';
 import { emit, emitMedia, enqueue, describeImage, mediaUrl, cancel } from './jobs.js';
 import { workflows, getWorkflow, dimensions, dimensionsForRatio, frameCount, randomSeed, ASPECTS } from './workflows.js';
+import { promptProfile } from './auth.js';
 import { systemPrompt, nowBlock, tools, promptEngineerSystem, characterMediaRequest, cleanPrompt, sceneCheckPrompt } from './prompts.js';
 import { updateScene } from './relationship.js';
 import * as queue from './queue.js';
@@ -246,8 +247,25 @@ export function initiate(conv, { model } = {}) {
   return startTurn(conv, { model, initiative: true });
 }
 
+/**
+ * Dopo ore di silenzio la scena non è più quella di ieri: niente più "insieme" o momento intimo, vestiti da rifare.
+ * Resta insieme solo se l'utente riprende la scena di persona (scrive azioni tra asterischi).
+ */
+const SCENE_STALE_MS = 6 * 3600 * 1000;
+function settleScene(conv, initiative) {
+  const last = conv.messages.at(-1);
+  const userMsg = !initiative && last?.role === 'user' ? last : null;
+  const prev = userMsg ? conv.messages.at(-2) : last;
+  if (!prev?.createdAt || Date.now() - prev.createdAt < SCENE_STALE_MS) return;
+  const s = conv.state.scene;
+  const stay = s.presence === 'together' && userMsg && ACTION.test(userMsg.content || '');
+  conv.state.scene = { ...s, outfit: '', activity: '', intimacy: 'none',
+    ...(s.presence === 'together' && !stay ? { presence: 'apart', place: '' } : {}), since: Date.now() };
+}
+
 function startTurn(conv, { tool, model, initiative = false }) {
   model = model || config.ollama.model;
+  settleScene(conv, initiative);
   const msg = { id: store.newId(), role: 'assistant', content: '', media: [], steps: [], model, status: 'pending', createdAt: Date.now(),
     sceneBefore: structuredClone(conv.state.scene), presence: conv.state.scene.presence, ...(initiative ? { initiative: true } : {}) };
   conv.messages.push(msg);
@@ -288,9 +306,9 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
 
       const { msgs, trimmed } = history(conv, idx);
       const prevAt = initiative ? conv.messages[idx - 1]?.createdAt : conv.messages.slice(0, Math.max(0, idx - 1)).findLast((m) => m.status !== 'pending')?.createdAt;
-      const memories = memory.forPrompt(conv.id);
-      const block = nowBlock({ card: conv.card, state: conv.state, memories, lastGapMs: prevAt ? Date.now() - prevAt : null, trimmed, initiative, social: social.chatContext(conv) });
-      const convo = [{ role: 'system', content: systemPrompt(conv.card) }, ...msgs.map(({ role, content }) => ({ role, content }))];
+      const memories = memory.forPrompt(conv.id, 14, userMsg?.content);
+      const block = nowBlock({ card: conv.card, state: conv.state, memories, lastGapMs: prevAt ? Date.now() - prevAt : null, trimmed, initiative, social: social.chatContext(conv), user: promptProfile(conv.ownerId) });
+      const convo = [{ role: 'system', content: systemPrompt(conv.card, { user: promptProfile(conv.ownerId) }) }, ...msgs.map(({ role, content }) => ({ role, content }))];
       if (initiative || convo.at(-1).role !== 'user') convo.push({ role: 'user', content: block });
       else convo.at(-1).content = `${block}\n\n${convo.at(-1).content}${FORCE_NOTE[tool] || ''}`;
       // Le immagini dell'utente vanno al modello solo se le vede davvero
