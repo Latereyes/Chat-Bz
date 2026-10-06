@@ -131,7 +131,8 @@ app.get('/api/events', (req, res) => {
 });
 
 // ---- Personaggi ----
-app.get('/api/characters', (req, res) => res.json(store.list(req.user.id).map((c) => publicCharacter(c, mediaUrl))));
+app.get('/api/characters', (req, res) => res.json(store.list(req.user.id).map((c) => publicCharacter(c, mediaUrl))
+  .sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0) || (b.updatedAt || 0) - (a.updatedAt || 0))));
 
 app.post('/api/characters/draft', wrap(async (req, res) => {
   const { idea, current, model } = req.body || {};

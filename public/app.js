@@ -147,13 +147,17 @@ const timeLabel = (ts) => {
 };
 const sceneLabel = (s) => (s ? `${s.presence === 'together' ? 'Insieme' : 'A distanza'}${s.place ? ` · ${s.place}` : ''}` : '');
 
+// Nella lista dei messaggi compaiono solo le chat iniziate dall'utente (oltre al saluto), dalla più recente.
+// Le altre restano raggiungibili da Personaggi e dal profilo; la chat aperta resta visibile finché ci sei dentro.
+const sortedConvs = () => [...state.convs].sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
 function renderConvList() {
-  el.convList.innerHTML = state.convs.map((c) => `
+  const shown = sortedConvs().filter((c) => c.started || state.conv?.id === c.id);
+  el.convList.innerHTML = shown.map((c) => `
     <div class="conv char-row ${state.conv?.id === c.id ? 'active' : ''}" data-id="${c.id}">
       ${avatarHtml(c)}
       <div class="char-meta"><div class="char-top"><b>${esc(c.name)}</b><small>${timeLabel(c.updatedAt)}</small></div>
       <span class="conv-title">${c.previewFromUser ? 'Tu: ' : ''}${esc(c.preview || sceneLabel(c.scene))}</span></div>
-    </div>`).join('') || '<div class="conv-group">Nessun personaggio</div>';
+    </div>`).join('') || `<div class="conv-group">${state.convs.length ? 'Nessuna chat iniziata: scegli un personaggio da Personaggi' : 'Nessun personaggio'}</div>`;
 }
 
 el.convList.addEventListener('click', (e) => {
@@ -704,6 +708,8 @@ async function sendMessage(text, tool) {
     for (const m of [out.userMessage, out.message]) if (!findMsg(m.id)) renderMessage(upsertMsg(m));
     refreshTools();
     scrollToBottom(true);
+    const mine = state.convs.find((c) => c.id === state.conv?.id);
+    if (mine) { mine.started = true; mine.lastMessageAt = Date.now(); renderConvList(); }
   } catch (err) {
     if (state.conv) state.conv.running = false;
     el.input.value = text; autosize();

@@ -139,6 +139,9 @@ export function publicCharacter(c, mediaUrl) {
     avatarUrl: mediaUrl(c.avatar),
     scene: c.state.scene,
     updatedAt: c.updatedAt,
+    // la chat conta come iniziata solo se l'utente ha scritto almeno un messaggio (il saluto del personaggio non basta)
+    started: c.messages.some((m) => m.role === 'user'),
+    lastMessageAt: last?.createdAt || 0,
     preview: last ? (last.content ? last.content.replace(/\s+/g, ' ').slice(0, 90) : last.media?.[0]?.type === 'video' ? '🎬 Video' : '📷 Foto') : '',
     previewFromUser: last?.role === 'user',
   };
