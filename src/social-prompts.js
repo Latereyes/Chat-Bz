@@ -49,7 +49,7 @@ const worldText = (world) => (world?.home ? `Their recurring world (reuse natura
  * together: l'amico con cui si sono visti (foto insieme, raro) → { name, username, gender, note } (note vuota = da decidere).
  * lately: cosa hanno fatto di recente mentre il server era spento (scritto alla riaccensione).
  */
-export function composePrompt({ card, state, profile, kind, recent, bonds, hint, memories, together, lately }) {
+export function composePrompt({ card, state, profile, kind, recent, bonds, hint, memories, together, lately, evolution }) {
   const story = kind === 'story';
   const photoShape = together
     ? '{"description": "ENGLISH, 30-70 words", "who": "both|me|friend|none"}'
@@ -72,6 +72,8 @@ Rules:
     worldText(profile?.world),
     `Right now: ${momentText()}.${state?.scene?.mood ? ` Mood: ${state.scene.mood}.` : ''}`,
     state?.summary ? `What has been happening in their private life lately (don't reveal private details, at most hint at them): ${short(state.summary, 600)}` : '',
+    state?.relNote ? `How things are going with the person they text in private (never name them or reveal details, but if it is a strong feeling, like a fight, being hurt, or being happy and in love, it can colour the mood of the caption and the choice of photo): ${short(state.relNote, 300)}` : '',
+    evolution?.length ? `How they have changed lately: ${evolution.map((e) => short(e, 150)).join(' / ')}` : '',
     lately?.length ? `What they did recently: ${lately.map((l) => short(l, 300)).join(' / ')}` : '',
     memories?.length ? `On their mind: ${memories.map((m) => short(m, 120)).join(' / ')}` : '',
     together ? `You just spent time with ${together.name} (${together.gender === 'uomo' ? 'a man' : together.gender === 'altro' ? 'a person' : 'a woman'}, @${together.username}). ${together.note ? `How you know each other: ${together.note}` : 'You have never posted together before: decide how you know each other.'}${together.about ? ` About ${together.name}: ${short(together.about, 300)}` : ''}` : '',

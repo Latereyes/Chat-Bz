@@ -11,6 +11,7 @@ import { getWorkflow, dimensions, dimensionsForRatio, randomSeed } from './workf
 import { promptEngineerSystem, cleanPrompt } from './prompts.js';
 import { profilePrompt, composePrompt, socialPhotoRequest, commentPrompt, catchupPrompt } from './social-prompts.js';
 import * as notify from './notify.js';
+import * as memory from './memory.js';
 
 /**
  * Social dei personaggi: profilo, caroselli curati, storie, mi piace e commenti.
@@ -292,6 +293,7 @@ async function plan({ postId, hint }) {
     model, format: 'json', timeout: 150000, options: { temperature: 0.95, num_predict: 1000 },
     messages: composePrompt({
       card: conv.card, state: conv.state, profile: prof, kind: post.kind, hint,
+      evolution: memory.forPrompt(conv.id).filter((m) => m.kind === 'evolution').map((m) => m.content),
       recent: q.recentCaptions.all(conv.id).map((r) => r.caption),
       bonds: bondsOf(conv.id), memories: conv.state.hooks || [],
       lately: q.lifeRecent.all(conv.id, Date.now() - 2 * DAY).map((l) => l.summary),
@@ -542,6 +544,9 @@ function meetFriend(c, chars) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
+/** Chi è uscito da una conversazione con un'emozione forte (dalla riflessione): la sua storia viene prima del turno. */
+const feeling = (chars) => chars.find((c) => c.state.storyIdea && Date.now() - c.state.storyIdea.at < 12 * 3600 * 1000);
+
 queue.onIdle(async (ownerId) => {
   if (asleep()) return;
   if (queue.find(ownerId, (j) => (j.kind.startsWith('post.') || j.kind === 'life.catchup') && j.status !== 'error').length) return;
@@ -560,8 +565,10 @@ queue.onIdle(async (ownerId) => {
     if (idea) q.useIdea.run(idea.id);
     const met = idea?.met_id && canMeet(ownerId) ? chars.find((x) => x.id === idea.met_id) : null;
     createPost(c, 'post', { hint: idea?.post_idea || '', withId: (met || meetFriend(c, chars))?.id });
-  } else if (n.stories < config.drip.storiesPerDay && (c = due('story', config.drip.storyEveryHours))) {
-    createPost(c, 'story');
+  } else if (n.stories < config.drip.storiesPerDay && (c = feeling(chars) || due('story', config.drip.storyEveryHours))) {
+    const hint = c.state.storyIdea?.text || '';
+    if (c.state.storyIdea) { delete c.state.storyIdea; store.save(c, { touch: false }); }
+    createPost(c, 'story', { hint });
   }
 });
 

@@ -235,7 +235,8 @@ export function reflectionPrompt({ card, state, transcript, memories, user }) {
  "new_memories": [{"kind": "fact|moment|promise|joke", "content": "one sentence in Italian", "weight": 1-5}],
  "hooks": ["0-3 things you want to bring up or ask next time, in Italian"],
  "evolution": "only if something really changed in you because of this relationship, one sentence in Italian; otherwise empty string",
- "summary": "the story so far, updated: 4-8 sentences in Italian, the most important things that happened between you"
+ "summary": "the story so far, updated: 4-8 sentences in Italian, the most important things that happened between you",
+ "story_idea": "only if this conversation left you with a strong feeling (angry, hurt, jealous, happy, excited, in love, relieved after making up): one sentence in Italian, an idea for a social story that lets that feeling show the way a real person would (a cryptic phrase, a song, a sarcastic or radiant caption, a photo that matches the mood), without naming the user or revealing private details; otherwise empty string"
 }
 Rules: deltas are small and earned (0 when nothing happened). Tension rises with conflict or pressure and falls when things are resolved. Memories: only new and meaningful things (facts about the user, important moments, promises, inside jokes), never duplicates of what you already remember. Keep sexual details out of memories unless they matter emotionally.` },
     { role: 'user', content: `Your current relationship: ${DIMS.map((k) => `${k} ${state.rel[k]}`).join(', ')}.

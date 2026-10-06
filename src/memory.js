@@ -84,6 +84,8 @@ export async function reflect(conv, { model } = {}) {
   st.hooks = (Array.isArray(j.hooks) ? j.hooks : []).map((h) => String(h).slice(0, 200)).filter(Boolean).slice(0, 3);
   for (const m of Array.isArray(j.new_memories) ? j.new_memories.slice(0, 6) : []) add(conv.id, m?.kind, m?.content, m?.weight);
   if (j.evolution && String(j.evolution).trim()) add(conv.id, 'evolution', j.evolution, 4);
+  // Un'emozione forte può finire in una storia sul social (la sceglie il social alla prossima occasione)
+  if (j.story_idea && String(j.story_idea).trim()) st.storyIdea = { text: String(j.story_idea).trim().slice(0, 300), at: Date.now() };
   st.lastReflectedCount = count;
   st.lastReflectedAt = Date.now();
   store.save(conv, { touch: false });
