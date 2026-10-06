@@ -107,7 +107,7 @@ If there are several people, describe only the most prominent one. Do not descri
  * Bozza di una scheda a partire da una foto: l'aspetto viene dalla foto (descrizione del modello visivo,
  * e la foto stessa se Gemma vede le immagini), il resto lo inventa Gemma partendo dagli indizi.
  */
-export async function draftFromPhoto({ description, images, idea, model }) {
+export async function draftFromPhoto({ description, images, idea, model, figure, takenNames = [] }) {
   const system = `${CARD_SYSTEM}
 
 The character is built from a reference photo of them. The photo is the truth about their appearance:
@@ -116,9 +116,15 @@ The character is built from a reference photo of them. The photo is the truth ab
 - "style": "krea" if the reference is a real photo (the same face is then kept in their photos), "zimage" only for an illustration or a very stylised image.
 - Everything else (name, personality, life, speech…) you invent, consistent with what the photo suggests (style, setting, expression), and with the user's idea if given.
 - If the person in the photo looks under 18, reply ONLY with {"minor": true}.`;
+  const extra = [
+    // fisico regolato a mano nello studio: la foto può non mostrarlo bene, vince quello scelto
+    figure ? `The user set their figure by hand: ${figure}. Write exactly this figure in "look" and "body", even if the photo shows it less clearly.` : null,
+    `Name: pick a fresh first name that fits their background, not the most obvious one${takenNames.length ? `, and none of these (already used): ${takenNames.slice(0, 40).join(', ')}` : ''}.`,
+  ].filter(Boolean).join('\n');
   const user = [
     description ? `Description of the person in the photo (from a vision model):\n${description}` : 'The photo is attached.',
     `Idea from the user: ${idea || '(none: invent a believable, original person who fits the photo)'}`,
+    extra,
   ].join('\n\n');
   return askCard({ system, user, images, model });
 }
