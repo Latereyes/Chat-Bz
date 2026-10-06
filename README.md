@@ -56,6 +56,16 @@ Il prompt è diviso in un **blocco stabile** (regole + scheda, nel messaggio di 
 - Il testo arriva subito, la foto dopo, con l'anteprima live. La prima foto diventa l'immagine del profilo; puoi cambiarla dal pulsante **Profilo** sotto ogni foto.
 - Le foto che mandi tu vengono descritte da Qwen3-VL (workflow `qwen3vl-vision`), così Gemma sa cosa c'è.
 
+### Studio immagini
+L'"Image Assistant" di ChatBz 1, non più come personaggio ma come sezione a parte (**Studio immagini** nella barra laterale), con una sua cronologia per utente.
+- Descrivi cosa vuoi vedere, anche in due parole: Gemma scrive il prompt con la guida del motore scelto, poi ComfyUI genera. Contenuto esplicito permesso quando la richiesta lo chiede.
+- Opzioni sopra il campo di testo: **motore** (i workflow testo → immagine e 🎬 testo → video disponibili, oppure automatico), **formato**, **chi** (uno dei tuoi personaggi: il suo aspetto va nel prompt e le sue LoRA del corpo nella foto), **prompt diretto** (il testo va al modello così com'è, senza Gemma), **anche video** (dopo la foto, MiniMax H3 la anima), **seed** fisso.
+- Allegando una foto la si modifica con Qwen-Image-Edit, oppure la si anima se il motore scelto è un video. Sotto ogni immagine: **Anima** (video che parte da quella foto), **Rigenera**, **Prompt** (modifica e rigenera).
+- Le immagini dello studio finiscono anche in Galleria; il cestino in alto svuota lo studio.
+
+### Importare un personaggio
+`node tools/importa-personaggio.js tools/personaggi/giorgia.json` aggiunge un personaggio da un file JSON (scheda, avatar, scena iniziale), anche con il server acceso. `giorgia.json` è Giorgia di ChatBz 1 riscritta per la scheda nuova (non copiata: carattere, vita, modo di parlare, aspetto e inizio sono rifatti).
+
 ## Struttura
 
 ```
@@ -70,6 +80,7 @@ src/
   chat.js            turno di chat: contesto → Gemma → scena/foto/video → coda
   memory.js          ricordi e riflessione a riposo
   life.js            pianificatore: riflessione quando la GPU è libera, iniziativa
+  studio.js          Studio immagini (l'assistente immagini di ChatBz 1)
   gpu.js comfy.js ollama.js jobs.js workflows.js auth.js   (da LocalAI)
 public/              interfaccia (HTML/CSS/JS, senza build)
 workflows/           workflow ComfyUI (API) + manifest + guide

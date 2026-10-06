@@ -49,6 +49,16 @@ db.exec(`
     created_at   INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_memories_char ON memories(character_id, kind, created_at);
+
+  -- Studio immagini (l'assistente immagini di ChatBz 1): una cronologia per utente, fuori dai personaggi
+  CREATE TABLE IF NOT EXISTS studio_messages (
+    id           TEXT PRIMARY KEY,
+    owner_id     TEXT NOT NULL,
+    seq          INTEGER NOT NULL,
+    data         TEXT NOT NULL,           -- messaggio completo (JSON)
+    created_at   INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_studio_owner ON studio_messages(owner_id, seq);
 `);
 
 /** Esegue fn in una transazione. */

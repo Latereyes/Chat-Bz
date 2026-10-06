@@ -55,9 +55,11 @@ export function enqueue(conv, msg, media) {
       width: media.width, height: media.height, frames: media.frames,
       image, image2, image3, denoise: media.denoise,
     });
-    // LoRA del corpo del personaggio (solo nei grafi Krea Real e solo se installate su ComfyUI)
+    // LoRA del corpo del personaggio (solo nei grafi Krea Real e solo se installate su ComfyUI);
+    // nello Studio immagini quelle del personaggio scelto come soggetto, se c'è
     if (media.type === 'image') {
-      const loras = await installedLoras(bodyLoras(conv.card));
+      const who = conv.studio ? store.get(media.characterId || '')?.card : conv.card;
+      const loras = await installedLoras(bodyLoras(who));
       if (applyBodyLoras(graph, loras)) media.loras = loras.map(({ part, strength }) => ({ part, strength }));
     }
 
@@ -84,7 +86,7 @@ export function enqueue(conv, msg, media) {
     media.status = 'done';
     media.finishedAt = Date.now();
     // La prima foto diventa l'immagine del profilo, se il personaggio non ne ha ancora una
-    if (media.type === 'image' && !conv.avatar) {
+    if (media.type === 'image' && !conv.avatar && !conv.studio) {
       conv.avatar = name;
       emit(conv.id, { type: 'character', avatarUrl: mediaUrl(name) });
     }
@@ -108,7 +110,7 @@ export function cancel(mediaId) {
 
 /** All'avvio: i lavori rimasti a metà (server riavviato) vengono marcati come interrotti. */
 export function recoverInterrupted() {
-  for (const c of store.list()) {
+  for (const c of [...store.list(), ...store.listStudios()]) {
     let dirty = false;
     for (const m of c.messages) {
       if (m.status === 'streaming' || m.status === 'pending') { m.status = 'stopped'; dirty = true; }

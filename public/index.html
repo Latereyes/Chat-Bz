@@ -18,6 +18,7 @@
       </div>
       <nav class="sidebar-nav">
         <button class="nav-item" id="btn-home"><span data-icon="users"></span>Personaggi</button>
+        <button class="nav-item" id="btn-studio"><span data-icon="spark"></span>Studio immagini</button>
         <button class="nav-item" id="btn-gallery"><span data-icon="gallery"></span>Galleria</button>
       </nav>
       <div class="conv-list" id="conv-list"></div>
@@ -61,6 +62,7 @@
           </div>
         </div>
         <div class="spacer"></div>
+        <button class="icon-btn" id="btn-studio-clear" title="Svuota lo studio" data-icon="trash" hidden></button>
         <button class="gpu-pill" id="gpu-pill" title="Stato della GPU"><i></i><span id="gpu-label">GPU</span></button>
         <div class="menu menu-right" id="gpu-menu" hidden></div>
       </header>
@@ -81,6 +83,14 @@
         <div class="composer-wrap">
           <form class="composer" id="composer">
             <div class="attachments" id="attachments" hidden></div>
+            <div class="studio-opts" id="studio-opts" hidden>
+              <label title="Modello che genera l'immagine"><span>Motore</span><select id="so-engine"></select></label>
+              <label title="Formato dell'immagine"><span>Formato</span><select id="so-aspect"></select></label>
+              <label title="Usa l'aspetto di un tuo personaggio"><span>Chi</span><select id="so-char"></select></label>
+              <label class="so-check" title="Usa il testo così com'è, senza farlo riscrivere a Gemma"><input type="checkbox" id="so-raw"><span>Prompt diretto</span></label>
+              <label class="so-check" title="Dopo la foto genera anche un breve video che parte da lì"><input type="checkbox" id="so-video"><span>Anche video</span></label>
+              <label title="Seed fisso (vuoto = casuale)"><span>Seed</span><input id="so-seed" inputmode="numeric" placeholder="seed casuale" size="10"></label>
+            </div>
             <textarea id="input" rows="1" placeholder="Scrivi un messaggio…" autocomplete="off"></textarea>
             <div class="composer-bar">
               <div class="chips">

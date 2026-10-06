@@ -33,6 +33,11 @@ const q = {
     ON CONFLICT(id) DO UPDATE SET seq = excluded.seq, data = excluded.data`),
   deleteMsg: db.prepare('DELETE FROM messages WHERE id = ?'),
   deleteChar: db.prepare('DELETE FROM characters WHERE id = ?'),
+  studioMessages: db.prepare('SELECT data, seq FROM studio_messages WHERE owner_id = ? ORDER BY seq'),
+  studioOwners: db.prepare('SELECT DISTINCT owner_id FROM studio_messages'),
+  upsertStudioMsg: db.prepare(`INSERT INTO studio_messages (id, owner_id, seq, data, created_at) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET seq = excluded.seq, data = excluded.data`),
+  deleteStudioMsg: db.prepare('DELETE FROM studio_messages WHERE id = ?'),
 };
 
 function load(id) {
@@ -94,9 +99,13 @@ export function save(c, { touch = true } = {}) {
   if (touch) c.updatedAt = Date.now();
   try {
     tx(() => {
-      q.updateChar.run(JSON.stringify(c.card), c.avatar, c.updatedAt, c.id);
-      const st = JSON.stringify(c.state);
-      if (writtenState.get(c.id) !== st) { q.upsertState.run(c.id, st, Date.now()); writtenState.set(c.id, st); }
+      if (!c.studio) {
+        q.updateChar.run(JSON.stringify(c.card), c.avatar, c.updatedAt, c.id);
+        const st = JSON.stringify(c.state);
+        if (writtenState.get(c.id) !== st) { q.upsertState.run(c.id, st, Date.now()); writtenState.set(c.id, st); }
+      }
+      const upsert = c.studio ? q.upsertStudioMsg : q.upsertMsg;
+      const owner = c.studio ? c.ownerId : c.id;
       let last = -1;
       for (const m of c.messages) {
         let moved = false;
@@ -104,7 +113,7 @@ export function save(c, { touch = true } = {}) {
         last = seqs.get(m.id);
         const json = JSON.stringify(m);
         if (!moved && written.get(m.id) === json) continue;
-        q.upsertMsg.run(m.id, c.id, last, json, m.createdAt || Date.now());
+        upsert.run(m.id, owner, last, json, m.createdAt || Date.now());
         written.set(m.id, json);
       }
     });
@@ -119,7 +128,8 @@ export async function removeMessages(c, ids) {
   const set = new Set(ids);
   const gone = c.messages.filter((m) => set.has(m.id));
   c.messages = c.messages.filter((m) => !set.has(m.id));
-  tx(() => { for (const id of set) { q.deleteMsg.run(id); written.delete(id); seqs.delete(id); } });
+  const del = c.studio ? q.deleteStudioMsg : q.deleteMsg;
+  tx(() => { for (const id of set) { del.run(id); written.delete(id); seqs.delete(id); } });
   await removeFiles(gone);
   save(c);
 }
@@ -142,10 +152,34 @@ export async function remove(id) {
   if (c.avatar) await fs.rm(path.join(config.paths.media, c.avatar), { force: true });
 }
 
+/**
+ * Studio immagini di un utente: stessa forma di una conversazione (così coda GPU, eventi e salvataggio
+ * sono quelli dei personaggi), ma senza scheda, rapporto né memorie.
+ */
+const studios = new Map();        // ownerId -> conv dello studio
+export const studioId = (ownerId) => `studio-${ownerId}`;
+
+export function getStudio(ownerId) {
+  if (studios.has(ownerId)) return studios.get(ownerId);
+  const c = { id: studioId(ownerId), ownerId, studio: true, card: { name: 'Studio immagini' }, avatar: null, state: {}, messages: [] };
+  for (const r of q.studioMessages.all(ownerId)) {
+    const m = JSON.parse(r.data);
+    c.messages.push(m);
+    written.set(m.id, r.data);
+    seqs.set(m.id, r.seq);
+  }
+  c.updatedAt = c.messages.at(-1)?.createdAt || 0;
+  studios.set(ownerId, c);
+  return c;
+}
+
+/** Studi con almeno un messaggio (per il recupero dei lavori interrotti all'avvio). */
+export const listStudios = () => q.studioOwners.all().map((r) => getStudio(r.owner_id));
+
 /** Tutti i media generati per un utente, dal più recente. */
 export function allMedia(ownerId) {
   const out = [];
-  for (const c of list(ownerId)) {
+  for (const c of ownerId ? [...list(ownerId), getStudio(ownerId)] : list()) {
     for (const m of c.messages) for (const md of m.media || []) {
       if (md.status === 'done' && md.file) out.push({ ...md, conversationId: c.id, conversationTitle: c.card.name });
     }
