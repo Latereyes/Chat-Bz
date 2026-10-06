@@ -1,13 +1,14 @@
 import * as ollama from './ollama.js';
 import config from './config.js';
-import { BODY, normalizeBody } from './body.js';
+import { BODY, normalizeBody, normalizeManual } from './body.js';
 
 /**
  * Scheda del personaggio, a strati:
  *  - nucleo:   personality (carattere, valori, ferite, desideri), speech (come parla e scrive), boundaries
  *  - vita:     life (lavoro, routine, persone, progetti in corso)
  *  - aspetto:  look (descrizione visiva in inglese, usata per foto e video), style (motore immagini),
- *              body (taglie ricavate in automatico dall'aspetto → LoRA del corpo, vedi body.js)
+ *              body (taglie ricavate in automatico dall'aspetto → LoRA del corpo, vedi body.js),
+ *              bodyManual (forze regolate a mano nello studio: se ci sono vincono sulle taglie)
  *  - rapporto: relation (punto di partenza), pace (quanto in fretta si apre), intimacy (tetto deciso dall'utente)
  */
 export const RELATIONS = {
@@ -37,6 +38,7 @@ export function normalizeCard(c = {}) {
     look: str(c.look, 1500),
     style: pick(c.style, STYLES, 'krea'),
     body: normalizeBody(c.body),
+    bodyManual: normalizeManual(c.bodyManual),          // forze delle LoRA del corpo scelte a mano (studio)
     relation: pick(c.relation, RELATIONS, 'sconosciuti'),
     pace: pick(c.pace, PACES, 'media'),
     intimacy: pick(c.intimacy, INTIMACY, 'confidenza'),

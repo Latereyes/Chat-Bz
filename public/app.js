@@ -733,17 +733,26 @@ function bodySummary(card) {
   const parts = Object.entries(card.body || {}).filter(([k]) => opts[k]).map(([k, s]) => `${opts[k].label.toLowerCase()} ${opts[k].sizes[s] || s}`);
   return parts.length ? `Fisico nelle foto (automatico, dall'aspetto): ${parts.join(', ')}.` : '';
 }
+// Forze regolate a mano nello studio (personaggio creato da una sua foto): vincono sulle taglie automatiche
+let cardManual = null;
 function showBody() {
   const p = $('#cm-body');
   const same = cardBody && cardBody.look === cf.look.value;
+  if (cardManual && cf.gender.value !== 'uomo') {
+    p.innerHTML = `Fisico nelle foto regolato a mano: ${esc(bodyTag(cardManual))}. <button type="button" class="link" id="cm-body-auto">Torna automatico</button>`;
+    p.hidden = false;
+    return;
+  }
   p.textContent = cf.gender.value === 'uomo' ? '' : same ? bodySummary(cardBody) : cf.look.value.trim() ? "Il fisico nelle foto verrà ricavato dall'aspetto al salvataggio." : '';
   p.hidden = !p.textContent;
 }
+$('#cm-body').addEventListener('click', (e) => { if (e.target.closest('#cm-body-auto')) { cardManual = null; showBody(); } });
 function fillCard(card) {
   for (const k of CARD_FIELDS) if (cf[k] && card[k] !== undefined) cf[k].value = card[k];
   cf.initiative.checked = card.initiative !== false;
   cf.social.checked = card.social !== false;
   cardBody = card.body ? { look: card.look, body: card.body } : null;
+  cardManual = card.bodyManual || null;
   showBody();
 }
 function readCard() {
@@ -753,6 +762,7 @@ function readCard() {
   out.initiative = cf.initiative.checked;
   out.social = cf.social.checked;
   if (cardBody && cardBody.look === out.look) out.body = cardBody.body;
+  out.bodyManual = cardManual;
   return out;
 }
 cf.look.addEventListener('input', showBody);
@@ -786,7 +796,7 @@ async function draftFromPhoto(photo) {
   label.textContent = 'Guardo la foto…';
   showErr(cf);
   try {
-    const r = await api('/api/characters/draft-from-photo', { body: { file: photo.file, idea: cf.idea.value, model: currentModel() } });
+    const r = await api('/api/characters/draft-from-photo', { body: { file: photo.file, idea: cf.idea.value, model: currentModel(), bodyManual: photo.bodyManual || null } });
     if (cmPhoto === photo && !cm.hidden) { fillCard(r.card); cf.idea.value = ''; }
   } catch (err) { showErr(cf, err.message); }
   btns.forEach((b) => { b.disabled = false; });
@@ -1024,7 +1034,8 @@ async function mediaAction(btn) {
     return api(`${base}/messages/${msg.id}/media/${md.id}/animate`, { body: { text, model: currentModel() } }).catch((e) => alert(e.message));
   }
   if (act === 'zoom') return openLightbox(md);
-  if (act === 'newchar') return openCharModal(null, { photo: { file: md.file, url: md.url } });
+  // con il fisico a mano (anche tutto a 0) il personaggio eredita quelle forze
+  if (act === 'newchar') return openCharModal(null, { photo: { file: md.file, url: md.url, bodyManual: md.manualBody ? Object.fromEntries(md.manualBody.map((l) => [l.part, l.strength])) : null } });
   if (act === 'avatar') {
     return api(`/api/characters/${cid}/avatar`, { body: { file: md.file } })
       .then((r) => setAvatar(cid, r.avatarUrl)).catch((e) => alert(e.message));

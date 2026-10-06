@@ -19,7 +19,7 @@ import * as social from './src/social.js';
 import * as queue from './src/queue.js';
 import * as notify from './src/notify.js';
 import { publicCharacter, draftFromIdea, draftFromPhoto, PHOTO_QUESTION, normalizeCard, RELATIONS, PACES, INTIMACY, STYLES } from './src/characters.js';
-import { analyzeBody, BODY, bodyRange, installedLoras } from './src/body.js';
+import { analyzeBody, BODY, bodyRange, installedLoras, normalizeManual } from './src/body.js';
 import { updateScene, initialState, DIM_LABEL, intimacyOpen, closeness } from './src/relationship.js';
 
 const app = express();
@@ -152,7 +152,7 @@ async function ownImage(req, file) {
  * le immagini; se il modello scelto le vede, riceve anche la foto), poi Gemma scrive la scheda attorno a lei.
  */
 app.post('/api/characters/draft-from-photo', wrap(async (req, res) => {
-  const { file: raw, idea, model } = req.body || {};
+  const { file: raw, idea, model, bodyManual } = req.body || {};
   const file = await ownImage(req, raw);
   const vision = (await ollama.capabilities(model || config.ollama.model).catch(() => [])).includes('vision');
   let description = '';
@@ -163,6 +163,8 @@ app.post('/api/characters/draft-from-photo', wrap(async (req, res) => {
   }
   const images = vision ? [(await fs.readFile(path.join(config.paths.media, file))).toString('base64')] : null;
   const card = await gpu.run('ollama', 'Scrivo la scheda dalla foto', () => draftFromPhoto({ description, images, idea: String(idea || '').slice(0, 2000), model }));
+  // foto dello studio fatta col fisico a mano: il personaggio tiene quelle forze
+  if (bodyManual) card.bodyManual = normalizeManual(bodyManual);
   res.json({ card, description, file, url: mediaUrl(file) });
 }));
 
