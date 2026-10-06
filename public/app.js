@@ -607,6 +607,15 @@ const MAX_ATT = 4, MAX_SIDE = 1600;
 const attBox = $('#attachments');
 const fileInput = $('#file-input'), cameraInput = $('#camera-input');
 
+/** Ridimensiona e carica una foto: { file, url, width, height }. */
+async function uploadImage(f) {
+  const { blob, width, height } = await prepareImage(f);
+  const res = await fetch(`/api/uploads?w=${width}&h=${height}`, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Caricamento non riuscito');
+  return data;
+}
+
 async function addFiles(files) {
   const list = [...files].filter((f) => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));
   for (const f of list) {
@@ -615,11 +624,7 @@ async function addFiles(files) {
     state.attachments.push(att);
     renderAttachments();
     try {
-      const { blob, width, height } = await prepareImage(f);
-      const res = await fetch(`/api/uploads?w=${width}&h=${height}`, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Caricamento non riuscito');
-      Object.assign(att, data);
+      Object.assign(att, await uploadImage(f));
     } catch (err) {
       state.attachments = state.attachments.filter((a) => a !== att);
       alert(err.message);
@@ -760,8 +765,51 @@ function setTab(tab) {
 }
 $('#cm-tabs').onclick = (e) => { const t = e.target.closest('.tab'); if (t) setTab(t.dataset.tab); };
 
-function openCharModal(c) {
+// Foto da cui nasce un personaggio nuovo (caricata o dallo studio): dà l'aspetto e diventa il profilo
+let cmPhoto = null;
+function showPhoto() {
+  const img = $('#cm-photo-img');
+  img.hidden = !cmPhoto;
+  $('img', img).src = cmPhoto?.url || '';
+  $('#cm-photo-x').hidden = !cmPhoto;
+  $('#cm-photo-label').textContent = cmPhoto ? 'Riscrivi dalla foto' : 'Da una foto';
+  $('#cm-photo-hint').textContent = cmPhoto
+    ? "Sarà l'immagine del profilo e il volto di riferimento delle sue foto. Scrivi un'idea qui sopra e premi «Riscrivi dalla foto» per cambiare il resto."
+    : "Oppure parti da una foto: l'aspetto viene dalla foto, che diventa anche l'immagine del profilo. L'idea qui sopra, se c'è, guida il resto.";
+}
+async function draftFromPhoto(photo) {
+  cmPhoto = photo;
+  showPhoto();
+  const btns = [$('#cm-photo-btn'), $('#cm-draft')];
+  btns.forEach((b) => { b.disabled = true; });
+  const label = $('#cm-photo-label');
+  label.textContent = 'Guardo la foto…';
+  showErr(cf);
+  try {
+    const r = await api('/api/characters/draft-from-photo', { body: { file: photo.file, idea: cf.idea.value, model: currentModel() } });
+    if (cmPhoto === photo && !cm.hidden) { fillCard(r.card); cf.idea.value = ''; }
+  } catch (err) { showErr(cf, err.message); }
+  btns.forEach((b) => { b.disabled = false; });
+  showPhoto();
+}
+$('#cm-photo-btn').onclick = () => (cmPhoto ? draftFromPhoto(cmPhoto) : $('#cm-photo-input').click());
+$('#cm-photo-img').onclick = () => $('#cm-photo-input').click();
+$('#cm-photo-x').onclick = () => { cmPhoto = null; showPhoto(); };
+$('#cm-photo-input').onchange = async (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  const label = $('#cm-photo-label');
+  label.textContent = 'Carico la foto…';
+  try { await draftFromPhoto(await uploadImage(f)); }
+  catch (err) { showErr(cf, err.message); showPhoto(); }
+};
+
+function openCharModal(c, { photo } = {}) {
   cmChar = c;
+  cmPhoto = null;
+  showPhoto();
+  $('#cm-photo').hidden = !!c;
   fillOptions();
   cf.reset();
   showErr(cf);
@@ -774,6 +822,7 @@ function openCharModal(c) {
   cf.idea.placeholder = c ? 'Cosa vuoi cambiare? «più spigliata», «ha appena cambiato lavoro»…' : "Un'idea in una frase: «barista di Bologna, ironica, timida con chi non conosce»… oppure lascia vuoto per una sorpresa";
   setTab('card');
   cm.hidden = false;
+  if (photo && !c) draftFromPhoto(photo);
 }
 
 $('#cm-draft').onclick = async (e) => {
@@ -805,7 +854,7 @@ cf.addEventListener('submit', async (e) => {
       await loadConvs();
       if (state.conv?.id === c.id) { state.conv.name = c.name; state.conv.card = c.card; renderHead(); }
     } else {
-      const c = await api('/api/characters', { body: readCard() });
+      const c = await api('/api/characters', { body: { ...readCard(), avatarFile: cmPhoto?.file } });
       cm.hidden = true;
       await loadConvs();
       openConv(c.id);
@@ -936,6 +985,7 @@ function mediaActions(md) {
     <span class="grow"></span>
     ${md.status === 'done' && md.type === 'image' && !state.conv?.studio ? b('avatar', 'user', 'Profilo') : ''}
     ${md.status === 'done' && md.type === 'image' && state.conv?.studio ? b('animate', 'video', 'Anima') : ''}
+    ${md.status === 'done' && md.type === 'image' && state.conv?.studio ? b('newchar', 'user', 'Crea personaggio') : ''}
     ${md.status === 'done' && md.type === 'image' ? b('zoom', 'open', '') : ''}
   </div>`;
 }
@@ -974,6 +1024,7 @@ async function mediaAction(btn) {
     return api(`${base}/messages/${msg.id}/media/${md.id}/animate`, { body: { text, model: currentModel() } }).catch((e) => alert(e.message));
   }
   if (act === 'zoom') return openLightbox(md);
+  if (act === 'newchar') return openCharModal(null, { photo: { file: md.file, url: md.url } });
   if (act === 'avatar') {
     return api(`/api/characters/${cid}/avatar`, { body: { file: md.file } })
       .then((r) => setAvatar(cid, r.avatarUrl)).catch((e) => alert(e.message));

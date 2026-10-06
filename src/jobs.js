@@ -139,12 +139,12 @@ export function recoverInterrupted() {
  * Lettura di un'immagine con il modello visivo di ComfyUI (Qwen3-VL).
  * Va chiamata con la GPU già assegnata a ComfyUI (dentro gpu.run('comfy', ...)).
  */
-export async function describeImage(file, question) {
+export async function describeImage(file, question, { prompt: custom } = {}) {
   const w = getWorkflow(null, 'vision');
   if (!w) throw new Error('Nessun workflow di lettura immagini installato');
   const buf = await fs.readFile(path.join(config.paths.media, file));
   const image = await comfy.uploadImage(buf, `chatbz_${path.basename(file)}`);
-  const prompt = `Analizza questa immagine (una foto che una persona ha mandato in chat) per qualcuno che non può vederla. Descrivi in italiano, in modo oggettivo e completo: tipo di immagine (foto, screenshot, illustrazione, documento…), soggetti (aspetto, età apparente, abbigliamento, espressione, posa), oggetti, ambiente, colori, luce, stile, composizione e inquadratura. Trascrivi fedelmente tutto il testo visibile.${question ? ` Includi in particolare i dettagli utili per rispondere a questa richiesta dell'utente: «${question.slice(0, 500)}»` : ''}`;
+  const prompt = custom || `Analizza questa immagine (una foto che una persona ha mandato in chat) per qualcuno che non può vederla. Descrivi in italiano, in modo oggettivo e completo: tipo di immagine (foto, screenshot, illustrazione, documento…), soggetti (aspetto, età apparente, abbigliamento, espressione, posa), oggetti, ambiente, colori, luce, stile, composizione e inquadratura. Trascrivi fedelmente tutto il testo visibile.${question ? ` Includi in particolare i dettagli utili per rispondere a questa richiesta dell'utente: «${question.slice(0, 500)}»` : ''}`;
   const { texts } = await comfy.run(buildGraph(w, { image, prompt }));
   const text = (texts[0] || '').trim();
   if (!text) throw new Error('Il modello visivo non ha restituito testo');
