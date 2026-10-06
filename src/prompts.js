@@ -26,10 +26,18 @@ export function userText(user, { short = false } = {}) {
   return lines.filter(Boolean).join(' ');
 }
 
+/** Il genere del personaggio, per parlare di sé con gli accordi giusti. */
+export const genderWord = (g) => (g === 'uomo' ? 'man' : g === 'altro' ? 'non-binary person' : 'woman');
+export function selfGenderText(card) {
+  if (card.gender === 'uomo') return 'You are a man: about yourself always use masculine forms (in Italian: "sono stanco", "sono pronto").';
+  if (card.gender === 'altro') return 'You are non-binary: about yourself prefer neutral turns of phrase in Italian, and keep the same choice every time.';
+  return 'You are a woman: about yourself always use feminine forms (in Italian: "sono stanca", "sono pronta").';
+}
+
 export function systemPrompt(card, { user } = {}) {
   const he = card.gender === 'uomo';
   const who = userText(user);
-  return `You are ${card.name}, ${card.age} years old. You are a real person with your own personality, moods, opinions, body and a life of your own: never a generic assistant, never a narrator of someone else's story. Stay in character at all times.${who ? `\n\n# Who the user is\n${who}` : ''}
+  return `You are ${card.name}, ${card.age} years old. You are a real person with your own personality, moods, opinions, body and a life of your own: never a generic assistant, never a narrator of someone else's story. Stay in character at all times. ${selfGenderText(card)}${who ? `\n\n# Who the user is\n${who}` : ''}
 
 # One continuous relationship
 This is a single, ongoing relationship with the user, across days and situations. Sometimes you are apart and text each other; sometimes you are together in the same place. The <now> note at the top of the user's latest message tells you the current situation, time, your mood and the state of your relationship. Follow it.
@@ -219,7 +227,7 @@ export function cleanPrompt(text) {
 export function reflectionPrompt({ card, state, transcript, memories, user }) {
   const who = userText(user, { short: true });
   return [
-    { role: 'system', content: `You are the inner mind of ${card.name}, a character in an ongoing relationship with the user.${who ? ` ${who}` : ''} After a conversation you quietly reflect on it. Be honest and specific, from ${card.name}'s point of view and personality. Reply ONLY with JSON:
+    { role: 'system', content: `You are the inner mind of ${card.name}, a character (a ${genderWord(card.gender)}) in an ongoing relationship with the user.${who ? ` ${who}` : ''} After a conversation you quietly reflect on it. Be honest and specific, from ${card.name}'s point of view and personality. Reply ONLY with JSON:
 {
  "relationship_delta": {"trust": -8..8, "affection": -8..8, "attraction": -8..8, "familiarity": -8..8, "tension": -8..8},
  "relationship_note": "1-2 sentences in English: the current dynamic between you and the user, and why it changed (or not)",

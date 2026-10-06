@@ -135,7 +135,7 @@ function bondNote(x, y) { return q.bond.get(...pair(x, y))?.note || null; }
 function bondsOf(characterId) {
   return q.bondsOf.all(characterId, characterId).map((b) => {
     const other = store.get(b.a === characterId ? b.b : b.a);
-    return other ? { id: other.id, name: other.card.name, note: b.note, avatarUrl: mediaUrl(other.avatar) } : null;
+    return other ? { id: other.id, name: other.card.name, gender: other.card.gender, note: b.note, avatarUrl: mediaUrl(other.avatar) } : null;
   }).filter(Boolean);
 }
 
@@ -483,6 +483,8 @@ queue.register('social.comment', async (job, { postId, characterId, replyTo, for
       needsBond: other && !note ? other.card.name : null,
       userName: uname,
       user: promptProfile(post.owner_id),
+      people: [...new Set([author.id, ...comments.map((c) => c.character_id).filter(Boolean)])].filter((id) => id !== conv.id)
+        .map((id) => store.get(id)?.card).filter(Boolean).map((c) => ({ name: c.name, gender: c.gender })),
       tagged: post.tags.map((id) => store.get(id)?.card.name).filter(Boolean),
     }),
   });
