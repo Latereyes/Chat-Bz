@@ -32,6 +32,7 @@
           <button class="user-btn" id="user-btn"><span class="user-avatar" id="user-avatar"></span><span class="user-name" id="user-name"></span><span data-icon="chevron"></span></button>
           <div class="menu menu-up" id="user-menu" hidden>
             <button class="menu-item" data-user-act="model"><span data-icon="chip"></span><div>Modello di chat<small id="model-name">Gemma</small></div></button>
+            <button class="menu-item" data-user-act="profile"><span data-icon="user"></span><div>Il mio profilo<small>Come ti chiamano i personaggi</small></div></button>
             <button class="menu-item" data-user-act="password"><span data-icon="key"></span>Cambia password</button>
             <button class="menu-item admin-only" data-user-act="users"><span data-icon="users"></span>Gestione utenti</button>
             <div class="menu-sep"></div>
@@ -250,6 +251,28 @@
         <p class="auth-error" hidden></p>
         <button class="btn primary wide" type="submit">Salva password</button>
         <button class="btn wide ghost" type="button" id="pw-cancel">Annulla</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Profilo dell'utente: come i personaggi ti chiamano e ti si rivolgono -->
+  <div class="modal" id="profile-modal" hidden>
+    <div class="modal-card">
+      <div class="modal-head"><h2>Il mio profilo</h2><button class="icon-btn" data-close data-icon="close" title="Chiudi"></button></div>
+      <form id="profile-form">
+        <p class="hint">I personaggi usano queste informazioni in chat e sul social: così sanno come chiamarti e se rivolgersi a te al maschile o al femminile.</p>
+        <div class="grid2">
+          <label class="fld">Come vuoi essere chiamato/a<input name="name" maxlength="40" placeholder="es. Andrea"></label>
+          <label class="fld">Rivolgersi a me al<select name="gender">
+            <option value="">(non specificato)</option>
+            <option value="uomo">maschile (sono un uomo)</option>
+            <option value="donna">femminile (sono una donna)</option>
+            <option value="altro">neutro</option>
+          </select></label>
+        </div>
+        <label class="fld">Due righe su di te<small>Facoltativo: età, lavoro, città, interessi… quello che vuoi che sappiano.</small><textarea name="about" rows="3" maxlength="600"></textarea></label>
+        <p class="auth-error" hidden></p>
+        <div class="row-end"><span class="spacer"></span><button class="btn" type="button" data-close>Annulla</button><button class="btn primary" type="submit">Salva</button></div>
       </form>
     </div>
   </div>

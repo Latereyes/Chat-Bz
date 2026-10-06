@@ -5,7 +5,7 @@ import { db } from './db.js';
 import * as ollama from './ollama.js';
 import * as store from './store.js';
 import * as queue from './queue.js';
-import { listUsers } from './auth.js';
+import { promptProfile } from './auth.js';
 import { emit, mediaUrl, renderMedia } from './jobs.js';
 import { getWorkflow, dimensions, dimensionsForRatio, randomSeed } from './workflows.js';
 import { promptEngineerSystem, cleanPrompt } from './prompts.js';
@@ -145,7 +145,7 @@ const charInfo = (id) => {
   return { id, name: c.card.name, avatarUrl: mediaUrl(c.avatar), username: profile(id)?.username || null };
 };
 
-const userName = (ownerId) => listUsers().find((u) => u.id === ownerId)?.displayName || 'the user';
+const userName = (ownerId) => promptProfile(ownerId)?.name || 'the user';
 
 // ---------------------------------------------------------------------------
 // Post: lettura, salvataggio, eventi
@@ -482,6 +482,7 @@ queue.register('social.comment', async (job, { postId, characterId, replyTo, for
       bond: note ? { name: other.card.name, note } : null,
       needsBond: other && !note ? other.card.name : null,
       userName: uname,
+      user: promptProfile(post.owner_id),
       tagged: post.tags.map((id) => store.get(id)?.card.name).filter(Boolean),
     }),
   });

@@ -67,8 +67,36 @@ if (!users) {
 
 export const publicUser = (u) => u && ({
   id: u.id, username: u.username, displayName: u.displayName, role: u.role,
-  mustChangePassword: !!u.mustChangePassword, createdAt: u.createdAt,
+  mustChangePassword: !!u.mustChangePassword, createdAt: u.createdAt, profile: profileOf(u),
 });
+
+// ---- Profilo: come i personaggi chiamano l'utente e se gli si rivolgono al maschile o al femminile ----
+export const GENDERS = ['uomo', 'donna', 'altro'];
+function profileOf(u) {
+  const p = u?.profile || {};
+  return { name: p.name || '', gender: GENDERS.includes(p.gender) ? p.gender : '', about: p.about || '' };
+}
+
+/** Il profilo da dare ai prompt: il nome ricade sul nome visualizzato. */
+export function promptProfile(userId) {
+  const u = getUser(userId);
+  if (!u) return null;
+  const p = profileOf(u);
+  return { ...p, name: p.name || u.displayName || '' };
+}
+
+/** L'utente aggiorna il proprio profilo. */
+export function updateProfile(user, { name, gender, about } = {}) {
+  if (gender && !GENDERS.includes(gender)) throw httpError(400, 'Genere non valido');
+  const p = profileOf(user);
+  user.profile = {
+    name: name !== undefined ? String(name).trim().slice(0, 40) : p.name,
+    gender: gender !== undefined ? gender || '' : p.gender,
+    about: about !== undefined ? String(about).trim().slice(0, 600) : p.about,
+  };
+  saveUsers();
+  return publicUser(user);
+}
 
 export const listUsers = () => users.map(publicUser);
 export const getUser = (id) => users.find((u) => u.id === id);

@@ -7,6 +7,7 @@ import * as memory from './memory.js';
 import { gpu } from './gpu.js';
 import { emit, emitMedia, enqueue, describeImage, mediaUrl, cancel } from './jobs.js';
 import { workflows, getWorkflow, dimensions, dimensionsForRatio, frameCount, randomSeed, ASPECTS } from './workflows.js';
+import { promptProfile } from './auth.js';
 import { systemPrompt, nowBlock, tools, promptEngineerSystem, characterMediaRequest, cleanPrompt, sceneCheckPrompt } from './prompts.js';
 import { updateScene } from './relationship.js';
 import * as queue from './queue.js';
@@ -290,7 +291,7 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       const prevAt = initiative ? conv.messages[idx - 1]?.createdAt : conv.messages.slice(0, Math.max(0, idx - 1)).findLast((m) => m.status !== 'pending')?.createdAt;
       const memories = memory.forPrompt(conv.id);
       const block = nowBlock({ card: conv.card, state: conv.state, memories, lastGapMs: prevAt ? Date.now() - prevAt : null, trimmed, initiative, social: social.chatContext(conv) });
-      const convo = [{ role: 'system', content: systemPrompt(conv.card) }, ...msgs.map(({ role, content }) => ({ role, content }))];
+      const convo = [{ role: 'system', content: systemPrompt(conv.card, { user: promptProfile(conv.ownerId) }) }, ...msgs.map(({ role, content }) => ({ role, content }))];
       if (initiative || convo.at(-1).role !== 'user') convo.push({ role: 'user', content: block });
       else convo.at(-1).content = `${block}\n\n${convo.at(-1).content}${FORCE_NOTE[tool] || ''}`;
       // Le immagini dell'utente vanno al modello solo se le vede davvero

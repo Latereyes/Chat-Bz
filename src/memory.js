@@ -3,6 +3,7 @@ import * as ollama from './ollama.js';
 import * as store from './store.js';
 import config from './config.js';
 import { reflectionPrompt } from './prompts.js';
+import { promptProfile } from './auth.js';
 import { applyDelta } from './relationship.js';
 
 /**
@@ -70,7 +71,7 @@ export async function reflect(conv, { model } = {}) {
     format: 'json',
     timeout: 180000,
     options: { temperature: 0.4, num_predict: 900 },
-    messages: reflectionPrompt({ card: conv.card, state: conv.state, transcript: text.slice(-24000), memories: list(conv.id) }),
+    messages: reflectionPrompt({ card: conv.card, state: conv.state, transcript: text.slice(-24000), memories: list(conv.id), user: promptProfile(conv.ownerId) }),
   });
   let j;
   try { j = JSON.parse(out); } catch { throw new Error('riflessione non valida'); }

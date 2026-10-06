@@ -82,6 +82,8 @@ app.post('/api/auth/password', wrap(async (req, res) => {
 // Tutto ciò che segue richiede un utente autenticato con password definitiva
 app.use('/api', auth.requireUser);
 
+app.put('/api/me/profile', wrap(async (req, res) => res.json({ user: auth.updateProfile(req.user, req.body || {}) })));
+
 // ---- Amministrazione utenti ----
 app.get('/api/users', auth.requireAdmin, (req, res) => res.json(auth.listUsers()));
 app.post('/api/users', auth.requireAdmin, wrap(async (req, res) => res.json(auth.createUser(req.body || {}))));

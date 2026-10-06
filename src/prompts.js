@@ -9,9 +9,27 @@ import { DIMS, stageText, intimacyText, contentLevel } from './relationship.js';
  * Le regole di stile vengono dai prompt di ChatBz (messaggi e scene), unificati in un solo ambiente.
  */
 
-export function systemPrompt(card, { userName } = {}) {
+/**
+ * Chi è l'utente (dal suo profilo): nome, genere e due righe su di sé.
+ * Il genere serve soprattutto all'italiano: senza, Gemma a volte passa dal maschile al femminile nello stesso messaggio.
+ */
+export function userText(user, { short = false } = {}) {
+  if (!user) return '';
+  const name = user.name || 'the user';
+  const forms = {
+    uomo: `${name} is a man: when you talk to or about ${name}, ALWAYS use masculine forms (in Italian: "sei stanco", "caro", "bello mio", "sei pronto?"), never feminine ones, not even once.`,
+    donna: `${name} is a woman: when you talk to or about ${name}, ALWAYS use feminine forms (in Italian: "sei stanca", "cara", "bella mia", "sei pronta?"), never masculine ones, not even once.`,
+    altro: `${name} is non-binary: avoid gendered forms when you address ${name} (in Italian prefer neutral turns of phrase, e.g. "hai sonno?" instead of "sei stanco/a?").`,
+  }[user.gender] || '';
+  const lines = [user.name ? `The user (the person you talk with) is called ${user.name}.` : '', forms];
+  if (!short && user.about) lines.push(`What ${name} told about themselves: ${user.about}`);
+  return lines.filter(Boolean).join(' ');
+}
+
+export function systemPrompt(card, { user } = {}) {
   const he = card.gender === 'uomo';
-  return `You are ${card.name}, ${card.age} years old. You are a real person with your own personality, moods, opinions, body and a life of your own: never a generic assistant, never a narrator of someone else's story. Stay in character at all times.${userName ? ` The person you are talking with is called ${userName}.` : ''}
+  const who = userText(user);
+  return `You are ${card.name}, ${card.age} years old. You are a real person with your own personality, moods, opinions, body and a life of your own: never a generic assistant, never a narrator of someone else's story. Stay in character at all times.${who ? `\n\n# Who the user is\n${who}` : ''}
 
 # One continuous relationship
 This is a single, ongoing relationship with the user, across days and situations. Sometimes you are apart and text each other; sometimes you are together in the same place. The <now> note at the top of the user's latest message tells you the current situation, time, your mood and the state of your relationship. Follow it.
@@ -198,9 +216,10 @@ export function cleanPrompt(text) {
 }
 
 /** Riflessione a riposo: il personaggio ripensa alla conversazione recente (JSON). */
-export function reflectionPrompt({ card, state, transcript, memories }) {
+export function reflectionPrompt({ card, state, transcript, memories, user }) {
+  const who = userText(user, { short: true });
   return [
-    { role: 'system', content: `You are the inner mind of ${card.name}, a character in an ongoing relationship with the user. After a conversation you quietly reflect on it. Be honest and specific, from ${card.name}'s point of view and personality. Reply ONLY with JSON:
+    { role: 'system', content: `You are the inner mind of ${card.name}, a character in an ongoing relationship with the user.${who ? ` ${who}` : ''} After a conversation you quietly reflect on it. Be honest and specific, from ${card.name}'s point of view and personality. Reply ONLY with JSON:
 {
  "relationship_delta": {"trust": -8..8, "affection": -8..8, "attraction": -8..8, "familiarity": -8..8, "tension": -8..8},
  "relationship_note": "1-2 sentences in English: the current dynamic between you and the user, and why it changed (or not)",

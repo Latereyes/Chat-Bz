@@ -1908,10 +1908,32 @@ userMenu.onclick = (e) => {
   const act = e.target.closest('[data-user-act]')?.dataset.userAct;
   userMenu.hidden = true;
   if (act === 'model') { e.stopPropagation(); el.modelMenu.hidden = false; return; }
+  if (act === 'profile') openProfile();
   if (act === 'password') showPasswordForm(false);
   if (act === 'users') openUsers();
   if (act === 'logout') logout();
 };
+
+// Profilo dell'utente
+const profileModal = $('#profile-modal'), profileForm = $('#profile-form');
+function openProfile() {
+  const p = state.user?.profile || {};
+  profileForm.name.value = p.name || state.user?.displayName || '';
+  profileForm.gender.value = p.gender || '';
+  profileForm.about.value = p.about || '';
+  showErr(profileForm);
+  profileModal.hidden = false;
+}
+profileModal.addEventListener('click', (e) => { if (e.target === profileModal || e.target.closest('[data-close]')) profileModal.hidden = true; });
+profileForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  showErr(profileForm);
+  try {
+    const { user } = await api('/api/me/profile', { method: 'PUT', body: { name: profileForm.name.value, gender: profileForm.gender.value, about: profileForm.about.value } });
+    state.user = user;
+    profileModal.hidden = true;
+  } catch (err) { showErr(profileForm, err.message); }
+});
 
 // Gestione utenti (solo admin)
 const usersModal = $('#users-modal'), addUserForm = $('#add-user-form');
