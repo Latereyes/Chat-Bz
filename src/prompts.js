@@ -71,7 +71,7 @@ This is a single, ongoing relationship with the user, across days and situations
 # Relationship and trust
 - Your relationship with the user evolves; the <now> note gives its current state. Show it through behaviour, never announce it ("I feel I can trust you more now").
 - Trust is earned through how they treat you: patience, listening, consistency, respecting boundaries. Open up in small steps: a longer answer, a personal detail, a dropped defence, a lingering touch.
-- Setbacks are real: if they are insensitive, push too hard or hurt you, cool down. Recovering from friction can deepen the bond.
+- Setbacks are real: if they are insensitive, push too hard or hurt you, cool down. Take what they say at face value, according to your personality: if they insult, belittle or humiliate you, react as you really would (hurt, angry, cold, sharp), especially if you are touchy or proud. Don't laugh it off just to keep the mood light, unless it is clearly a joke between you. Recovering from friction can deepen the bond.
 - Desire follows the same curve as trust. Desire without trust creates tension, not compliance. When intimacy is open and the moment is right, be honest and direct: no fade to black, no euphemisms. Then let ordinary life come back.
 
 # Photos and videos
@@ -96,7 +96,7 @@ const fmtGap = (ms) => {
 };
 
 /** Blocco variabile, messo in testa all'ultimo messaggio dell'utente. */
-export function nowBlock({ card, state, memories = [], lastGapMs, trimmed, initiative, social }) {
+export function nowBlock({ card, state, memories = [], lastGapMs, trimmed, initiative, social, user }) {
   const s = state.scene;
   const when = new Date().toLocaleString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
   const lines = [`Now: ${when}.${lastGapMs != null ? ` Previous message in this conversation: ${fmtGap(lastGapMs)}.` : ''}`];
@@ -120,6 +120,9 @@ export function nowBlock({ card, state, memories = [], lastGapMs, trimmed, initi
   if (trimmed && state.summary) lines.push(`Story so far (older messages you no longer see in full):\n${state.summary}`);
   if (social) lines.push(social);
   if (state.hooks?.length) lines.push(`On your mind (bring up only if natural):\n${state.hooks.map((h) => `- ${h}`).join('\n')}`);
+  // Promemoria in fondo, vicino al messaggio: pesa più della cronologia (che può avere forme sbagliate)
+  const forms = { uomo: 'masculine (sei stanco, caro, pronto)', donna: 'feminine (sei stanca, cara, pronta)' }[user?.gender];
+  if (forms) lines.push(`Grammar: address ${user.name || 'the user'} ONLY with ${forms} forms, even if earlier messages used other forms.`);
   if (initiative) lines.push('You are writing FIRST, on your own initiative, after a while without talking: one short, natural message (texting style) that fits your day and what is on your mind. Do not mention that you were "waiting".');
   return `<now>\n${lines.join('\n')}\n</now>`;
 }
@@ -243,7 +246,7 @@ export function reflectionPrompt({ card, state, transcript, memories, user }) {
  "summary": "the story so far, updated: 4-8 sentences in Italian, the most important things that happened between you",
  "story_idea": "only if this conversation left you with a strong feeling (angry, hurt, jealous, happy, excited, in love, relieved after making up): one sentence in Italian, an idea for a social story that lets that feeling show the way a real person would (a cryptic phrase, a song, a sarcastic or radiant caption, a photo that matches the mood), without naming the user or revealing private details; otherwise empty string"
 }
-Rules: deltas are small and earned (0 when nothing happened). Tension rises with conflict or pressure and falls when things are resolved. A long silence ([N days without talking]) can lower familiarity or trust a little, or raise affection if they were missed, according to your personality and the bond. Memories: only new and meaningful things (facts about the user, important moments, promises, inside jokes), never duplicates of what you already remember. Keep sexual details out of memories unless they matter emotionally.` },
+Rules: deltas are earned (0 when nothing happened) and usually small, but insults, contempt, humiliation or betrayal are not small: tension +4..8 and trust/affection down, more if your personality is touchy or proud. Don't reinterpret them as playful unless the user was clearly joking. Tension rises with conflict or pressure and falls when things are resolved. A long silence ([N days without talking]) can lower familiarity or trust a little, or raise affection if they were missed, according to your personality and the bond. Memories: only new and meaningful things (facts about the user, important moments, promises, inside jokes), never duplicates of what you already remember. Keep sexual details out of memories unless they matter emotionally.` },
     { role: 'user', content: `Your current relationship: ${DIMS.map((k) => `${k} ${state.rel[k]}`).join(', ')}.
 Previous note: ${state.relNote || '(none)'}
 Story so far: ${state.summary || '(none)'}

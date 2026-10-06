@@ -81,7 +81,7 @@ export async function reflect(conv, { model } = {}) {
     model: model || config.ollama.model,
     format: 'json',
     timeout: 180000,
-    options: { temperature: 0.4, num_predict: 900 },
+    options: { temperature: 0.4, num_predict: 900, repeat_penalty: 1.12 },
     messages: reflectionPrompt({ card: conv.card, state: conv.state, transcript: text.slice(-24000), memories: list(conv.id), user: promptProfile(conv.ownerId) }),
   });
   let j;
@@ -117,7 +117,7 @@ export async function consolidate(conv, { model } = {}) {
   const mems = list(conv.id).filter((m) => m.kind !== 'evolution');
   const out = await ollama.complete({
     model: model || config.ollama.model, format: 'json', timeout: 180000,
-    options: { temperature: 0.2, num_predict: 2500 },
+    options: { temperature: 0.2, num_predict: 2500, repeat_penalty: 1.1 },
     messages: consolidationPrompt({ card: conv.card, memories: mems }),
   });
   let j;

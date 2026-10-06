@@ -773,9 +773,20 @@ export function chatContext(conv) {
   const known = bondsOf(conv.id).slice(0, 6);
   const lifeLine = [life ? `What you did in the last ${Math.max(1, Math.round((life.to_ts - life.from_ts) / 3600000))} hours, while you two were not in touch: ${short(life.summary, 400)}` : '',
     known.length ? `People you know (the user may know them too): ${known.map((b) => `${b.name} (${b.gender === 'uomo' ? 'man' : b.gender === 'altro' ? 'non-binary' : 'woman'}): ${short(b.note, 120)}`).join('; ')}` : ''].filter(Boolean).join('\n');
+  const seen = [];
+  // Cosa fa l'utente sui profili degli altri: il personaggio lo vede, come su Instagram (anche se non ha ancora un profilo suo)
+  const since = Date.now() - 3 * DAY, nm = (id) => store.get(id)?.card.name;
+  const liked = q.userLikesElsewhere.all(conv.ownerId, conv.id, since).filter((r) => nm(r.character_id));
+  const commented = q.userCommentsElsewhere.all(conv.ownerId, conv.id, since).filter((r) => nm(r.character_id));
+  if (liked.length || commented.length) {
+    seen.push(`You saw the user being active on other people's profiles: ${[
+      ...liked.map((r) => `liked ${r.n} ${r.n === 1 ? 'post' : 'posts'} of ${nm(r.character_id)}`),
+      ...commented.map((r) => `commented "${short(r.content, 80)}" under ${nm(r.character_id)}'s post`),
+    ].join('; ')}. React only if it fits your personality and your relationship (indifference, curiosity, teasing, a bit of jealousy if you care and feel neglected); never make a scene out of nothing.`);
+  }
   const prof = profile(conv.id);
-  if (!prof) return lifeLine;
-  const lines = [lifeLine, `Your social account: @${prof.username}; the user follows it.`].filter(Boolean);
+  if (!prof) return [lifeLine, ...seen].filter(Boolean).join('\n');
+  const lines = [lifeLine, `Your social account: @${prof.username}; the user follows it.`, ...seen].filter(Boolean);
   for (const r of q.tagged.all(conv.ownerId, `%"${conv.id}"%`).filter((p) => p.published_at > Date.now() - 4 * DAY).slice(0, 1)) {
     lines.push(`- ${store.get(r.character_id)?.card.name || 'A friend'} posted a photo of the two of you together ${ago(r.published_at)}: "${short(r.caption, 140)}"`);
   }
@@ -784,16 +795,6 @@ export function chatContext(conv) {
     const others = likes.filter((l) => l !== 'user').map((id) => store.get(id)?.card.name).filter(Boolean);
     const comments = q.comments.all(r.id);
     lines.push(`- your ${r.kind} ${ago(r.published_at)}: "${short(r.caption, 140)}" (${likes.includes('user') ? 'the user liked it' : 'the user has not liked it'}${others.length ? `; liked by ${others.join(', ')}` : ''}${comments.length ? `; ${comments.length} comments` : ''})`);
-  }
-  // Cosa fa l'utente sui profili degli altri: il personaggio lo vede, come su Instagram
-  const since = Date.now() - 3 * DAY, nm = (id) => store.get(id)?.card.name;
-  const liked = q.userLikesElsewhere.all(conv.ownerId, conv.id, since).filter((r) => nm(r.character_id));
-  const commented = q.userCommentsElsewhere.all(conv.ownerId, conv.id, since).filter((r) => nm(r.character_id));
-  if (liked.length || commented.length) {
-    lines.push(`You saw the user being active on other people's profiles: ${[
-      ...liked.map((r) => `liked ${r.n} ${r.n === 1 ? 'post' : 'posts'} of ${nm(r.character_id)}`),
-      ...commented.map((r) => `commented "${short(r.content, 80)}" under ${nm(r.character_id)}'s post`),
-    ].join('; ')}. React only if it fits your personality and your relationship (indifference, curiosity, teasing, a bit of jealousy if you care and feel neglected); never make a scene out of nothing.`);
   }
   const mine = q.userComments.all(conv.id, Date.now() - 3 * DAY);
   if (mine.length) lines.push(`The user's recent comments on your posts: ${mine.map((c) => `"${short(c.content, 120)}" (${ago(c.created_at)})`).join('; ')}`);
