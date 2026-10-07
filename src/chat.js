@@ -248,6 +248,24 @@ export function initiate(conv, { model } = {}) {
 }
 
 /**
+ * Correttivi di stile per questa risposta, guardando le ultime del personaggio:
+ * se si allunga o chiude sempre con una domanda, lo si riporta a variare. Più efficace di una regola generale.
+ */
+const visible = (t) => String(t || '').replace(/\[[^\]]*\]/g, '').trim();
+function styleNotes(conv, idx, userText, user) {
+  const mine = conv.messages.slice(0, idx).filter((m) => m.role === 'assistant' && m.status === 'done' && visible(m.content)).slice(-3).map((m) => visible(m.content));
+  const notes = [];
+  const name = user?.name || 'the user';
+  if (userText) notes.push(`the message below is from ${name}; when they write "io", "mi sento", "sono", they mean themselves, not you.`);
+  const long = mine.filter((t) => t.length > 450).length;
+  if (long >= 2 || (userText && userText.length < 60 && mine.at(-1)?.length > 450)) notes.push('keep it SHORT, one or two lines: your last replies were long.');
+  else if (userText && userText.length < 40 && Math.random() < 0.5) notes.push('their message is short: a short answer is enough.');
+  const asked = mine.filter((t) => /\?\s*(?:[\p{Emoji_Presentation}\p{Extended_Pictographic}]\s*)*$/u.test(t)).length;
+  if (asked >= 2) notes.push('do NOT end with a question this time: your last replies all ended with one.');
+  return notes;
+}
+
+/**
  * Dopo ore di silenzio la scena non è più quella di ieri: niente più "insieme" o momento intimo, vestiti da rifare.
  * Resta insieme solo se l'utente riprende la scena di persona (scrive azioni tra asterischi).
  */
@@ -307,7 +325,7 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       const { msgs, trimmed } = history(conv, idx);
       const prevAt = initiative ? conv.messages[idx - 1]?.createdAt : conv.messages.slice(0, Math.max(0, idx - 1)).findLast((m) => m.status !== 'pending')?.createdAt;
       const memories = memory.forPrompt(conv.id, 14, userMsg?.content);
-      const block = nowBlock({ card: conv.card, state: conv.state, memories, lastGapMs: prevAt ? Date.now() - prevAt : null, trimmed, initiative, social: social.chatContext(conv), user: promptProfile(conv.ownerId) });
+      const block = nowBlock({ card: conv.card, state: conv.state, memories, lastGapMs: prevAt ? Date.now() - prevAt : null, trimmed, initiative, social: social.chatContext(conv), user: promptProfile(conv.ownerId), style: styleNotes(conv, idx, initiative ? '' : userMsg?.content, promptProfile(conv.ownerId)) });
       const convo = [{ role: 'system', content: systemPrompt(conv.card, { user: promptProfile(conv.ownerId) }) }, ...msgs.map(({ role, content }) => ({ role, content }))];
       if (initiative || convo.at(-1).role !== 'user') convo.push({ role: 'user', content: block });
       else convo.at(-1).content = `${block}\n\n${convo.at(-1).content}${FORCE_NOTE[tool] || ''}`;
