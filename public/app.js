@@ -766,7 +766,8 @@ $('#cm-manual').addEventListener('change', (e) => {
   if (e.target.checked) {
     // si parte dalle forze delle taglie automatiche, se ci sono
     const opts = state.config?.options?.body || {};
-    cardManual = Object.fromEntries(Object.keys(opts).map((k) => [k, (cardBody?.look === cf.look.value && opts[k].strengths?.[cardBody.body?.[k]]) || 0]));
+    const scale = state.config?.options?.bodyScale?.[cf.style.value] ?? 1;   // su Z-Image le stesse LoRA sono più forti
+    cardManual = Object.fromEntries(Object.keys(opts).map((k) => [k, Math.round(((cardBody?.look === cf.look.value && opts[k].strengths?.[cardBody.body?.[k]]) || 0) * scale * 2) / 2]));
   } else cardManual = null;
   showBody();
 });

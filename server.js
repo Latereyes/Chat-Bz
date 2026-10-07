@@ -113,6 +113,7 @@ app.get('/api/config', wrap(async (req, res) => {
     defaultModel: config.ollama.model,
     options: {
       relations: RELATIONS, paces: PACES, intimacy: INTIMACY, styles: STYLES, dims: DIM_LABEL,
+      bodyScale: { krea: FAMILIES.krea2.autoScale, zimage: FAMILIES.zimage.autoScale },   // taglie automatiche per stile
       body: Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, { label: b.label, short: b.short, hint: b.hint, range: bodyRange(k), sizes: Object.fromEntries(Object.entries(b.sizes).map(([s, [l]]) => [s, l])), strengths: Object.fromEntries(Object.entries(b.sizes).map(([s, [, v]]) => [s, v])) }])),
     },
     models,
@@ -272,7 +273,7 @@ app.post('/api/characters/:id/avatar', wrap(async (req, res) => {
   const inChat = c.messages.some((m) => (m.media || []).some((md) => md.file === file && md.type === 'image'));
   c.avatar = inChat ? file : await copyAsAvatar(req.user.id, await ownImage(req, file));
   await store.save(c, { touch: false });
-  res.json({ avatarUrl: mediaUrl(file) });
+  res.json({ avatarUrl: mediaUrl(c.avatar) });
 }));
 
 app.post('/api/characters/:id/messages', wrap(async (req, res) => {

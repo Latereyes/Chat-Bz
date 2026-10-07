@@ -263,7 +263,9 @@ function styleNotes(conv, idx, userText, user) {
   if (userText) notes.push(`the message below is from ${name}; when they write "io", "mi sento", "sono", they mean themselves, not you.`);
   const long = mine.filter((t) => t.length > 450).length;
   if (long >= 2 || (userText && userText.length < 60 && mine.at(-1)?.length > 450)) notes.push('keep it SHORT, one or two lines: your last replies were long.');
-  else if (userText && userText.length < 40 && Math.random() < 0.5) notes.push('their message is short: a short answer is enough.');
+  // "ok", "ahah sì": prova sul PC 2026-10-07, col solo "short answer" rispondeva comunque con 2-3 righe
+  else if (userText && userText.trim().length < 15) notes.push('their message is just a quick reaction: answer with ONE short line (under 80 characters), like a quick text back.');
+  else if (userText && userText.length < 40 && Math.random() < 0.5) notes.push('their message is short: one or two short lines are enough.');
   const asked = mine.filter((t) => /\?\s*(?:[\p{Emoji_Presentation}\p{Extended_Pictographic}]\s*)*$/u.test(t)).length;
   if (asked >= 2) notes.push('do NOT end with a question this time: your last replies all ended with one.');
   return notes;

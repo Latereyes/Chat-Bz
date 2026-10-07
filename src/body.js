@@ -29,10 +29,13 @@ export const BODY = {
   },
 };
 // Modelli che reggono le LoRA del corpo (stesse LoRA di loraholic, una versione per modello):
-// unet = nome del modello nel grafo, lenovoFile / lenovo = file e forza della LoRA Lenovo quando la si aggiunge
+// unet = nome del modello nel grafo, lenovoFile / lenovo = file e forza della LoRA Lenovo quando la si aggiunge,
+// autoScale = quanto scalare le forze delle taglie automatiche (tarate su Krea 2; su Z-Image le stesse LoRA
+// sono molto più forti: seno +3 è già grande, +8 appesantisce tutto il corpo — prova sul PC 2026-10-07).
+// I cursori a mano restano quelli scelti.
 export const FAMILIES = {
-  krea2: { label: 'Krea 2', unet: /krea2/i, lenovoFile: 'lenovo_krea2.safetensors', lenovo: 1.2 },
-  zimage: { label: 'Z-Image', unet: /^zit|z[-_ ]?image/i, lenovoFile: 'lenovo_z.safetensors', lenovo: 1 },
+  krea2: { label: 'Krea 2', unet: /krea2/i, lenovoFile: 'lenovo_krea2.safetensors', lenovo: 1.2, autoScale: 1 },
+  zimage: { label: 'Z-Image', unet: /^zit|z[-_ ]?image/i, lenovoFile: 'lenovo_z.safetensors', lenovo: 1, autoScale: 0.4 },
 };
 
 /** Tiene solo valori validi: { breast: 'large', ... }. */
@@ -159,13 +162,14 @@ function nearestSize(part, strength) {
   return Object.entries(BODY[part].sizes).reduce((best, [size, [, s]]) => (Math.abs(s - strength) < Math.abs(BODY[part].sizes[best][1] - strength) ? size : best), Object.keys(BODY[part].sizes)[0]);
 }
 
-/** LoRA da applicare per questo personaggio: [{ part, file, strength }] (solo quelle diverse da 0). */
-export function bodyLoras(card) {
+/** LoRA da applicare per questo personaggio: [{ part, strength }] (solo quelle diverse da 0), per la famiglia del modello. */
+export function bodyLoras(card, family = 'krea2') {
   if (!card || card.gender === 'uomo') return [];   // LoRA addestrate su corpi femminili
   if (card.bodyManual) return manualBodyLoras(card.bodyManual) || [];   // regolato a mano: vince sull'aspetto
   const body = normalizeBody(card.body) || bodyFromKeywords(card.look) || {};
+  const scale = FAMILIES[family]?.autoScale ?? 1;
   return Object.entries(body)
-    .map(([part, size]) => ({ part, strength: BODY[part].sizes[size][1] }))
+    .map(([part, size]) => ({ part, strength: Math.round(BODY[part].sizes[size][1] * scale * 10) / 10 }))
     .filter((l) => l.strength !== 0);
 }
 
