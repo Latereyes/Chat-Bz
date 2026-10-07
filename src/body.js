@@ -114,11 +114,10 @@ export function figureText(card) {
 }
 
 /**
- * Limiti dei cursori a mano: oltre le taglie tarate, per chi vuole un effetto più marcato
- * (le taglie automatiche restano quelle di BODY).
+ * Limiti dei cursori a mano: l'intervallo indicato dall'autore delle LoRA (Civitai), -8..+8
+ * (le taglie automatiche restano quelle tarate in BODY).
  */
-const MANUAL_RANGE = { breast: [-3, 5], butt: [-3, 5.5], build: [-4, 6.5] };
-export const bodyRange = (part) => MANUAL_RANGE[part] || [-3, 3];
+export const bodyRange = () => [-8, 8];
 
 /** Forze scelte a mano { breast: 1.5, ... }: tutte le parti, limitate (0 se mancano); null se non è un oggetto. */
 export function normalizeManual(values) {
