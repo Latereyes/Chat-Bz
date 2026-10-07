@@ -62,7 +62,7 @@ export function enqueue(conv, msg, media) {
       store.save(target, { touch: false });
       emit(target.id, { type: 'character', avatarUrl: mediaUrl(name) });
     }
-  }).catch((e) => {
+  }, { priority: 'normal' }).catch((e) => {
     media.status = e.aborted || ac.signal.aborted ? 'cancelled' : 'error';
     media.error = media.status === 'cancelled' ? null : e.message;
     if (media.status === 'error') console.error(`[job ${media.id}]`, e.message);

@@ -14,10 +14,9 @@ import { asleep } from './social.js';
  * Lavora un personaggio alla volta e solo quando la GPU non serve ad altro.
  */
 let busy = false;
-const gpuIdle = () => { const s = gpu.state(); return !s.active && !s.queued.length; };
 
 async function tick() {
-  if (busy || !gpuIdle()) return;
+  if (busy || !(await gpu.idle())) return;
   const now = Date.now();
   const due = store.list()
     .filter((c) => !chat.isRunning(c.id) && memory.needsReflection(c)
@@ -26,9 +25,9 @@ async function tick() {
   if (!conv) return;
   busy = true;
   try {
-    await gpu.run('ollama', `${conv.card.name} ripensa alla conversazione`, () => memory.reflect(conv));
+    await gpu.run('ollama', `${conv.card.name} ripensa alla conversazione`, () => memory.reflect(conv), { priority: 'low' });
     if (memory.needsConsolidation(conv)) {
-      await gpu.run('ollama', `${conv.card.name} riordina i ricordi`, () => memory.consolidate(conv))
+      await gpu.run('ollama', `${conv.card.name} riordina i ricordi`, () => memory.consolidate(conv), { priority: 'low' })
         .catch((e) => console.warn(`[memorie] ${conv.card.name}: ${e.message}`));
     }
     emit(conv.id, { type: 'state', state: conv.state });

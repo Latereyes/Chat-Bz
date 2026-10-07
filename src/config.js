@@ -26,6 +26,15 @@ export default {
     url: env.COMFY_URL || 'http://127.0.0.1:8188',
   },
 
+  // Arbitro della GPU condiviso con LocalAI: sta nell'agent del PC (remote-app-controller, porta 7070).
+  // Se l'agent è spento si usa l'arbitro interno come prima. GPU_ARBITER=0 lo ignora del tutto.
+  agent: {
+    enabled: (env.GPU_ARBITER ?? '1') !== '0',
+    url: env.AGENT_URL || 'http://127.0.0.1:7070',
+    token: env.AGENT_TOKEN || '',   // serve solo se l'agent gira su un altro PC
+    app: 'chatbz',
+  },
+
   // Riflessione a riposo: quando una conversazione è ferma da REFLECT_IDLE_MIN minuti
   // (e la GPU è libera) il personaggio aggiorna rapporto, memorie e pensieri per la prossima volta.
   reflect: {
