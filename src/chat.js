@@ -86,6 +86,11 @@ const VIDEO_WORD = /\b(?:video\w*|clip)\b/i;
 const BRACKET = /\[([^\[\]\n]{12,})\]|\(((?:foto|selfie|photo|video|immagine)[^()\n]{8,})\)/i;
 const ANNOUNCE = /\b(?:ti\s+(?:mando|invio|giro|faccio\s+vedere)|eccoti|ecco(?:mi)?\b[^.!?\n]{0,20}\b(?:foto|selfie)|guarda(?:\s+qui)?\s*[:!]|sending\s+(?:you\s+)?(?:a\s+)?(?:pic|photo)|here'?s\s+(?:a\s+)?(?:pic|photo|selfie))/i;
 const ASKS_MEDIA = /\b(?:mand\w*|invi\w*|fa(?:mmi|i)\s+vedere|fammel\w*\s+vedere|scatta\w*|send|show)\b[^.!?\n]{0,40}\b(?:foto\w*|selfie|pic\w*|photo\w*|video\w*|immagin\w*)\b|\b(?:foto|selfie|pic|photo|video)\s*\?/i;
+// Strumenti scritti come testo invece che chiamati: «<tool_call> update_scene{presence="together"} </tool_call>».
+// Si tolgono dal messaggio; update_scene scritto così non si applica (prova sul PC: portava la scena a "insieme" per sbaglio)
+const TOOL_TEXT = /<\s*tool_call\s*>([\s\S]*?)(?:<\s*\/\s*tool_call\s*>|$)|\b(?:update_scene|send_photo|send_video)\s*\{[^{}]*\}/gi;
+// Il personaggio dice di no al video, o propone di vedersi dal vivo: niente video di ripiego
+const REFUSES_VIDEO = /\b(?:non\s+(?:ti\s+)?(?:mando|faccio|giro|invio|posso|mi\s+va)|niente\s+video|nessun\s+video|dal\s+vivo|di\s+persona|sono\s+qui|siamo\s+qui|guardami)\b/i;
 // Video chiesto a parole: «mandami/fammi/gira un video», «un video?»
 const ASKS_VIDEO = /\b(?:mand\w*|invi\w*|fa(?:mmi|i|resti|rmi)|gira\w*|registr\w*|vorrei|voglio|send|make|record)\b[^.!?\n]{0,40}\b(?:video\w*|videin\w*|clip)\b|\b(?:video|videino|clip)\s*\?/i;
 
@@ -96,11 +101,19 @@ function cut(text, start, len) {
 
 function extractTag(text, userText = '') {
   let noteCall = null;
+  let textCall = null;
+  text = text.replace(TOOL_TEXT, (all, inner) => {
+    const body = inner ?? all;
+    const name = body.match(/\b(send_photo|send_video)\b/i)?.[1].toLowerCase();
+    const desc = body.match(/"?description"?\s*[:=]\s*"([^"]+)"/i)?.[1];
+    if (name && desc && !textCall) textCall = { function: { name, arguments: { description: desc.trim() } } };
+    return '';
+  });
   let clean = text.replace(SENT_NOTE, (all, kind, desc) => {
     if (!noteCall && desc.trim()) noteCall = { function: { name: /video/i.test(kind) ? 'send_video' : 'send_photo', arguments: { description: desc.trim() } } };
     return '';
   }).replace(/\n{3,}/g, '\n\n');
-  if (noteCall) return { text: clean.trim(), call: noteCall };
+  if (noteCall || textCall) return { text: clean.trim(), call: noteCall || textCall };
   const m = clean.match(TAG);
   if (m) {
     const video = /VIDEO|CLIP/i.test(m[1]);
@@ -386,7 +399,8 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       }
       if (!calls.length && tag.call) calls.push(tag.call);
       // Video chiesto a parole ("mandami un video"): Gemma spesso risponde solo a parole, senza send_video
-      if (!calls.length && !tool && userMsg?.content && ASKS_VIDEO.test(userMsg.content) && msg.content.trim()) {
+      if (!calls.length && !tool && userMsg?.content && ASKS_VIDEO.test(userMsg.content) && msg.content.trim()
+        && conv.state.scene.presence !== 'together' && !REFUSES_VIDEO.test(msg.content)) {
         calls.push({ function: { name: 'send_video', arguments: { description: `${userMsg.content}\n\n(reply: ${msg.content.trim()})` } } });
       }
       if (!calls.length && (tool === 'photo' || tool === 'video')) {
