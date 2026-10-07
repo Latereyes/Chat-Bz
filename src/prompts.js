@@ -214,6 +214,10 @@ ${workflow.guide || 'Write a detailed, natural-language English prompt.'}
  * Foto dei personaggi (chat e social): sempre foto vere, mai "artistiche". Con Z-Image Gemma tendeva a scegliere
  * macchina e obiettivo ("shot on a 50mm at f/1.8") e lo stile usciva da servizio fotografico.
  */
+// Post del social: ogni tanto uno scatto più curato o artistico va bene (scelta dell'utente, 2026-10-07)
+export const ARTSY_POST = 'This post can be a more artistic shot for once (a creative angle, styled light or mood, as if a photographer friend took it), still clearly a photo of this real person.';
+export const ARTSY_POST_CHANCE = 0.25;
+
 export const REAL_PHOTO = 'It must look like a real photograph of a real person in a real moment: never artistic, painterly, cinematic, editorial or stylised, no dramatic color grading. Describe light and framing in plain words (close-up, from slightly above, soft window light) and never name cameras, lenses, focal lengths or f-stops.';
 
 /** Richiesta al prompt engineer per una foto/video del personaggio. */

@@ -8,7 +8,7 @@ import * as queue from './queue.js';
 import { promptProfile } from './auth.js';
 import { emit, mediaUrl, renderMedia } from './jobs.js';
 import { getWorkflow, dimensions, dimensionsForRatio, randomSeed } from './workflows.js';
-import { promptEngineerSystem, cleanPrompt, LOOK_CHOICE, splitLook } from './prompts.js';
+import { promptEngineerSystem, cleanPrompt, LOOK_CHOICE, splitLook, ARTSY_POST_CHANCE } from './prompts.js';
 import { bodyFamily } from './body.js';
 import { profilePrompt, composePrompt, socialPhotoRequest, commentPrompt, catchupPrompt } from './social-prompts.js';
 import * as notify from './notify.js';
@@ -320,6 +320,8 @@ async function plan({ postId, hint }) {
   if (friend && !post.caption.includes(`@${friendProf.username}`)) post.caption = `${post.caption} @${friendProf.username}`.trim();
   post.location = short(j.location, 80);
   post.media = photos.map((p) => mediaFor(conv, post.kind, p, friend));
+  // ogni tanto un post (tutto il carosello) può essere più artistico; le storie restano spontanee
+  if (post.kind === 'post' && Math.random() < ARTSY_POST_CHANCE) for (const md of post.media) md.artsy = true;
   // Prompt delle foto adesso, finché Gemma è in VRAM; le foto vanno in coda una per una
   for (const md of post.media) {
     md.prompt = await engineer(conv, friend, prof, md, post.kind, model);

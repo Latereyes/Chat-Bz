@@ -1,4 +1,4 @@
-import { LEVEL, REAL_PHOTO, visualSignature, userText, genderWord, selfGenderText } from './prompts.js';
+import { LEVEL, REAL_PHOTO, ARTSY_POST, visualSignature, userText, genderWord, selfGenderText } from './prompts.js';
 import { stageText } from './relationship.js';
 import { figureText } from './body.js';
 
@@ -111,7 +111,8 @@ export function socialPhotoRequest({ card, friend, profile, photo, media, kind, 
     fromImage && subject !== 'none' ? 'The input image is only for identity (face, hair, body): describe a NEW outfit that fits this place and moment, and do not keep the clothes, accessories, props (bottles, bags, phones) or background of the input image.' : null,
     LEVEL[level],
     card.style === 'krea' ? 'Look (usual for this character; a posed or carefully lit shot may look more polished): a real, candid, unretouched photo (phone camera), natural light and skin texture, slightly imperfect framing.' : 'Look (usual for this character; a spontaneous moment may look like a phone snapshot): a clean, flattering, well-lit but natural photo.',
-    REAL_PHOTO,
+    // storie sempre spontanee; nei post ogni tanto uno scatto artistico (deciso una volta per post, vedi media.artsy)
+    kind !== 'story' && media.artsy ? ARTSY_POST : REAL_PHOTO,
     `Output format: ${media.width}x${media.height}.`,
     'Write the final prompt now.',
   ].filter(Boolean).join('\n');
