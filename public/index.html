@@ -31,14 +31,12 @@
         <div class="user-box">
           <button class="user-btn" id="user-btn"><span class="user-avatar" id="user-avatar"></span><span class="user-name" id="user-name"></span><span data-icon="chevron"></span></button>
           <div class="menu menu-up" id="user-menu" hidden>
-            <button class="menu-item" data-user-act="model"><span data-icon="chip"></span><div>Modello di chat<small id="model-name">Gemma</small></div></button>
             <button class="menu-item" data-user-act="profile"><span data-icon="user"></span><div>Il mio profilo<small>Come ti chiamano i personaggi</small></div></button>
             <button class="menu-item" data-user-act="password"><span data-icon="key"></span>Cambia password</button>
             <button class="menu-item admin-only" data-user-act="users"><span data-icon="users"></span>Gestione utenti</button>
             <div class="menu-sep"></div>
             <button class="menu-item" data-user-act="logout"><span data-icon="logout"></span>Esci</button>
           </div>
-          <div class="menu menu-up" id="model-menu" hidden></div>
         </div>
       </div>
     </aside>
@@ -71,6 +69,8 @@
           <div class="nm-head"><b>Notifiche</b><span class="spacer"></span><button class="link" id="nm-browser" hidden title="Notifiche del browser anche quando la pagina è in background">Attiva avvisi</button><button class="link" id="nm-all">Segna come lette</button></div>
           <div class="nm-list" id="nm-list"></div>
         </div>
+        <button class="model-pill" id="model-pill" title="Modello di chat"><span data-icon="chip"></span><span id="model-name">Gemma</span></button>
+        <div class="menu menu-right" id="model-menu" hidden></div>
         <button class="gpu-pill" id="gpu-pill" title="Stato della GPU"><i></i><span id="gpu-label">GPU</span></button>
         <div class="menu menu-right" id="gpu-menu" hidden></div>
       </header>

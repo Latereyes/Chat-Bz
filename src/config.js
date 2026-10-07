@@ -20,6 +20,11 @@ export default {
     numCtx: Number(env.OLLAMA_CTX || 24576),
     // Tempo per cui Ollama tiene il modello in VRAM tra un messaggio e l'altro
     keepAlive: env.OLLAMA_KEEP_ALIVE || '30m',
+    // Nomi da mostrare nel menu dei modelli, per nome Ollama senza ":latest" (come in LocalAI)
+    labels: {
+      'qwen3.8-coder': 'Qwen Coder',
+      'qwen3.8-aggressive': 'Qwen Aggressive',
+    },
   },
 
   comfy: {
