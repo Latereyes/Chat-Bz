@@ -153,7 +153,7 @@ export function tools({ canAnimate }) {
       name: 'send_photo',
       description: 'Send the user a photo of yourself (selfie, outfit, where you are, what you are doing). Use when they ask for one, or occasionally when it really fits.',
       parameters: { type: 'object', properties: {
-        description: { type: 'string', description: 'ENGLISH description of the photo: framing (selfie, mirror selfie, someone else taking it), pose and action, expression, outfit, place, light and time of day. Do not describe your face or hair: they are known.' },
+        description: { type: 'string', description: 'ENGLISH description of the photo: framing (selfie, mirror selfie, someone else taking it), what you are doing right now (natural, not posing like a model), expression, outfit, place, light and time of day. Do not describe your face or hair: they are known.' },
         aspect_ratio: { type: 'string', enum: ['3:4', '9:16', '1:1', '4:3', '16:9'], description: 'Default 3:4 (vertical phone photo).' },
       }, required: ['description'] },
   } });
@@ -220,6 +220,9 @@ export const ARTSY_POST_CHANCE = 0.25;
 
 export const REAL_PHOTO = 'It must look like a real photograph of a real person in a real moment: never artistic, painterly, cinematic, editorial or stylised, no dramatic color grading. Describe light and framing in plain words (close-up, from slightly above, soft window light) and never name cameras, lenses, focal lengths or f-stops.';
 
+// Foto in chat: scatto al volo per chi ti scrive, non un servizio fotografico (anche con Krea uscivano troppo studiate)
+export const CHAT_SNAPSHOT = 'This is a photo sent in a private chat: a spontaneous snapshot taken a moment ago with a phone (a selfie at arm\'s length, a mirror selfie or a quick shot), relaxed everyday body language, not posing like a model, ordinary surroundings and available light, slightly imperfect framing. Unless the request explicitly asks for a posed or professional photo.';
+
 /** Richiesta al prompt engineer per una foto/video del personaggio. */
 export function characterMediaRequest({ card, state, media, width, height, seconds, sourceDescription }) {
   const level = contentLevel(card, state.rel, state.scene);
@@ -232,17 +235,20 @@ export function characterMediaRequest({ card, state, media, width, height, secon
     `Current situation: ${s.presence === 'together' ? 'with the viewer in person' : 'alone, taking a photo for the person they are texting'}${s.place ? `, at ${s.place}` : ''}${s.activity ? `, ${s.activity}` : ''}. Local time: ${when}.${s.outfit ? ` Currently wearing: ${s.outfit}.` : ''}`,
     `What the photo should show (written by the character): ${media.description}`,
     LEVEL[level],
-    card.style === 'krea' || media.type === 'video' ? 'Look (usual for this character; a posed or carefully lit moment may look more polished): a real, candid, unretouched photo (phone camera), natural light and skin texture.' : 'Look (usual for this character; a spontaneous moment may look like a phone snapshot): a clean, flattering, well-lit but natural photo.',
+    card.style === 'krea' || media.type === 'video' ? 'Look: a real, candid, unretouched photo (phone camera), natural light and skin texture.' : 'Look: a clean, flattering but natural phone photo.',
+    media.type === 'image' ? CHAT_SNAPSHOT : null,
     REAL_PHOTO,
     `Output format: ${width}x${height}${seconds ? `, duration ${seconds} seconds` : ''}.`,
     'Write the final prompt now.',
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 /**
  * Lenovo (look foto amatoriale) deciso da Gemma scatto per scatto: il prompt engineer chiude con un'etichetta,
  * che splitLook toglie dal prompt. Solo per i modelli che hanno la LoRA (Krea 2, Z-Image).
  */
+// In chat la foto è uno scatto al volo: Lenovo resta acceso salvo richiesta esplicita di una foto curata
+export const CHAT_LOOK_CHOICE = 'After the prompt, on a last line of its own, write [look: amateur] (the normal choice for a photo sent in a chat), or [look: clean] only if the request explicitly asks for a posed, professional, glamour or studio-style photo. Write the tag only there.';
 export const LOOK_CHOICE = 'After the prompt, on a last line of its own, choose the photo look: write [look: amateur] if this shot should feel like a spontaneous phone snapshot (selfies, casual or everyday moments, candid intimacy, imperfect real-life light), or [look: clean] if it should look polished (posed portraits, glamour, editorial, studio or artistic light, a carefully composed shot). Write the tag only there.';
 
 /** { prompt, lenovo }: lenovo true/false se Gemma ha scelto il look, null se non l'ha scritto. */

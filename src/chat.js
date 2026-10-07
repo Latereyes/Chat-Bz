@@ -8,7 +8,7 @@ import { gpu } from './gpu.js';
 import { emit, emitMedia, enqueue, describeImage, mediaUrl, cancel } from './jobs.js';
 import { workflows, getWorkflow, dimensions, dimensionsForRatio, frameCount, randomSeed, ASPECTS } from './workflows.js';
 import { promptProfile } from './auth.js';
-import { systemPrompt, nowBlock, tools, promptEngineerSystem, characterMediaRequest, cleanPrompt, sceneCheckPrompt, LOOK_CHOICE, splitLook } from './prompts.js';
+import { systemPrompt, nowBlock, tools, promptEngineerSystem, characterMediaRequest, cleanPrompt, sceneCheckPrompt, CHAT_LOOK_CHOICE, splitLook } from './prompts.js';
 import { bodyFamily } from './body.js';
 import { updateScene } from './relationship.js';
 import * as queue from './queue.js';
@@ -200,7 +200,7 @@ async function engineerPrompt(conv, msg, media, model, signal) {
     options: { temperature: 0.7 },
     messages: [
       { role: 'system', content: promptEngineerSystem(w) },
-      { role: 'user', content: characterMediaRequest({ card: conv.card, state: conv.state, media, width: media.width, height: media.height, seconds: media.seconds, sourceDescription: media.sourceFile || media.sourceMediaId ? media.sourceDescription : undefined }) + (look ? `\n${LOOK_CHOICE}` : '') },
+      { role: 'user', content: characterMediaRequest({ card: conv.card, state: conv.state, media, width: media.width, height: media.height, seconds: media.seconds, sourceDescription: media.sourceFile || media.sourceMediaId ? media.sourceDescription : undefined }) + (look ? `\n${CHAT_LOOK_CHOICE}` : '') },
     ],
     onChunk: (c) => {
       if (!c.content) return;
