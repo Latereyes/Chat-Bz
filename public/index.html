@@ -170,6 +170,15 @@
           <textarea name="idea" rows="2" placeholder="Un'idea in una frase: «barista di Bologna, ironica, timida con chi non conosce»… oppure lascia vuoto per una sorpresa"></textarea>
           <button type="button" class="btn primary" id="cm-draft"><span data-icon="spark"></span><span id="cm-draft-label">Scrivi la scheda</span></button>
         </div>
+        <div class="cm-avatar" id="cm-avatar" hidden>
+          <span class="ava-prev"></span>
+          <div class="btns">
+            <button type="button" class="btn" id="cm-ava-gen"><span data-icon="spark"></span>Genera ritratto</button>
+            <button type="button" class="btn" id="cm-ava-up"><span data-icon="camera"></span>Carica foto</button>
+          </div>
+          <input type="file" id="cm-ava-input" accept="image/*" hidden>
+          <small class="hint" id="cm-ava-hint"></small>
+        </div>
         <div class="cm-photo" id="cm-photo">
           <button type="button" class="cm-photo-img" id="cm-photo-img" title="Cambia foto" hidden><img alt=""></button>
           <div class="cm-photo-text">

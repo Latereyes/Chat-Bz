@@ -113,8 +113,12 @@ export function figureText(card) {
   return Object.entries(body).map(([k, size]) => FIGURE[k]?.[size]).filter(Boolean).join(', ');
 }
 
-/** Forza minima e massima di ogni LoRA (quelle delle taglie): limiti dei cursori a mano dello studio. */
-export const bodyRange = (part) => { const v = Object.values(BODY[part].sizes).map(([, s]) => s); return [Math.min(...v), Math.max(...v)]; };
+/**
+ * Limiti dei cursori a mano: oltre le taglie tarate, per chi vuole un effetto più marcato
+ * (le taglie automatiche restano quelle di BODY).
+ */
+const MANUAL_RANGE = { breast: [-3, 5], butt: [-3, 5.5], build: [-4, 6.5] };
+export const bodyRange = (part) => MANUAL_RANGE[part] || [-3, 3];
 
 /** Forze scelte a mano { breast: 1.5, ... }: tutte le parti, limitate (0 se mancano); null se non è un oggetto. */
 export function normalizeManual(values) {

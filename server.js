@@ -264,13 +264,13 @@ app.post('/api/characters/:id/reset', wrap(async (req, res) => {
   res.json(withUrls(c));
 }));
 
-/** Usa una foto generata come immagine del profilo. */
+/** Immagine del profilo: una foto della chat, dello studio o caricata da te. */
 app.post('/api/characters/:id/avatar', wrap(async (req, res) => {
   const c = ownConv(req);
   const file = String(req.body?.file || '');
-  const ok = c.messages.some((m) => (m.media || []).some((md) => md.file === file && md.type === 'image'));
-  if (!ok) throw httpError(400, 'Foto non valida');
-  c.avatar = file;
+  // Foto della chat: si usa così com'è; altrimenti (studio, foto caricata) se ne fa una copia sua
+  const inChat = c.messages.some((m) => (m.media || []).some((md) => md.file === file && md.type === 'image'));
+  c.avatar = inChat ? file : await copyAsAvatar(req.user.id, await ownImage(req, file));
   await store.save(c, { touch: false });
   res.json({ avatarUrl: mediaUrl(file) });
 }));

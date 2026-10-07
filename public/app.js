@@ -295,6 +295,7 @@ document.addEventListener('click', (e) => { if (!e.target.closest('.scene-wrap')
 
 function setAvatar(id, url) {
   for (const c of [state.conv, ...state.convs]) if (c?.id === id) c.avatarUrl = url;
+  if (cmChar?.id === id && !cm.hidden) { cmChar.avatarUrl = url; showCmAvatar(); }
   renderHead();
   renderConvList();
   if (state.conv?.id === id) for (const a of $$('.msg-ai .avatar', el.thread)) a.innerHTML = avatarHtml(state.conv);
@@ -821,10 +822,49 @@ $('#cm-photo-input').onchange = async (e) => {
   catch (err) { showErr(cf, err.message); showPhoto(); }
 };
 
+// Foto profilo di un personaggio esistente: generata dallo studio con il suo aspetto, o caricata
+function showCmAvatar() {
+  const box = $('#cm-avatar');
+  box.hidden = !cmChar;
+  if (!cmChar) return;
+  const c = state.convs.find((x) => x.id === cmChar.id) || cmChar;
+  $('.ava-prev', box).innerHTML = c.avatarUrl ? `<img src="${esc(c.avatarUrl)}" alt="">` : initial(c.name);
+  $('#cm-ava-gen').innerHTML = `${icon('spark', 16)}${c.avatarUrl ? 'Rigenera ritratto' : 'Genera ritratto'}`;
+}
+$('#cm-ava-gen').onclick = async (e) => {
+  if (!cmChar) return;
+  const btn = e.currentTarget, hint = $('#cm-ava-hint');
+  btn.disabled = true;
+  try {
+    await api('/api/studio/messages', { body: {
+      text: 'Foto profilo: ritratto a mezzo busto, sguardo in camera, espressione naturale che rispecchia il carattere, sfondo semplice e sfocato, luce naturale morbida.',
+      characterId: cmChar.id, avatarFor: cmChar.id, aspect: '1:1', model: currentModel(),
+    } });
+    hint.textContent = 'Il ritratto si sta generando nello Studio: appena pronto diventa la foto profilo. Se non ti piace, rigeneralo.';
+  } catch (err) { hint.textContent = err.message; }
+  btn.disabled = false;
+};
+$('#cm-ava-up').onclick = () => $('#cm-ava-input').click();
+$('#cm-ava-input').onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f || !cmChar) return;
+  const hint = $('#cm-ava-hint');
+  hint.textContent = 'Carico la foto…';
+  try {
+    const up = await uploadImage(f);
+    const r = await api(`/api/characters/${cmChar.id}/avatar`, { body: { file: up.file } });
+    setAvatar(cmChar.id, r.avatarUrl);
+    showCmAvatar();
+    hint.textContent = 'Foto profilo aggiornata.';
+  } catch (err) { hint.textContent = err.message; }
+};
+
 function openCharModal(c, { photo } = {}) {
   cmChar = c;
   cmPhoto = null;
   showPhoto();
+  showCmAvatar();
+  $('#cm-ava-hint').textContent = 'È anche il volto di riferimento delle sue foto sul social.';
   $('#cm-photo').hidden = !!c;
   fillOptions();
   cf.reset();
@@ -1002,6 +1042,7 @@ function mediaActions(md) {
     ${md.status === 'done' && md.type === 'image' && !state.conv?.studio ? b('avatar', 'user', 'Profilo') : ''}
     ${md.status === 'done' && md.type === 'image' && state.conv?.studio ? b('animate', 'video', 'Anima') : ''}
     ${md.status === 'done' && md.type === 'image' && state.conv?.studio ? b('newchar', 'user', 'Crea personaggio') : ''}
+    ${md.status === 'done' && md.type === 'image' && state.conv?.studio && md.characterId && state.convs.some((c) => c.id === md.characterId) ? b('avatar', 'user', 'Foto profilo') : ''}
     ${md.status === 'done' && md.type === 'image' ? b('zoom', 'open', '') : ''}
   </div>`;
 }
@@ -1043,8 +1084,10 @@ async function mediaAction(btn) {
   // con il fisico a mano (anche tutto a 0) il personaggio eredita quelle forze
   if (act === 'newchar') return openCharModal(null, { photo: { file: md.file, url: md.url, bodyManual: md.manualBody ? Object.fromEntries(md.manualBody.map((l) => [l.part, l.strength])) : null } });
   if (act === 'avatar') {
-    return api(`/api/characters/${cid}/avatar`, { body: { file: md.file } })
-      .then((r) => setAvatar(cid, r.avatarUrl)).catch((e) => alert(e.message));
+    // nello studio: foto profilo del personaggio scelto come soggetto
+    const target = state.conv.studio ? md.characterId : cid;
+    return api(`/api/characters/${target}/avatar`, { body: { file: md.file } })
+      .then((r) => { setAvatar(target, r.avatarUrl); if (state.conv.studio) btn.textContent = 'Foto profilo ✓'; }).catch((e) => alert(e.message));
   }
   if (act === 'regenerate') {
     return api(`${base}/messages/${msg.id}/media/${md.id}/regenerate`, { method: 'POST', body: {} })

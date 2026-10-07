@@ -130,7 +130,9 @@ export function send(conv, opts = {}) {
   emit(conv.id, { type: 'message', message: userMsg });
 
   const base = { toolName: 'studio', description: text, prompt: raw ? text : '', seed, status: 'engineering', createdAt: Date.now(), characterId: owner?.id || null };
-  const first = { ...base, id: store.newId(), type: w.type, mode: w.mode, workflow: w.id, workflowName: w.name, ...(manualBody && w.type === 'image' ? { manualBody } : {}) };
+  // Ritratto chiesto dalla scheda: appena pronto diventa la foto profilo del personaggio
+  const avatarFor = opts.avatarFor && owner?.id === opts.avatarFor ? owner.id : null;
+  const first = { ...base, id: store.newId(), type: w.type, mode: w.mode, workflow: w.id, workflowName: w.name, ...(manualBody && w.type === 'image' ? { manualBody } : {}), ...(avatarFor && w.type === 'image' ? { avatarFor } : {}) };
   if (!attachments.length) Object.assign(first, { aspect, ...dimensions(w, aspect) });
   else {
     // Foto allegata: modifica (Qwen-Image-Edit), rielaborazione, oppure video che parte da lì

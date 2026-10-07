@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
+import { randomUUID } from 'node:crypto';
 import config from './config.js';
 import * as comfy from './comfy.js';
 import * as store from './store.js';
@@ -51,6 +52,15 @@ export function enqueue(conv, msg, media) {
     if (media.type === 'image' && !conv.avatar && !conv.studio) {
       conv.avatar = media.file;
       emit(conv.id, { type: 'character', avatarUrl: mediaUrl(media.file) });
+    }
+    // Ritratto chiesto dalla scheda del personaggio (studio): copia sua, così cancellare lo studio non lo tocca
+    const target = conv.studio && media.avatarFor && media.type === 'image' ? store.get(media.avatarFor) : null;
+    if (target && target.ownerId === conv.ownerId) {
+      const name = `${conv.ownerId}/ava-${randomUUID()}${path.extname(media.file).toLowerCase()}`;
+      await fs.copyFile(path.join(config.paths.media, media.file), path.join(config.paths.media, name));
+      target.avatar = name;
+      store.save(target, { touch: false });
+      emit(target.id, { type: 'character', avatarUrl: mediaUrl(name) });
     }
   }).catch((e) => {
     media.status = e.aborted || ac.signal.aborted ? 'cancelled' : 'error';
