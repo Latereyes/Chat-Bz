@@ -21,8 +21,8 @@ export function stop(ownerId) { running.get(ownerId)?.abort(); }
 
 // Motore automatico con un personaggio: lo stesso delle sue foto in chat
 const BY_STYLE = { krea: 'krea2-real', zimage: 'zimage-turbo' };
-// Le LoRA del corpo si agganciano ai grafi con Krea 2: col fisico a mano si usa uno di questi
-const KREA_BODY = ['krea2-real', 'krea2-turbo', 'reflex-real'];
+// Le LoRA del corpo si agganciano ai grafi con Krea 2 o Z-Image: col fisico a mano si usa uno di questi
+const BODY_ENGINES = ['krea2-real', 'krea2-turbo', 'reflex-real', 'zimage-turbo'];
 const MAX_ATTACHMENTS = 3;
 
 const STUDIO_RULES = `## Studio rules
@@ -115,16 +115,19 @@ export function send(conv, opts = {}) {
 
   const manualBody = manualBodyLoras(opts.body);
   let w = pickWorkflow(opts.engine || (owner && BY_STYLE[owner.card.style]) || null, attachments);
-  // Fisico a mano: da testo a immagine si passa a Krea 2 Real se il motore scelto non regge le LoRA del corpo
-  if (manualBody && w?.type === 'image' && !attachments.length && !KREA_BODY.includes(w.id)) {
-    const krea = getWorkflow('krea2-real', 'image');
-    if (krea?.id !== 'krea2-real') throw new Error('Per regolare il fisico serve il workflow Krea 2 Real, che non risulta disponibile');
-    w = krea;
+  // Fisico a mano: da testo a immagine si passa al motore del personaggio (o Krea 2 Real) se quello scelto non regge le LoRA del corpo
+  if (manualBody && w?.type === 'image' && !attachments.length && !BODY_ENGINES.includes(w.id)) {
+    const id = owner?.card.style === 'zimage' ? 'zimage-turbo' : 'krea2-real';
+    const alt = getWorkflow(id, 'image');
+    if (alt?.id !== id) throw new Error(`Per regolare il fisico serve il workflow ${id === 'zimage-turbo' ? 'Z-Image Turbo' : 'Krea 2 Real'}, che non risulta disponibile`);
+    w = alt;
   }
+  // Lenovo (look amatoriale): 'on' / 'off' scelto qui, altrimenti come il personaggio o il workflow
+  const lenovo = opts.lenovo === 'on' ? true : opts.lenovo === 'off' ? false : null;
   if (!w) throw new Error('Nessun workflow adatto disponibile su ComfyUI');
 
   const seed = /^\d{1,15}$/.test(String(opts.seed ?? '').trim()) ? Number(opts.seed) : randomSeed();
-  const settings = { engine: opts.engine || '', aspect, raw, video: !!opts.video && w.type === 'image', seconds: opts.seconds || 5, characterId: owner?.id || null, characterName: owner?.card.name || null, seed: opts.seed ? seed : null, body: manualBody ? Object.fromEntries(manualBody.map((l) => [l.part, l.strength])) : null, engineUsed: w.id !== (opts.engine || '') && manualBody ? w.id : null };
+  const settings = { engine: opts.engine || '', aspect, raw, video: !!opts.video && w.type === 'image', seconds: opts.seconds || 5, characterId: owner?.id || null, characterName: owner?.card.name || null, seed: opts.seed ? seed : null, body: manualBody ? Object.fromEntries(manualBody.map((l) => [l.part, l.strength])) : null, lenovo, engineUsed: w.id !== (opts.engine || '') && manualBody ? w.id : null };
   const userMsg = { id: store.newId(), role: 'user', content: text, attachments: attachments.length ? attachments : undefined, studio: settings, createdAt: Date.now() };
   conv.messages.push(userMsg);
   emit(conv.id, { type: 'message', message: userMsg });
@@ -132,7 +135,7 @@ export function send(conv, opts = {}) {
   const base = { toolName: 'studio', description: text, prompt: raw ? text : '', seed, status: 'engineering', createdAt: Date.now(), characterId: owner?.id || null };
   // Ritratto chiesto dalla scheda: appena pronto diventa la foto profilo del personaggio
   const avatarFor = opts.avatarFor && owner?.id === opts.avatarFor ? owner.id : null;
-  const first = { ...base, id: store.newId(), type: w.type, mode: w.mode, workflow: w.id, workflowName: w.name, ...(manualBody && w.type === 'image' ? { manualBody } : {}), ...(avatarFor && w.type === 'image' ? { avatarFor } : {}) };
+  const first = { ...base, id: store.newId(), type: w.type, mode: w.mode, workflow: w.id, workflowName: w.name, ...(manualBody && w.type === 'image' ? { manualBody } : {}), ...(lenovo !== null && w.type === 'image' ? { lenovo } : {}), ...(avatarFor && w.type === 'image' ? { avatarFor } : {}) };
   if (!attachments.length) Object.assign(first, { aspect, ...dimensions(w, aspect) });
   else {
     // Foto allegata: modifica (Qwen-Image-Edit), rielaborazione, oppure video che parte da lì

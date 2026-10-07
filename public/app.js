@@ -749,7 +749,7 @@ function renderManualBox() {
     const [lo, hi] = b.range || [-8, 8];
     const v = cardManual?.[k] ?? 0;
     return `<label title="${esc(b.label)}: negativo = più piccolo, 0 = spento, positivo = più grande"><span>${esc(b.label)}</span><input type="range" data-part="${k}" min="${lo}" max="${hi}" step="0.5" value="${v}"><output>${v}</output></label>`;
-  }).join('') + `<small class="hint">${cf.style.value === 'krea' ? 'Valgono per le foto in chat e sul social e sostituiscono le taglie ricavate dall\'aspetto.' : 'Valgono solo con lo stile «Realistico spontaneo (Krea 2)»: con questo stile le foto non le usano.'}</small>`;
+  }).join('') + `<small class="hint">Valgono per le foto in chat, sul social e nello Studio e sostituiscono le taglie ricavate dall'aspetto.${cf.style.value === 'zimage' ? ' Con Z-Image servono le versioni Z-Image delle LoRA su ComfyUI.' : ''}</small>`;
 }
 function showBody() {
   const p = $('#cm-body');
@@ -780,6 +780,7 @@ function fillCard(card) {
   for (const k of CARD_FIELDS) if (cf[k] && card[k] !== undefined) cf[k].value = card[k];
   cf.initiative.checked = card.initiative !== false;
   cf.social.checked = card.social !== false;
+  cf.lenovo.checked = typeof card.lenovo === 'boolean' ? card.lenovo : card.style !== 'zimage';   // come il workflow: Krea 2 Real ce l'ha
   cardBody = card.body ? { look: card.look, body: card.body } : null;
   cardManual = card.bodyManual ? { ...card.bodyManual } : null;
   showBody();
@@ -790,6 +791,7 @@ function readCard() {
   out.age = Number(out.age);
   out.initiative = cf.initiative.checked;
   out.social = cf.social.checked;
+  out.lenovo = cf.lenovo.checked;
   if (cardBody && cardBody.look === out.look) out.body = cardBody.body;
   out.bodyManual = cardManual;
   return out;
@@ -1192,7 +1194,7 @@ async function prepareImage(file) {
 
 // ---------- Studio immagini (l'assistente immagini, separato dai personaggi) ----------
 const convPath = () => (state.conv?.studio ? '/api/studio' : `/api/characters/${state.conv.id}`);
-const so = { box: $('#studio-opts'), engine: $('#so-engine'), aspect: $('#so-aspect'), char: $('#so-char'), raw: $('#so-raw'), video: $('#so-video'), seed: $('#so-seed'), body: $('#so-body'), bodyBox: $('#so-body-box') };
+const so = { box: $('#studio-opts'), lenovo: $('#so-lenovo'), engine: $('#so-engine'), aspect: $('#so-aspect'), char: $('#so-char'), raw: $('#so-raw'), video: $('#so-video'), seed: $('#so-seed'), body: $('#so-body'), bodyBox: $('#so-body-box') };
 const SO_ASPECTS = { '3:4': '3:4 verticale', '9:16': '9:16 storia', '1:1': '1:1 quadrato', '4:3': '4:3 orizzontale', '16:9': '16:9 panoramico', '2:3': '2:3 ritratto', '3:2': '3:2 foto' };
 
 function fillStudioOpts() {
@@ -1205,6 +1207,7 @@ function fillStudioOpts() {
   so.aspect.value = SO_ASPECTS[p.aspect] ? p.aspect : '3:4';
   so.char.value = state.convs.some((c) => c.id === p.characterId) ? p.characterId : '';
   so.raw.checked = !!p.raw;
+  so.lenovo.value = ['on', 'off'].includes(p.lenovo) ? p.lenovo : '';
   so.video.checked = !!p.video;
   so.body.checked = !!p.bodyOn;
   // Cursori delle LoRA del corpo: limiti dalle taglie (stesse forze delle schede), 0 = LoRA spenta
@@ -1213,7 +1216,7 @@ function fillStudioOpts() {
     const [lo, hi] = b.range || [-3, 3];
     const v = Math.min(hi, Math.max(lo, Number(p.body?.[k]) || 0));
     return `<label title="${esc(b.label)}: negativo = più piccolo, 0 = spento, positivo = più grande"><span>${esc(b.label)}</span><input type="range" data-part="${k}" min="${lo}" max="${hi}" step="0.5" value="${v}"><output>${v}</output></label>`;
-  }).join('') + '<small class="hint">Valgono con Krea 2 (Real o Turbo; con altri motori si passa a Krea 2 Real) e sostituiscono il fisico del personaggio.</small>';
+  }).join('') + '<small class="hint">Valgono con Krea 2 e Z-Image (con altri motori si passa a quello del personaggio) e sostituiscono il fisico del personaggio.</small>';
   syncVideoOpt();
 }
 /** Con un motore video la richiesta è già un video: «Anche video» non serve. */
@@ -1226,7 +1229,7 @@ function syncVideoOpt() {
 const bodyValues = () => Object.fromEntries($$('input[data-part]', so.bodyBox).map((i) => [i.dataset.part, Number(i.value)]));
 so.bodyBox.addEventListener('input', (e) => { const i = e.target.closest('input[data-part]'); if (i) i.nextElementSibling.textContent = i.value; });
 function readStudioOpts() {
-  return { engine: so.engine.value, aspect: so.aspect.value, characterId: so.char.value, raw: so.raw.checked, video: so.video.checked, seed: so.seed.value.trim(), body: so.body.checked ? bodyValues() : null };
+  return { engine: so.engine.value, aspect: so.aspect.value, characterId: so.char.value, lenovo: so.lenovo.value, raw: so.raw.checked, video: so.video.checked, seed: so.seed.value.trim(), body: so.body.checked ? bodyValues() : null };
 }
 so.box.addEventListener('change', () => {
   const { seed, body, ...p } = readStudioOpts();
@@ -1247,7 +1250,7 @@ function bodyTag(b) {
 }
 function studioTag(o) {
   const names = Object.fromEntries((state.config?.workflows || []).map((w) => [w.id, w.name]));
-  const bits = [o.engineUsed ? names[o.engineUsed] || o.engineUsed : o.engine ? names[o.engine] || o.engine : 'Automatico', o.aspect, o.characterName, o.raw && 'prompt diretto', o.video && '+ video', o.seed != null && `seed ${o.seed}`, o.body && `fisico: ${bodyTag(o.body)}`].filter(Boolean);
+  const bits = [o.engineUsed ? names[o.engineUsed] || o.engineUsed : o.engine ? names[o.engine] || o.engine : 'Automatico', o.aspect, o.characterName, o.lenovo === true && 'con Lenovo', o.lenovo === false && 'senza Lenovo', o.raw && 'prompt diretto', o.video && '+ video', o.seed != null && `seed ${o.seed}`, o.body && `fisico: ${bodyTag(o.body)}`].filter(Boolean);
   return `<div class="tag">${icon('spark', 13)}${esc(bits.join(' · '))}</div>`;
 }
 

@@ -98,7 +98,8 @@
               <label class="so-check" title="Usa il testo così com'è, senza farlo riscrivere a Gemma"><input type="checkbox" id="so-raw"><span>Prompt diretto</span></label>
               <label class="so-check" title="Dopo la foto genera anche un breve video che parte da lì"><input type="checkbox" id="so-video"><span>Anche video</span></label>
               <label title="Seed fisso (vuoto = casuale)"><span>Seed</span><input id="so-seed" inputmode="numeric" placeholder="seed casuale" size="10"></label>
-              <label class="so-check" title="Regola a mano le LoRA del corpo (si usa Krea 2)"><input type="checkbox" id="so-body"><span>Fisico a mano</span></label>
+              <label title="LoRA Lenovo, il look foto amatoriale (Krea 2 e Z-Image)"><span>Lenovo</span><select id="so-lenovo"><option value="">Lenovo: automatico</option><option value="on">Con Lenovo</option><option value="off">Senza Lenovo</option></select></label>
+              <label class="so-check" title="Regola a mano le LoRA del corpo (Krea 2 o Z-Image)"><input type="checkbox" id="so-body"><span>Fisico a mano</span></label>
               <div class="so-body" id="so-body-box" hidden></div>
             </div>
             <textarea id="input" rows="1" placeholder="Scrivi un messaggio…" autocomplete="off"></textarea>
@@ -198,6 +199,7 @@
           <label class="fld">Genere<select name="gender"><option value="donna">Donna</option><option value="uomo">Uomo</option><option value="altro">Altro</option></select></label>
           <label class="fld">Stile delle foto<select name="style" data-opts="styles"></select></label>
         </div>
+        <label class="check" title="LoRA Lenovo: foto più spontanee, da telefono. Spenta = immagini più pulite e curate"><input type="checkbox" name="lenovo" checked> Look foto amatoriale (LoRA Lenovo)</label>
         <label class="fld">Carattere<small>temperamento, valori, cosa desidera, cosa la ferisce, contraddizioni</small><textarea name="personality" rows="4"></textarea></label>
         <label class="fld">Vita<small>lavoro, routine, persone, cosa sta succedendo in questo periodo</small><textarea name="life" rows="3"></textarea></label>
         <label class="fld">Come parla e scrive<textarea name="speech" rows="2"></textarea></label>

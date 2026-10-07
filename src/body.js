@@ -6,24 +6,29 @@ import config from './config.js';
  * LoRA del corpo (seno, glutei, magra↔morbida), come in ChatBz 1 ma scelte in automatico:
  * dalla descrizione dell'aspetto si ricava una taglia per ogni parte, e la taglia diventa la forza della LoRA.
  * Forze tarate su foto reali (Krea 2 Real, 2026-10-05).
- * Funzionano con tutti i grafi Krea 2 (Real, Turbo, i2i, Reflex/Qwen → Krea Real): vengono agganciate dopo la LoRA Lenovo
- * se c'è, altrimenti in fondo alla catena di LoRA del modello Krea 2.
+ * Ci sono per Krea 2 (tutti i grafi: Real, Turbo, i2i, Reflex/Qwen → Krea Real) e per Z-Image: vengono agganciate dopo
+ * la LoRA Lenovo se c'è, altrimenti in fondo alla catena di LoRA del modello.
  */
 export const BODY = {
   breast: {
-    label: 'Seno', file: 'breast_size_v2_krea2_loraholic.safetensors',
+    label: 'Seno', file: 'breast_size_v2_krea2_loraholic.safetensors', match: /breast|bust|boob/i,
     sizes: { small: ['piccolo', -2], medium: ['medio', 0], large: ['grande', 1.5], huge: ['molto grande', 3] },
   },
   butt: {
-    label: 'Glutei', file: 'ass_krea2_loraholic.safetensors',
+    label: 'Glutei', file: 'ass_krea2_loraholic.safetensors', match: /(^|[^a-z])ass|butt|glute/i,
     sizes: { small: ['piccoli', -1.5], medium: ['medi', 0], large: ['grandi', 2], huge: ['molto grandi', 3.5] },
   },
   build: {
-    label: 'Corporatura', file: 'skinny_fat_v2_loraholic.safetensors',
+    label: 'Corporatura', file: 'skinny_fat_v2_loraholic.safetensors', match: /skinny|fat|weight/i,
     sizes: { very_slim: ['molto magra', -3], slim: ['magra', -2], athletic: ['atletica', -1], average: ['media', 0], curvy: ['morbida', 2], plump: ['in carne', 4.5] },
   },
 };
-const ANCHOR = 'lenovo_krea2';
+// Modelli che reggono le LoRA del corpo (stesse LoRA di loraholic, una versione per modello):
+// unet = nome del modello nel grafo, files = parola nel nome dei file LoRA, lenovo = forza della LoRA Lenovo quando la si aggiunge
+export const FAMILIES = {
+  krea2: { label: 'Krea 2', unet: /krea2/i, files: /krea/i, lenovo: 1.2 },
+  zimage: { label: 'Z-Image', unet: /^zit|z[-_ ]?image/i, files: /(^|[^a-z])zit|z[-_ ]?image/i, lenovo: 1 },
+};
 
 /** Tiene solo valori validi: { breast: 'large', ... }. */
 export function normalizeBody(b) {
@@ -163,23 +168,46 @@ async function comfyLoras() {
   return files;
 }
 
-/** Tiene solo le LoRA installate su ComfyUI, col nome esatto (anche se sono in una sottocartella). */
-export async function installedLoras(loras) {
-  if (!loras?.length) return [];
+/** File di una LoRA del corpo per questa famiglia di modelli (nome esatto per Krea 2, altrimenti cercato per parole). */
+function findBodyFile(files, part, family) {
+  const base = (f) => f.replace(/\\/g, '/').split('/').pop();
+  if (family === 'krea2') {
+    const exact = files.find((f) => base(f) === BODY[part].file);
+    if (exact) return exact;
+  }
+  const hits = files.filter((f) => BODY[part].match.test(base(f)) && FAMILIES[family].files.test(base(f)));
+  return hits.find((f) => /loraholic/i.test(base(f))) || hits[0] || null;
+}
+
+/**
+ * Tiene solo le LoRA installate su ComfyUI per la famiglia del modello, col nome esatto (anche in una sottocartella).
+ * Krea 2: i file di BODY; Z-Image: i file con la parte (breast / ass / skinny_fat) e "zimage" o "zit" nel nome.
+ */
+export async function installedLoras(loras, family = 'krea2') {
+  if (!loras?.length || !FAMILIES[family]) return [];
   const files = await comfyLoras();
   if (!files) return [];
   const out = [];
   for (const l of loras) {
-    const name = files.find((f) => f.replace(/\\/g, '/').split('/').pop() === l.file);
+    const name = findBodyFile(files, l.part, family);
     if (name) out.push({ ...l, name });
   }
   return out;
 }
 
-/** Aggancia le LoRA del corpo dopo ogni LoRA Lenovo del grafo (o in fondo alla catena Krea 2): chi usava quel nodo usa l'ultima aggiunta. */
-/** Grafi Krea 2 senza Lenovo (Turbo, i2i): l'ultimo nodo della catena UNET Krea 2 → LoRA. */
-function kreaChainEnds(graph) {
-  const unets = Object.keys(graph).filter((id) => graph[id].class_type === 'UNETLoader' && /krea2/i.test(String(graph[id].inputs?.unet_name || '')));
+/** Famiglia del modello del grafo ('krea2' | 'zimage'), dal nome del modello caricato; null se non regge le LoRA del corpo. */
+export function bodyFamily(graph) {
+  for (const n of Object.values(graph)) {
+    if (n.class_type !== 'UNETLoader') continue;
+    const name = String(n.inputs?.unet_name || '').replace(/\\/g, '/').split('/').pop();
+    for (const [family, f] of Object.entries(FAMILIES)) if (f.unet.test(name)) return family;
+  }
+  return null;
+}
+
+/** Ultimo nodo della catena «modello → LoRA» partendo da ogni modello della famiglia. */
+function chainEnds(graph, family) {
+  const unets = Object.keys(graph).filter((id) => graph[id].class_type === 'UNETLoader' && FAMILIES[family]?.unet.test(String(graph[id].inputs?.unet_name || '').replace(/\\/g, '/').split('/').pop()));
   return unets.map((id) => {
     let cur = id;
     for (;;) {
@@ -190,24 +218,64 @@ function kreaChainEnds(graph) {
   });
 }
 
-export function applyBodyLoras(graph, loras) {
-  if (!loras?.length) return 0;
-  let anchors = Object.keys(graph).filter((id) => graph[id].class_type === 'LoraLoaderModelOnly' && String(graph[id].inputs?.lora_name || '').includes(ANCHOR));
-  if (!anchors.length) anchors = kreaChainEnds(graph);
-  let next = Math.max(0, ...Object.keys(graph).map(Number).filter(Number.isFinite)) + 1;
-  const added = new Set();
+const isLenovo = (n) => n.class_type === 'LoraLoaderModelOnly' && /lenovo/i.test(String(n.inputs?.lora_name || ''));
+const nextId = (graph) => Math.max(0, ...Object.keys(graph).map(Number).filter(Number.isFinite)) + 1;
+
+/** Inserisce un nodo dopo «anchor»: chi usava l'uscita di anchor usa quella del nuovo nodo. */
+function insertAfter(graph, anchor, node) {
+  const id = String(nextId(graph));
+  for (const n of Object.values(graph)) {
+    for (const [k, v] of Object.entries(n.inputs || {})) if (Array.isArray(v) && String(v[0]) === anchor && v[1] === 0) n.inputs[k] = [id, 0];
+  }
+  graph[id] = { ...node, inputs: { ...node.inputs, model: [anchor, 0] } };
+  return id;
+}
+
+/** File della LoRA Lenovo (look foto amatoriale) per la famiglia, se installato. */
+export async function lenovoLora(family) {
+  const files = await comfyLoras();
+  if (!files || !FAMILIES[family]) return null;
+  const base = (f) => f.replace(/\\/g, '/').split('/').pop();
+  const hits = files.filter((f) => /lenovo/i.test(base(f)) && FAMILIES[family].files.test(base(f)));
+  return hits[0] || null;
+}
+
+/**
+ * Lenovo sì/no scelto per il personaggio o nello studio. false: toglie le LoRA Lenovo dal grafo;
+ * true: se il grafo non ce l'ha, la aggiunge in fondo alla catena del modello (serve il file della famiglia).
+ * Restituisce true/false = Lenovo presente nel grafo alla fine.
+ */
+export function applyLenovo(graph, family, on, file) {
+  const nodes = Object.keys(graph).filter((id) => isLenovo(graph[id]));
+  if (on === false) {
+    for (const id of nodes) {
+      const src = graph[id].inputs.model;
+      delete graph[id];
+      for (const n of Object.values(graph)) {
+        for (const [k, v] of Object.entries(n.inputs || {})) if (Array.isArray(v) && String(v[0]) === id && v[1] === 0) n.inputs[k] = src;
+      }
+    }
+    return false;
+  }
+  if (on === true && !nodes.length && file) {
+    for (const end of chainEnds(graph, family)) {
+      insertAfter(graph, end, { class_type: 'LoraLoaderModelOnly', _meta: { title: 'Lenovo (look foto amatoriale)' }, inputs: { lora_name: file, strength_model: FAMILIES[family].lenovo } });
+    }
+  }
+  return Object.values(graph).some(isLenovo);
+}
+
+/**
+ * Aggancia le LoRA del corpo dopo ogni LoRA Lenovo del grafo, altrimenti in fondo alla catena del modello
+ * (Krea 2 Turbo / i2i, Z-Image): chi usava quel nodo usa l'ultima aggiunta.
+ */
+export function applyBodyLoras(graph, loras, family = bodyFamily(graph)) {
+  if (!loras?.length || !family) return 0;
+  let anchors = Object.keys(graph).filter((id) => isLenovo(graph[id]));
+  if (!anchors.length) anchors = chainEnds(graph, family);
   for (const anchor of anchors) {
-    const users = Object.entries(graph).filter(([id]) => !added.has(id));
     let prev = anchor;
-    for (const l of loras) {
-      const id = String(next++);
-      graph[id] = { class_type: 'LoraLoaderModelOnly', _meta: { title: `Corpo: ${BODY[l.part].label}` }, inputs: { model: [prev, 0], lora_name: l.name || l.file, strength_model: l.strength } };
-      added.add(id);
-      prev = id;
-    }
-    for (const [, n] of users) {
-      for (const [k, v] of Object.entries(n.inputs || {})) if (Array.isArray(v) && String(v[0]) === anchor && v[1] === 0) n.inputs[k] = [prev, 0];
-    }
+    for (const l of loras) prev = insertAfter(graph, prev, { class_type: 'LoraLoaderModelOnly', _meta: { title: `Corpo: ${BODY[l.part].label}` }, inputs: { lora_name: l.name || l.file, strength_model: l.strength } });
   }
   return anchors.length;
 }

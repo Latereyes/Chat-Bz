@@ -7,7 +7,7 @@ import * as comfy from './comfy.js';
 import * as store from './store.js';
 import { gpu } from './gpu.js';
 import { getWorkflow, buildGraph } from './workflows.js';
-import { bodyLoras, installedLoras, applyBodyLoras } from './body.js';
+import { bodyLoras, installedLoras, applyBodyLoras, bodyFamily, applyLenovo, lenovoLora } from './body.js';
 
 /** Bus globale degli eventi verso il frontend (SSE). */
 export const bus = new EventEmitter();
@@ -91,11 +91,15 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
     width: media.width, height: media.height, frames: media.frames,
     image, image2, image3, denoise: media.denoise,
   });
-  // LoRA del corpo del personaggio (solo nei grafi Krea 2 e solo se installate su ComfyUI)
-  if (media.type === 'image') {
+  // Lenovo e LoRA del corpo del personaggio (grafi Krea 2 e Z-Image, solo LoRA installate su ComfyUI)
+  const family = media.type === 'image' ? bodyFamily(graph) : null;
+  if (family) {
+    // Lenovo sì/no: scelto nello studio, altrimenti dal personaggio, altrimenti come nel workflow
+    const lenovo = typeof media.lenovo === 'boolean' ? media.lenovo : typeof card?.lenovo === 'boolean' ? card.lenovo : null;
+    if (lenovo !== null) media.lenovoUsed = applyLenovo(graph, family, lenovo, lenovo ? await lenovoLora(family) : null);
     // fisico regolato a mano nello studio (anche tutto a 0 = nessuna LoRA), altrimenti quello del personaggio
-    const loras = await installedLoras(media.manualBody ? media.manualBody : bodyLoras(card));
-    if (applyBodyLoras(graph, loras)) media.loras = loras.map(({ part, strength }) => ({ part, strength }));
+    const loras = await installedLoras(media.manualBody ? media.manualBody : bodyLoras(card), family);
+    if (applyBodyLoras(graph, loras, family)) media.loras = loras.map(({ part, strength }) => ({ part, strength }));
   }
 
   let lastPreview = 0;
