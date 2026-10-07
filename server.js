@@ -19,7 +19,7 @@ import * as social from './src/social.js';
 import * as queue from './src/queue.js';
 import * as notify from './src/notify.js';
 import { publicCharacter, draftFromIdea, draftFromPhoto, PHOTO_QUESTION, normalizeCard, RELATIONS, PACES, INTIMACY, STYLES } from './src/characters.js';
-import { analyzeBody, BODY, FAMILIES, bodyRange, figureText, installedLoras, normalizeManual } from './src/body.js';
+import { analyzeBody, BODY, DERIVED, FAMILIES, bodyRange, figureText, installedLoras, normalizeManual } from './src/body.js';
 import { updateScene, initialState, DIM_LABEL, intimacyOpen, closeness } from './src/relationship.js';
 
 const app = express();
@@ -425,10 +425,10 @@ const server = app.listen(config.port, config.host, () => {
     const off = list.filter((w) => w.available === false);
     if (off.length) console.log(`  Workflow non disponibili (modelli mancanti): ${off.map((w) => `${w.name} → ${w.missing.join(', ')}`).join(' | ')}`);
   }).then(async () => {
-    const all = Object.keys(BODY).map((part) => ({ part }));
+    const all = [...Object.keys(BODY), ...Object.keys(DERIVED)].map((part) => ({ part }));
     for (const [family, f] of Object.entries(FAMILIES)) {
       const found = await installedLoras(all, family);
-      if (found.length < all.length) console.log(`  LoRA del corpo per ${f.label} non trovate su ComfyUI (le foto escono senza): ${all.filter((l) => !found.some((x) => x.part === l.part)).map((l) => BODY[l.part].files[family]).join(', ')}`);
+      if (found.length < all.length) console.log(`  LoRA del corpo per ${f.label} non trovate su ComfyUI (le foto escono senza): ${all.filter((l) => !found.some((x) => x.part === l.part)).map((l) => (BODY[l.part] || DERIVED[l.part]).files[family]).join(', ')}`);
     }
   });
   refresh();

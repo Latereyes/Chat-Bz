@@ -7,7 +7,7 @@ import * as comfy from './comfy.js';
 import * as store from './store.js';
 import { gpu } from './gpu.js';
 import { getWorkflow, buildGraph } from './workflows.js';
-import { bodyLoras, installedLoras, applyBodyLoras, bodyFamily, applyLenovo, lenovoLora } from './body.js';
+import { bodyLoras, withDerived, installedLoras, applyBodyLoras, bodyFamily, applyLenovo, lenovoLora } from './body.js';
 
 /** Bus globale degli eventi verso il frontend (SSE). */
 export const bus = new EventEmitter();
@@ -98,7 +98,7 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
     const lenovo = typeof media.lenovo === 'boolean' ? media.lenovo : null;
     if (lenovo !== null) media.lenovoUsed = applyLenovo(graph, family, lenovo, lenovo ? await lenovoLora(family) : null);
     // fisico regolato a mano nello studio (anche tutto a 0 = nessuna LoRA), altrimenti quello del personaggio
-    const loras = await installedLoras(media.manualBody ? media.manualBody : bodyLoras(card, family), family);
+    const loras = await installedLoras(withDerived(media.manualBody ? media.manualBody : bodyLoras(card, family)), family);
     if (applyBodyLoras(graph, loras, family)) media.loras = loras.map(({ part, strength }) => ({ part, strength }));
   }
 
