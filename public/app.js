@@ -1065,7 +1065,7 @@ function mediaActions(md) {
     ${md.prompt ? b('prompt', 'text', 'Prompt') : ''}
     <span class="grow"></span>
     ${md.status === 'done' && md.type === 'image' && !state.conv?.studio ? b('avatar', 'user', 'Profilo') : ''}
-    ${md.status === 'done' && md.type === 'image' && state.conv?.studio ? b('animate', 'video', 'Anima') : ''}
+    ${md.status === 'done' && md.type === 'image' ? b('animate', 'video', 'Anima') : ''}
     ${md.status === 'done' && md.type === 'image' && state.conv?.studio ? b('newchar', 'user', 'Crea personaggio') : ''}
     ${md.status === 'done' && md.type === 'image' && state.conv?.studio && md.characterId && state.convs.some((c) => c.id === md.characterId) ? b('avatar', 'user', 'Foto profilo') : ''}
     ${md.status === 'done' && md.type === 'image' ? b('zoom', 'open', '') : ''}

@@ -28,6 +28,32 @@ export const BODY = {
     sizes: { natural: ['naturale', 0], fake: ['rifatto', 3] },
   },
 };
+/**
+ * LoRA che non si regolano a mano: seguono un'altra parte. Capezzoli in rilievo: in proporzione al seno,
+ * dal suo intervallo (-8..+8) al loro (-5..+5) — scelta dell'utente, 2026-10-07.
+ */
+export const DERIVED = {
+  nipples: {
+    label: 'Capezzoli', from: 'breast', range: [-5, 5],
+    files: { krea2: 'nipples_protruding_krea2_loraholic.safetensors', zimage: 'nipples_protruding_loraholic.safetensors' },
+  },
+};
+const loraDef = (part) => BODY[part] || DERIVED[part];
+
+/** Aggiunge alle LoRA del corpo quelle che ne seguono un'altra (capezzoli ← seno), con la forza in proporzione. */
+export function withDerived(loras) {
+  if (!loras?.length) return loras || [];
+  const out = [...loras];
+  for (const [part, d] of Object.entries(DERIVED)) {
+    const src = loras.find((l) => l.part === d.from);
+    if (!src || out.some((l) => l.part === part)) continue;
+    const [lo, hi] = bodyRange(d.from);
+    const strength = Math.round((src.strength >= 0 ? src.strength / hi * d.range[1] : src.strength / lo * d.range[0]) * 10) / 10;
+    if (strength) out.push({ part, strength });
+  }
+  return out;
+}
+
 // Modelli che reggono le LoRA del corpo (stesse LoRA di loraholic, una versione per modello):
 // unet = nome del modello nel grafo, lenovoFile / lenovo = file e forza della LoRA Lenovo quando la si aggiunge,
 // autoScale = quanto scalare le forze delle taglie automatiche (tarate su Krea 2; su Z-Image le stesse LoRA
@@ -184,7 +210,7 @@ async function comfyLoras() {
 
 /** File di una LoRA del corpo per questa famiglia di modelli, col percorso che ha su ComfyUI (anche in una sottocartella). */
 function findBodyFile(files, part, family) {
-  const want = BODY[part]?.files[family];
+  const want = loraDef(part)?.files[family];
   return (want && files.find((f) => f.replace(/\\/g, '/').split('/').pop() === want)) || null;
 }
 
@@ -279,7 +305,7 @@ export function applyBodyLoras(graph, loras, family = bodyFamily(graph)) {
   if (!anchors.length) anchors = chainEnds(graph, family);
   for (const anchor of anchors) {
     let prev = anchor;
-    for (const l of loras) prev = insertAfter(graph, prev, { class_type: 'LoraLoaderModelOnly', _meta: { title: `Corpo: ${BODY[l.part].label}` }, inputs: { lora_name: l.name || l.file, strength_model: l.strength } });
+    for (const l of loras) prev = insertAfter(graph, prev, { class_type: 'LoraLoaderModelOnly', _meta: { title: `Corpo: ${loraDef(l.part).label}` }, inputs: { lora_name: l.name || l.file, strength_model: l.strength } });
   }
   return anchors.length;
 }
