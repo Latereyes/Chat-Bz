@@ -1213,7 +1213,7 @@ function fillStudioOpts() {
     const [lo, hi] = b.range || [-3, 3];
     const v = Math.min(hi, Math.max(lo, Number(p.body?.[k]) || 0));
     return `<label title="${esc(b.label)}: negativo = più piccolo, 0 = spento, positivo = più grande"><span>${esc(b.label)}</span><input type="range" data-part="${k}" min="${lo}" max="${hi}" step="0.5" value="${v}"><output>${v}</output></label>`;
-  }).join('') + '<small class="hint">Valgono solo con Krea 2 Real (scelto in automatico) e sostituiscono il fisico del personaggio.</small>';
+  }).join('') + '<small class="hint">Valgono con Krea 2 (Real o Turbo; con altri motori si passa a Krea 2 Real) e sostituiscono il fisico del personaggio.</small>';
   syncVideoOpt();
 }
 /** Con un motore video la richiesta è già un video: «Anche video» non serve. */

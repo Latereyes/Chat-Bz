@@ -21,8 +21,8 @@ export function stop(ownerId) { running.get(ownerId)?.abort(); }
 
 // Motore automatico con un personaggio: lo stesso delle sue foto in chat
 const BY_STYLE = { krea: 'krea2-real', zimage: 'zimage-turbo' };
-// Le LoRA del corpo si agganciano solo ai grafi Krea Real (dopo la LoRA Lenovo): col fisico a mano si usa uno di questi
-const KREA_REAL = ['krea2-real', 'reflex-real'];
+// Le LoRA del corpo si agganciano ai grafi con Krea 2: col fisico a mano si usa uno di questi
+const KREA_BODY = ['krea2-real', 'krea2-turbo', 'reflex-real'];
 const MAX_ATTACHMENTS = 3;
 
 const STUDIO_RULES = `## Studio rules
@@ -115,8 +115,8 @@ export function send(conv, opts = {}) {
 
   const manualBody = manualBodyLoras(opts.body);
   let w = pickWorkflow(opts.engine || (owner && BY_STYLE[owner.card.style]) || null, attachments);
-  // Fisico a mano: da testo a immagine si passa a Krea Real se il motore scelto non regge le LoRA del corpo
-  if (manualBody && w?.type === 'image' && !attachments.length && !KREA_REAL.includes(w.id)) {
+  // Fisico a mano: da testo a immagine si passa a Krea 2 Real se il motore scelto non regge le LoRA del corpo
+  if (manualBody && w?.type === 'image' && !attachments.length && !KREA_BODY.includes(w.id)) {
     const krea = getWorkflow('krea2-real', 'image');
     if (krea?.id !== 'krea2-real') throw new Error('Per regolare il fisico serve il workflow Krea 2 Real, che non risulta disponibile');
     w = krea;

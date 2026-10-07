@@ -6,7 +6,8 @@ import config from './config.js';
  * LoRA del corpo (seno, glutei, magra↔morbida), come in ChatBz 1 ma scelte in automatico:
  * dalla descrizione dell'aspetto si ricava una taglia per ogni parte, e la taglia diventa la forza della LoRA.
  * Forze tarate su foto reali (Krea 2 Real, 2026-10-05).
- * Funzionano solo con Krea 2: vengono agganciate dopo la LoRA Lenovo (fine della catena Krea Real).
+ * Funzionano con tutti i grafi Krea 2 (Real, Turbo, i2i, Reflex/Qwen → Krea Real): vengono agganciate dopo la LoRA Lenovo
+ * se c'è, altrimenti in fondo alla catena di LoRA del modello Krea 2.
  */
 export const BODY = {
   breast: {
@@ -175,10 +176,24 @@ export async function installedLoras(loras) {
   return out;
 }
 
-/** Aggancia le LoRA del corpo dopo ogni LoRA Lenovo del grafo (Krea Real): chi usava Lenovo usa l'ultima aggiunta. */
+/** Aggancia le LoRA del corpo dopo ogni LoRA Lenovo del grafo (o in fondo alla catena Krea 2): chi usava quel nodo usa l'ultima aggiunta. */
+/** Grafi Krea 2 senza Lenovo (Turbo, i2i): l'ultimo nodo della catena UNET Krea 2 → LoRA. */
+function kreaChainEnds(graph) {
+  const unets = Object.keys(graph).filter((id) => graph[id].class_type === 'UNETLoader' && /krea2/i.test(String(graph[id].inputs?.unet_name || '')));
+  return unets.map((id) => {
+    let cur = id;
+    for (;;) {
+      const nextLora = Object.keys(graph).find((n) => graph[n].class_type === 'LoraLoaderModelOnly' && String(graph[n].inputs?.model?.[0]) === cur);
+      if (!nextLora) return cur;
+      cur = nextLora;
+    }
+  });
+}
+
 export function applyBodyLoras(graph, loras) {
   if (!loras?.length) return 0;
-  const anchors = Object.keys(graph).filter((id) => graph[id].class_type === 'LoraLoaderModelOnly' && String(graph[id].inputs?.lora_name || '').includes(ANCHOR));
+  let anchors = Object.keys(graph).filter((id) => graph[id].class_type === 'LoraLoaderModelOnly' && String(graph[id].inputs?.lora_name || '').includes(ANCHOR));
+  if (!anchors.length) anchors = kreaChainEnds(graph);
   let next = Math.max(0, ...Object.keys(graph).map(Number).filter(Number.isFinite)) + 1;
   const added = new Set();
   for (const anchor of anchors) {
