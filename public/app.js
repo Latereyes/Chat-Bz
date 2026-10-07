@@ -295,6 +295,7 @@ document.addEventListener('click', (e) => { if (!e.target.closest('.scene-wrap')
 
 function setAvatar(id, url) {
   for (const c of [state.conv, ...state.convs]) if (c?.id === id) c.avatarUrl = url;
+  if (cmChar?.id === id && !cm.hidden) { cmChar.avatarUrl = url; showCmAvatar(); }
   renderHead();
   renderConvList();
   if (state.conv?.id === id) for (const a of $$('.msg-ai .avatar', el.thread)) a.innerHTML = avatarHtml(state.conv);
@@ -736,29 +737,52 @@ const CARD_FIELDS = ['name', 'age', 'gender', 'style', 'personality', 'life', 's
 let cardBody = null;
 function bodySummary(card) {
   const opts = state.config?.options?.body || {};
-  const parts = Object.entries(card.body || {}).filter(([k]) => opts[k]).map(([k, s]) => `${opts[k].label.toLowerCase()} ${opts[k].sizes[s] || s}`);
+  const parts = Object.entries(card.body || {}).filter(([k]) => opts[k]).map(([k, s]) => `${(opts[k].short || opts[k].label).toLowerCase()} ${opts[k].sizes[s] || s}`);
   return parts.length ? `Fisico nelle foto (automatico, dall'aspetto): ${parts.join(', ')}.` : '';
 }
 // Forze regolate a mano nello studio (personaggio creato da una sua foto): vincono sulle taglie automatiche
 let cardManual = null;
+// Cursori del fisico a mano nella scheda (stessi dello studio): spenti = taglie automatiche dall'aspetto
+function renderManualBox() {
+  const parts = state.config?.options?.body || {};
+  $('#cm-manual-box').innerHTML = Object.entries(parts).map(([k, b]) => {
+    const [lo, hi] = b.range || [-8, 8];
+    const v = cardManual?.[k] ?? 0;
+    return `<label title="${esc(b.label)}: ${esc(b.hint || 'negativo = più piccolo, 0 = spento, positivo = più grande')}"><span>${esc(b.label)}</span><input type="range" data-part="${k}" min="${lo}" max="${hi}" step="0.5" value="${v}"><output>${v}</output></label>`;
+  }).join('') + `<small class="hint">Valgono per le foto in chat, sul social e nello Studio e sostituiscono le taglie ricavate dall'aspetto.${cf.style.value === 'zimage' ? ' Con Z-Image servono le versioni Z-Image delle LoRA su ComfyUI.' : ''}</small>`;
+}
 function showBody() {
   const p = $('#cm-body');
+  const woman = cf.gender.value !== 'uomo';
+  $('#cm-manual-row').hidden = !woman;
+  $('#cm-manual').checked = !!cardManual;
+  $('#cm-manual-box').hidden = !cardManual || !woman;
+  if (cardManual && woman) { renderManualBox(); p.hidden = true; return; }
   const same = cardBody && cardBody.look === cf.look.value;
-  if (cardManual && cf.gender.value !== 'uomo') {
-    p.innerHTML = `Fisico nelle foto regolato a mano: ${esc(bodyTag(cardManual))}. <button type="button" class="link" id="cm-body-auto">Torna automatico</button>`;
-    p.hidden = false;
-    return;
-  }
-  p.textContent = cf.gender.value === 'uomo' ? '' : same ? bodySummary(cardBody) : cf.look.value.trim() ? "Il fisico nelle foto verrà ricavato dall'aspetto al salvataggio." : '';
+  p.textContent = !woman ? '' : same ? bodySummary(cardBody) : cf.look.value.trim() ? "Il fisico nelle foto verrà ricavato dall'aspetto al salvataggio." : '';
   p.hidden = !p.textContent;
 }
-$('#cm-body').addEventListener('click', (e) => { if (e.target.closest('#cm-body-auto')) { cardManual = null; showBody(); } });
+$('#cm-manual').addEventListener('change', (e) => {
+  if (e.target.checked) {
+    // si parte dalle forze delle taglie automatiche, se ci sono
+    const opts = state.config?.options?.body || {};
+    const scale = state.config?.options?.bodyScale?.[cf.style.value] ?? 1;   // su Z-Image le stesse LoRA sono più forti
+    cardManual = Object.fromEntries(Object.keys(opts).map((k) => [k, Math.round(((cardBody?.look === cf.look.value && opts[k].strengths?.[cardBody.body?.[k]]) || 0) * scale * 2) / 2]));
+  } else cardManual = null;
+  showBody();
+});
+$('#cm-manual-box').addEventListener('input', (e) => {
+  const i = e.target.closest('input[data-part]');
+  if (!i || !cardManual) return;
+  i.nextElementSibling.textContent = i.value;
+  cardManual[i.dataset.part] = Number(i.value);
+});
 function fillCard(card) {
   for (const k of CARD_FIELDS) if (cf[k] && card[k] !== undefined) cf[k].value = card[k];
   cf.initiative.checked = card.initiative !== false;
   cf.social.checked = card.social !== false;
   cardBody = card.body ? { look: card.look, body: card.body } : null;
-  cardManual = card.bodyManual || null;
+  cardManual = card.bodyManual ? { ...card.bodyManual } : null;
   showBody();
 }
 function readCard() {
@@ -773,6 +797,7 @@ function readCard() {
 }
 cf.look.addEventListener('input', showBody);
 cf.gender.addEventListener('change', showBody);
+cf.style.addEventListener('change', () => { if (cardManual) renderManualBox(); });
 
 function setTab(tab) {
   $$('.tab', cm).forEach((t) => t.classList.toggle('on', t.dataset.tab === tab));
@@ -821,10 +846,49 @@ $('#cm-photo-input').onchange = async (e) => {
   catch (err) { showErr(cf, err.message); showPhoto(); }
 };
 
+// Foto profilo di un personaggio esistente: generata dallo studio con il suo aspetto, o caricata
+function showCmAvatar() {
+  const box = $('#cm-avatar');
+  box.hidden = !cmChar;
+  if (!cmChar) return;
+  const c = state.convs.find((x) => x.id === cmChar.id) || cmChar;
+  $('.ava-prev', box).innerHTML = c.avatarUrl ? `<img src="${esc(c.avatarUrl)}" alt="">` : initial(c.name);
+  $('#cm-ava-gen').innerHTML = `${icon('spark', 16)}${c.avatarUrl ? 'Rigenera ritratto' : 'Genera ritratto'}`;
+}
+$('#cm-ava-gen').onclick = async (e) => {
+  if (!cmChar) return;
+  const btn = e.currentTarget, hint = $('#cm-ava-hint');
+  btn.disabled = true;
+  try {
+    await api('/api/studio/messages', { body: {
+      text: 'Foto profilo: ritratto a mezzo busto, sguardo in camera, espressione naturale che rispecchia il carattere, sfondo semplice e sfocato, luce naturale morbida.',
+      characterId: cmChar.id, avatarFor: cmChar.id, aspect: '1:1', model: currentModel(),
+    } });
+    hint.textContent = 'Il ritratto si sta generando nello Studio: appena pronto diventa la foto profilo. Se non ti piace, rigeneralo.';
+  } catch (err) { hint.textContent = err.message; }
+  btn.disabled = false;
+};
+$('#cm-ava-up').onclick = () => $('#cm-ava-input').click();
+$('#cm-ava-input').onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f || !cmChar) return;
+  const hint = $('#cm-ava-hint');
+  hint.textContent = 'Carico la foto…';
+  try {
+    const up = await uploadImage(f);
+    const r = await api(`/api/characters/${cmChar.id}/avatar`, { body: { file: up.file } });
+    setAvatar(cmChar.id, r.avatarUrl);
+    showCmAvatar();
+    hint.textContent = 'Foto profilo aggiornata.';
+  } catch (err) { hint.textContent = err.message; }
+};
+
 function openCharModal(c, { photo } = {}) {
   cmChar = c;
   cmPhoto = null;
   showPhoto();
+  showCmAvatar();
+  $('#cm-ava-hint').textContent = 'È anche il volto di riferimento delle sue foto sul social.';
   $('#cm-photo').hidden = !!c;
   fillOptions();
   cf.reset();
@@ -985,7 +1049,8 @@ function renderMedia(msg, md) {
   } else {
     $('.st', card).innerHTML = statusText(md);
   }
-  if (md.status === 'engineering') $('.media-prompt pre', card).textContent = md._draft || md.prompt || '';
+  // l'etichetta [look: …] con cui Gemma sceglie Lenovo non fa parte del prompt
+  if (md.status === 'engineering') $('.media-prompt pre', card).textContent = (md._draft || md.prompt || '').replace(/\[\s*look\s*:[^\]]*\]?\s*$/i, '').trimEnd();
   if (md.status === 'running') patchProgress(card, md);
 }
 
@@ -1002,6 +1067,7 @@ function mediaActions(md) {
     ${md.status === 'done' && md.type === 'image' && !state.conv?.studio ? b('avatar', 'user', 'Profilo') : ''}
     ${md.status === 'done' && md.type === 'image' && state.conv?.studio ? b('animate', 'video', 'Anima') : ''}
     ${md.status === 'done' && md.type === 'image' && state.conv?.studio ? b('newchar', 'user', 'Crea personaggio') : ''}
+    ${md.status === 'done' && md.type === 'image' && state.conv?.studio && md.characterId && state.convs.some((c) => c.id === md.characterId) ? b('avatar', 'user', 'Foto profilo') : ''}
     ${md.status === 'done' && md.type === 'image' ? b('zoom', 'open', '') : ''}
   </div>`;
 }
@@ -1043,8 +1109,10 @@ async function mediaAction(btn) {
   // con il fisico a mano (anche tutto a 0) il personaggio eredita quelle forze
   if (act === 'newchar') return openCharModal(null, { photo: { file: md.file, url: md.url, bodyManual: md.manualBody ? Object.fromEntries(md.manualBody.map((l) => [l.part, l.strength])) : null } });
   if (act === 'avatar') {
-    return api(`/api/characters/${cid}/avatar`, { body: { file: md.file } })
-      .then((r) => setAvatar(cid, r.avatarUrl)).catch((e) => alert(e.message));
+    // nello studio: foto profilo del personaggio scelto come soggetto
+    const target = state.conv.studio ? md.characterId : cid;
+    return api(`/api/characters/${target}/avatar`, { body: { file: md.file } })
+      .then((r) => { setAvatar(target, r.avatarUrl); if (state.conv.studio) btn.textContent = 'Foto profilo ✓'; }).catch((e) => alert(e.message));
   }
   if (act === 'regenerate') {
     return api(`${base}/messages/${msg.id}/media/${md.id}/regenerate`, { method: 'POST', body: {} })
@@ -1126,7 +1194,7 @@ async function prepareImage(file) {
 
 // ---------- Studio immagini (l'assistente immagini, separato dai personaggi) ----------
 const convPath = () => (state.conv?.studio ? '/api/studio' : `/api/characters/${state.conv.id}`);
-const so = { box: $('#studio-opts'), engine: $('#so-engine'), aspect: $('#so-aspect'), char: $('#so-char'), raw: $('#so-raw'), video: $('#so-video'), seed: $('#so-seed'), body: $('#so-body'), bodyBox: $('#so-body-box') };
+const so = { box: $('#studio-opts'), lenovo: $('#so-lenovo'), engine: $('#so-engine'), aspect: $('#so-aspect'), char: $('#so-char'), raw: $('#so-raw'), video: $('#so-video'), seed: $('#so-seed'), body: $('#so-body'), bodyBox: $('#so-body-box') };
 const SO_ASPECTS = { '3:4': '3:4 verticale', '9:16': '9:16 storia', '1:1': '1:1 quadrato', '4:3': '4:3 orizzontale', '16:9': '16:9 panoramico', '2:3': '2:3 ritratto', '3:2': '3:2 foto' };
 
 function fillStudioOpts() {
@@ -1139,6 +1207,7 @@ function fillStudioOpts() {
   so.aspect.value = SO_ASPECTS[p.aspect] ? p.aspect : '3:4';
   so.char.value = state.convs.some((c) => c.id === p.characterId) ? p.characterId : '';
   so.raw.checked = !!p.raw;
+  so.lenovo.value = ['on', 'off'].includes(p.lenovo) ? p.lenovo : '';
   so.video.checked = !!p.video;
   so.body.checked = !!p.bodyOn;
   // Cursori delle LoRA del corpo: limiti dalle taglie (stesse forze delle schede), 0 = LoRA spenta
@@ -1146,8 +1215,8 @@ function fillStudioOpts() {
   so.bodyBox.innerHTML = Object.entries(parts).map(([k, b]) => {
     const [lo, hi] = b.range || [-3, 3];
     const v = Math.min(hi, Math.max(lo, Number(p.body?.[k]) || 0));
-    return `<label title="${esc(b.label)}: negativo = più piccolo, 0 = spento, positivo = più grande"><span>${esc(b.label)}</span><input type="range" data-part="${k}" min="${lo}" max="${hi}" step="0.5" value="${v}"><output>${v}</output></label>`;
-  }).join('') + '<small class="hint">Valgono solo con Krea 2 Real (scelto in automatico) e sostituiscono il fisico del personaggio.</small>';
+    return `<label title="${esc(b.label)}: ${esc(b.hint || 'negativo = più piccolo, 0 = spento, positivo = più grande')}"><span>${esc(b.label)}</span><input type="range" data-part="${k}" min="${lo}" max="${hi}" step="0.5" value="${v}"><output>${v}</output></label>`;
+  }).join('') + '<small class="hint">Valgono con Krea 2 e Z-Image (con altri motori si passa a quello del personaggio) e sostituiscono il fisico del personaggio.</small>';
   syncVideoOpt();
 }
 /** Con un motore video la richiesta è già un video: «Anche video» non serve. */
@@ -1160,7 +1229,7 @@ function syncVideoOpt() {
 const bodyValues = () => Object.fromEntries($$('input[data-part]', so.bodyBox).map((i) => [i.dataset.part, Number(i.value)]));
 so.bodyBox.addEventListener('input', (e) => { const i = e.target.closest('input[data-part]'); if (i) i.nextElementSibling.textContent = i.value; });
 function readStudioOpts() {
-  return { engine: so.engine.value, aspect: so.aspect.value, characterId: so.char.value, raw: so.raw.checked, video: so.video.checked, seed: so.seed.value.trim(), body: so.body.checked ? bodyValues() : null };
+  return { engine: so.engine.value, aspect: so.aspect.value, characterId: so.char.value, lenovo: so.lenovo.value, raw: so.raw.checked, video: so.video.checked, seed: so.seed.value.trim(), body: so.body.checked ? bodyValues() : null };
 }
 so.box.addEventListener('change', () => {
   const { seed, body, ...p } = readStudioOpts();
@@ -1181,7 +1250,7 @@ function bodyTag(b) {
 }
 function studioTag(o) {
   const names = Object.fromEntries((state.config?.workflows || []).map((w) => [w.id, w.name]));
-  const bits = [o.engineUsed ? names[o.engineUsed] || o.engineUsed : o.engine ? names[o.engine] || o.engine : 'Automatico', o.aspect, o.characterName, o.raw && 'prompt diretto', o.video && '+ video', o.seed != null && `seed ${o.seed}`, o.body && `fisico: ${bodyTag(o.body)}`].filter(Boolean);
+  const bits = [o.engineUsed ? names[o.engineUsed] || o.engineUsed : o.engine ? names[o.engine] || o.engine : 'Automatico', o.aspect, o.characterName, o.lenovo === true && 'con Lenovo', o.lenovo === false && 'senza Lenovo', o.raw && 'prompt diretto', o.video && '+ video', o.seed != null && `seed ${o.seed}`, o.body && `fisico: ${bodyTag(o.body)}`].filter(Boolean);
   return `<div class="tag">${icon('spark', 13)}${esc(bits.join(' · '))}</div>`;
 }
 

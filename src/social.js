@@ -8,7 +8,8 @@ import * as queue from './queue.js';
 import { promptProfile } from './auth.js';
 import { emit, mediaUrl, renderMedia } from './jobs.js';
 import { getWorkflow, dimensions, dimensionsForRatio, randomSeed } from './workflows.js';
-import { promptEngineerSystem, cleanPrompt } from './prompts.js';
+import { promptEngineerSystem, cleanPrompt, LOOK_CHOICE, splitLook } from './prompts.js';
+import { bodyFamily } from './body.js';
 import { profilePrompt, composePrompt, socialPhotoRequest, commentPrompt, catchupPrompt } from './social-prompts.js';
 import * as notify from './notify.js';
 import * as memory from './memory.js';
@@ -261,14 +262,17 @@ const levelFor = (card) => (config.social.level === 'sensual' && card.intimacy !
 
 async function engineer(conv, friend, prof, md, kind, model) {
   const w = getWorkflow(md.workflow, md.type, md.mode);
+  const look = md.type === 'image' && !!bodyFamily(w.graph);   // Lenovo sì/no lo sceglie Gemma
   const out = await ollama.complete({
     model, timeout: 120000, options: { temperature: 0.7, num_predict: 450 },
     messages: [
       { role: 'system', content: promptEngineerSystem(w) },
-      { role: 'user', content: socialPhotoRequest({ card: conv.card, friend: friend?.card, profile: prof, photo: md, media: md, kind, level: levelFor(conv.card) }) },
+      { role: 'user', content: socialPhotoRequest({ card: conv.card, friend: friend?.card, profile: prof, photo: md, media: md, kind, level: levelFor(conv.card) }) + (look ? `\n${LOOK_CHOICE}` : '') },
     ],
   });
-  return cleanPrompt(out) || md.description;
+  const { prompt, lenovo } = splitLook(out);
+  if (look && lenovo !== null) md.lenovo = lenovo;
+  return cleanPrompt(prompt) || md.description;
 }
 
 queue.register('post.plan', async (job, payload) => {

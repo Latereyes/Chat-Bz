@@ -8,7 +8,8 @@ import { gpu } from './gpu.js';
 import { emit, emitMedia, enqueue, describeImage, mediaUrl, cancel } from './jobs.js';
 import { workflows, getWorkflow, dimensions, dimensionsForRatio, frameCount, randomSeed, ASPECTS } from './workflows.js';
 import { promptProfile } from './auth.js';
-import { systemPrompt, nowBlock, tools, promptEngineerSystem, characterMediaRequest, cleanPrompt, sceneCheckPrompt } from './prompts.js';
+import { systemPrompt, nowBlock, tools, promptEngineerSystem, characterMediaRequest, cleanPrompt, sceneCheckPrompt, LOOK_CHOICE, splitLook } from './prompts.js';
+import { bodyFamily } from './body.js';
 import { updateScene } from './relationship.js';
 import * as queue from './queue.js';
 import * as social from './social.js';
@@ -185,13 +186,14 @@ function mediaFromCall(conv, call, callIndex) {
 /** Riscrive la descrizione del personaggio nel prompt ottimizzato per il modello (in streaming). */
 async function engineerPrompt(conv, msg, media, model, signal) {
   const w = getWorkflow(media.workflow, media.type, media.mode);
+  const look = media.type === 'image' && !!bodyFamily(w.graph);   // Lenovo sì/no lo sceglie Gemma
   let text = '';
   const out = await ollama.chat({
     model, signal, think: false,
     options: { temperature: 0.7 },
     messages: [
       { role: 'system', content: promptEngineerSystem(w) },
-      { role: 'user', content: characterMediaRequest({ card: conv.card, state: conv.state, media, width: media.width, height: media.height, seconds: media.seconds, sourceDescription: media.sourceFile || media.sourceMediaId ? media.sourceDescription : undefined }) },
+      { role: 'user', content: characterMediaRequest({ card: conv.card, state: conv.state, media, width: media.width, height: media.height, seconds: media.seconds, sourceDescription: media.sourceFile || media.sourceMediaId ? media.sourceDescription : undefined }) + (look ? `\n${LOOK_CHOICE}` : '') },
     ],
     onChunk: (c) => {
       if (!c.content) return;
@@ -199,7 +201,9 @@ async function engineerPrompt(conv, msg, media, model, signal) {
       emit(conv.id, { type: 'prompt_delta', messageId: msg.id, mediaId: media.id, delta: c.content });
     },
   });
-  return cleanPrompt(out.content || text) || media.description;
+  const { prompt, lenovo } = splitLook(out.content || text);
+  if (look && lenovo !== null) media.lenovo = lenovo;
+  return cleanPrompt(prompt) || media.description;
 }
 
 function checkAttachments(conv, list) {
@@ -245,6 +249,26 @@ export function regenerate(conv, { model } = {}) {
 export function initiate(conv, { model } = {}) {
   if (running.has(conv.id)) return null;
   return startTurn(conv, { model, initiative: true });
+}
+
+/**
+ * Correttivi di stile per questa risposta, guardando le ultime del personaggio:
+ * se si allunga o chiude sempre con una domanda, lo si riporta a variare. Più efficace di una regola generale.
+ */
+const visible = (t) => String(t || '').replace(/\[[^\]]*\]/g, '').trim();
+function styleNotes(conv, idx, userText, user) {
+  const mine = conv.messages.slice(0, idx).filter((m) => m.role === 'assistant' && m.status === 'done' && visible(m.content)).slice(-3).map((m) => visible(m.content));
+  const notes = [];
+  const name = user?.name || 'the user';
+  if (userText) notes.push(`the message below is from ${name}; when they write "io", "mi sento", "sono", they mean themselves, not you.`);
+  const long = mine.filter((t) => t.length > 450).length;
+  if (long >= 2 || (userText && userText.length < 60 && mine.at(-1)?.length > 450)) notes.push('keep it SHORT, one or two lines: your last replies were long.');
+  // "ok", "ahah sì": prova sul PC 2026-10-07, col solo "short answer" rispondeva comunque con 2-3 righe
+  else if (userText && userText.trim().length < 15) notes.push('their message is just a quick reaction: answer with ONE short line (under 80 characters), like a quick text back.');
+  else if (userText && userText.length < 40 && Math.random() < 0.5) notes.push('their message is short: one or two short lines are enough.');
+  const asked = mine.filter((t) => /\?\s*(?:[\p{Emoji_Presentation}\p{Extended_Pictographic}]\s*)*$/u.test(t)).length;
+  if (asked >= 2) notes.push('do NOT end with a question this time: your last replies all ended with one.');
+  return notes;
 }
 
 /**
@@ -307,7 +331,7 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       const { msgs, trimmed } = history(conv, idx);
       const prevAt = initiative ? conv.messages[idx - 1]?.createdAt : conv.messages.slice(0, Math.max(0, idx - 1)).findLast((m) => m.status !== 'pending')?.createdAt;
       const memories = memory.forPrompt(conv.id, 14, userMsg?.content);
-      const block = nowBlock({ card: conv.card, state: conv.state, memories, lastGapMs: prevAt ? Date.now() - prevAt : null, trimmed, initiative, social: social.chatContext(conv), user: promptProfile(conv.ownerId) });
+      const block = nowBlock({ card: conv.card, state: conv.state, memories, lastGapMs: prevAt ? Date.now() - prevAt : null, trimmed, initiative, social: social.chatContext(conv), user: promptProfile(conv.ownerId), style: styleNotes(conv, idx, initiative ? '' : userMsg?.content, promptProfile(conv.ownerId)) });
       const convo = [{ role: 'system', content: systemPrompt(conv.card, { user: promptProfile(conv.ownerId) }) }, ...msgs.map(({ role, content }) => ({ role, content }))];
       if (initiative || convo.at(-1).role !== 'user') convo.push({ role: 'user', content: block });
       else convo.at(-1).content = `${block}\n\n${convo.at(-1).content}${FORCE_NOTE[tool] || ''}`;

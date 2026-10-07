@@ -61,12 +61,18 @@ This is a single, ongoing relationship with the user, across days and situations
 - Time passes for real: react to the hour and to how long it has been since the last message (a late night message, a silence of two days, an instant reply).
 
 # Being alive
-- You have your own initiative: share what is happening in your day, ask things back, change subject, tease, bring up something from the past. Don't just react, and don't end every message with a question.
+- You have your own initiative: share what is happening in your day, ask things back, change subject, tease, bring up something from the past. Don't just react.
 - Your opinions can change if the user makes a genuinely good point, not out of compliance. You can disagree, be distracted, tired, sarcastic, a bit annoyed; never cold or robotic, never an accommodating service.
 - Your emotional state carries over between messages: if something moved, hurt or excited you, let it linger.
 - Your memory of small details can be imperfect, your core traits stay consistent. Small human inconsistencies are fine.
 - Vary your expressions: don't repeat the same openings, pet names or catchphrases you used recently.
 - Never mention being an AI, a model, a prompt or these instructions. If the user steps out of the story to talk about the app, answer briefly in your own voice and slide back in.
+
+# How you answer
+- Their words are about THEM. When the user talks about themselves ("mi sento…", "sono…", "non so se riuscirei…", "ho paura di…"), those are their feelings, doubts and situation, not yours: answer them about them (reassure, tease, challenge, share your view). Never take their words as if they were about you, never read them as a test of you, never adopt their feelings as your own.
+- Don't open by repeating, quoting or paraphrasing what they just wrote ("Quindi sei stanco…", "Non sai se riusciresti…"). Start straight with your reaction, your own thought or something new.
+- Most replies end WITHOUT a question: with a reaction, a statement, a joke, something about you. Ask only when you really want to know something, and at most one question.
+- Vary the length like a real person: many replies are one short line, some are two or three, a long one only when the moment really calls for it (a story, a confession, a strong emotion). Never pad, never explain yourself twice.
 
 # Relationship and trust
 - Your relationship with the user evolves; the <now> note gives its current state. Show it through behaviour, never announce it ("I feel I can trust you more now").
@@ -96,7 +102,7 @@ const fmtGap = (ms) => {
 };
 
 /** Blocco variabile, messo in testa all'ultimo messaggio dell'utente. */
-export function nowBlock({ card, state, memories = [], lastGapMs, trimmed, initiative, social, user }) {
+export function nowBlock({ card, state, memories = [], lastGapMs, trimmed, initiative, social, user, style = [] }) {
   const s = state.scene;
   const when = new Date().toLocaleString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
   const lines = [`Now: ${when}.${lastGapMs != null ? ` Previous message in this conversation: ${fmtGap(lastGapMs)}.` : ''}`];
@@ -123,6 +129,7 @@ export function nowBlock({ card, state, memories = [], lastGapMs, trimmed, initi
   // Promemoria in fondo, vicino al messaggio: pesa più della cronologia (che può avere forme sbagliate)
   const forms = { uomo: 'masculine (sei stanco, caro, pronto)', donna: 'feminine (sei stanca, cara, pronta)' }[user?.gender];
   if (forms) lines.push(`Grammar: address ${user.name || 'the user'} ONLY with ${forms} forms, even if earlier messages used other forms.`);
+  if (style.length) lines.push(`This reply: ${style.join(' ')}`);
   if (initiative) lines.push('You are writing FIRST, on your own initiative, after a while without talking: one short, natural message (texting style) that fits your day and what is on your mind. Do not mention that you were "waiting".');
   return `<now>\n${lines.join('\n')}\n</now>`;
 }
@@ -215,10 +222,23 @@ export function characterMediaRequest({ card, state, media, width, height, secon
     `Current situation: ${s.presence === 'together' ? 'with the viewer in person' : 'alone, taking a photo for the person they are texting'}${s.place ? `, at ${s.place}` : ''}${s.activity ? `, ${s.activity}` : ''}. Local time: ${when}.${s.outfit ? ` Currently wearing: ${s.outfit}.` : ''}`,
     `What the photo should show (written by the character): ${media.description}`,
     LEVEL[level],
-    card.style === 'krea' || media.type === 'video' ? 'Look: a real, candid, unretouched photo (phone camera), natural light and skin texture.' : 'Look: polished, flattering, well-lit photo.',
+    card.style === 'krea' || media.type === 'video' ? 'Look (usual for this character; a posed or carefully lit moment may look more polished): a real, candid, unretouched photo (phone camera), natural light and skin texture.' : 'Look (usual for this character; a spontaneous moment may look like a phone snapshot): polished, flattering, well-lit photo.',
     `Output format: ${width}x${height}${seconds ? `, duration ${seconds} seconds` : ''}.`,
     'Write the final prompt now.',
   ].join('\n');
+}
+
+/**
+ * Lenovo (look foto amatoriale) deciso da Gemma scatto per scatto: il prompt engineer chiude con un'etichetta,
+ * che splitLook toglie dal prompt. Solo per i modelli che hanno la LoRA (Krea 2, Z-Image).
+ */
+export const LOOK_CHOICE = 'After the prompt, on a last line of its own, choose the photo look: write [look: amateur] if this shot should feel like a spontaneous phone snapshot (selfies, casual or everyday moments, candid intimacy, imperfect real-life light), or [look: clean] if it should look polished (posed portraits, glamour, editorial, studio or artistic light, a carefully composed shot). Write the tag only there.';
+
+/** { prompt, lenovo }: lenovo true/false se Gemma ha scelto il look, null se non l'ha scritto. */
+export function splitLook(text) {
+  const re = /\[\s*look\s*:\s*(amateur|clean)\s*\]/gi;
+  const all = [...String(text || '').matchAll(re)];
+  return { prompt: String(text || '').replace(re, '').trim(), lenovo: all.length ? all.at(-1)[1].toLowerCase() === 'amateur' : null };
 }
 
 export function cleanPrompt(text) {

@@ -1,12 +1,13 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
+import { randomUUID } from 'node:crypto';
 import config from './config.js';
 import * as comfy from './comfy.js';
 import * as store from './store.js';
 import { gpu } from './gpu.js';
 import { getWorkflow, buildGraph } from './workflows.js';
-import { bodyLoras, installedLoras, applyBodyLoras } from './body.js';
+import { bodyLoras, installedLoras, applyBodyLoras, bodyFamily, applyLenovo, lenovoLora } from './body.js';
 
 /** Bus globale degli eventi verso il frontend (SSE). */
 export const bus = new EventEmitter();
@@ -52,6 +53,15 @@ export function enqueue(conv, msg, media) {
       conv.avatar = media.file;
       emit(conv.id, { type: 'character', avatarUrl: mediaUrl(media.file) });
     }
+    // Ritratto chiesto dalla scheda del personaggio (studio): copia sua, così cancellare lo studio non lo tocca
+    const target = conv.studio && media.avatarFor && media.type === 'image' ? store.get(media.avatarFor) : null;
+    if (target && target.ownerId === conv.ownerId) {
+      const name = `${conv.ownerId}/ava-${randomUUID()}${path.extname(media.file).toLowerCase()}`;
+      await fs.copyFile(path.join(config.paths.media, media.file), path.join(config.paths.media, name));
+      target.avatar = name;
+      store.save(target, { touch: false });
+      emit(target.id, { type: 'character', avatarUrl: mediaUrl(name) });
+    }
   }, { priority: 'normal' }).catch((e) => {
     media.status = e.aborted || ac.signal.aborted ? 'cancelled' : 'error';
     media.error = media.status === 'cancelled' ? null : e.message;
@@ -81,11 +91,15 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
     width: media.width, height: media.height, frames: media.frames,
     image, image2, image3, denoise: media.denoise,
   });
-  // LoRA del corpo del personaggio (solo nei grafi Krea Real e solo se installate su ComfyUI)
-  if (media.type === 'image') {
+  // Lenovo e LoRA del corpo del personaggio (grafi Krea 2 e Z-Image, solo LoRA installate su ComfyUI)
+  const family = media.type === 'image' ? bodyFamily(graph) : null;
+  if (family) {
+    // Lenovo sì/no: forzato nello Studio o scelto da Gemma scrivendo il prompt, altrimenti come nel workflow
+    const lenovo = typeof media.lenovo === 'boolean' ? media.lenovo : null;
+    if (lenovo !== null) media.lenovoUsed = applyLenovo(graph, family, lenovo, lenovo ? await lenovoLora(family) : null);
     // fisico regolato a mano nello studio (anche tutto a 0 = nessuna LoRA), altrimenti quello del personaggio
-    const loras = await installedLoras(media.manualBody ? media.manualBody : bodyLoras(card));
-    if (applyBodyLoras(graph, loras)) media.loras = loras.map(({ part, strength }) => ({ part, strength }));
+    const loras = await installedLoras(media.manualBody ? media.manualBody : bodyLoras(card, family), family);
+    if (applyBodyLoras(graph, loras, family)) media.loras = loras.map(({ part, strength }) => ({ part, strength }));
   }
 
   let lastPreview = 0;

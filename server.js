@@ -19,7 +19,7 @@ import * as social from './src/social.js';
 import * as queue from './src/queue.js';
 import * as notify from './src/notify.js';
 import { publicCharacter, draftFromIdea, draftFromPhoto, PHOTO_QUESTION, normalizeCard, RELATIONS, PACES, INTIMACY, STYLES } from './src/characters.js';
-import { analyzeBody, BODY, bodyRange, figureText, installedLoras, normalizeManual } from './src/body.js';
+import { analyzeBody, BODY, FAMILIES, bodyRange, figureText, installedLoras, normalizeManual } from './src/body.js';
 import { updateScene, initialState, DIM_LABEL, intimacyOpen, closeness } from './src/relationship.js';
 
 const app = express();
@@ -113,7 +113,8 @@ app.get('/api/config', wrap(async (req, res) => {
     defaultModel: config.ollama.model,
     options: {
       relations: RELATIONS, paces: PACES, intimacy: INTIMACY, styles: STYLES, dims: DIM_LABEL,
-      body: Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, { label: b.label, range: bodyRange(k), sizes: Object.fromEntries(Object.entries(b.sizes).map(([s, [l]]) => [s, l])) }])),
+      bodyScale: { krea: FAMILIES.krea2.autoScale, zimage: FAMILIES.zimage.autoScale },   // taglie automatiche per stile
+      body: Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, { label: b.label, short: b.short, hint: b.hint, range: bodyRange(k), sizes: Object.fromEntries(Object.entries(b.sizes).map(([s, [l]]) => [s, l])), strengths: Object.fromEntries(Object.entries(b.sizes).map(([s, [, v]]) => [s, v])) }])),
     },
     models,
     workflows: workflows().map(publicInfo),
@@ -264,15 +265,15 @@ app.post('/api/characters/:id/reset', wrap(async (req, res) => {
   res.json(withUrls(c));
 }));
 
-/** Usa una foto generata come immagine del profilo. */
+/** Immagine del profilo: una foto della chat, dello studio o caricata da te. */
 app.post('/api/characters/:id/avatar', wrap(async (req, res) => {
   const c = ownConv(req);
   const file = String(req.body?.file || '');
-  const ok = c.messages.some((m) => (m.media || []).some((md) => md.file === file && md.type === 'image'));
-  if (!ok) throw httpError(400, 'Foto non valida');
-  c.avatar = file;
+  // Foto della chat: si usa così com'è; altrimenti (studio, foto caricata) se ne fa una copia sua
+  const inChat = c.messages.some((m) => (m.media || []).some((md) => md.file === file && md.type === 'image'));
+  c.avatar = inChat ? file : await copyAsAvatar(req.user.id, await ownImage(req, file));
   await store.save(c, { touch: false });
-  res.json({ avatarUrl: mediaUrl(file) });
+  res.json({ avatarUrl: mediaUrl(c.avatar) });
 }));
 
 app.post('/api/characters/:id/messages', wrap(async (req, res) => {
@@ -420,9 +421,11 @@ const server = app.listen(config.port, config.host, () => {
     const off = list.filter((w) => w.available === false);
     if (off.length) console.log(`  Workflow non disponibili (modelli mancanti): ${off.map((w) => `${w.name} → ${w.missing.join(', ')}`).join(' | ')}`);
   }).then(async () => {
-    const all = Object.entries(BODY).map(([part, b]) => ({ part, file: b.file }));
-    const found = await installedLoras(all);
-    if (found.length < all.length) console.log(`  LoRA del corpo non trovate su ComfyUI (le foto escono senza): ${all.filter((l) => !found.some((f) => f.part === l.part)).map((l) => l.file).join(', ')}`);
+    const all = Object.keys(BODY).map((part) => ({ part }));
+    for (const [family, f] of Object.entries(FAMILIES)) {
+      const found = await installedLoras(all, family);
+      if (found.length < all.length) console.log(`  LoRA del corpo per ${f.label} non trovate su ComfyUI (le foto escono senza): ${all.filter((l) => !found.some((x) => x.part === l.part)).map((l) => BODY[l.part].files[family]).join(', ')}`);
+    }
   });
   refresh();
   setInterval(refresh, 5 * 60 * 1000);
