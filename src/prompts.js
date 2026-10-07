@@ -153,7 +153,7 @@ export function tools({ canAnimate }) {
       name: 'send_photo',
       description: 'Send the user a photo of yourself (selfie, outfit, where you are, what you are doing). Use when they ask for one, or occasionally when it really fits.',
       parameters: { type: 'object', properties: {
-        description: { type: 'string', description: 'ENGLISH description of the photo: framing (selfie, mirror selfie, someone else taking it), what you are doing right now (natural, not posing like a model), expression, outfit, place, light and time of day. Do not describe your face or hair: they are known.' },
+        description: { type: 'string', description: 'ENGLISH description of the photo: framing (selfie, mirror selfie, someone else taking it), what you are doing right now (natural, not posing like a model), expression, outfit, place, light and time of day. If the user asked for a specific pose, position, point of view or framing, write it exactly as asked. In an intimate moment be explicit and concrete about the position and what is visible. Do not describe your face or hair: they are known.' },
         aspect_ratio: { type: 'string', enum: ['3:4', '9:16', '1:1', '4:3', '16:9'], description: 'Default 3:4 (vertical phone photo).' },
       }, required: ['description'] },
   } });
@@ -222,21 +222,54 @@ export const REAL_PHOTO = 'It must look like a real photograph of a real person 
 
 // Foto in chat: scatto al volo per chi ti scrive, non un servizio fotografico (anche con Krea uscivano troppo studiate)
 export const CHAT_SNAPSHOT = 'This is a photo sent in a private chat: a spontaneous snapshot taken a moment ago with a phone (a selfie at arm\'s length, a mirror selfie or a quick shot), relaxed everyday body language, not posing like a model, ordinary surroundings and available light, slightly imperfect framing. Unless the request explicitly asks for a posed or professional photo.';
+// Insieme di persona la foto la scatta chi è con lei: niente selfie a forza (con il POV chiesto dall'utente uscivano selfie)
+export const CHAT_SNAPSHOT_TOGETHER = 'This is a photo taken in person a moment ago with a phone by the person they are with (the viewer), from their point of view, unless the request says it is a selfie or a mirror selfie. Relaxed real body language, not posing like a model, ordinary surroundings and available light, slightly imperfect framing.';
 
-/** Richiesta al prompt engineer per una foto/video del personaggio. */
-export function characterMediaRequest({ card, state, media, width, height, seconds, sourceDescription }) {
-  const level = contentLevel(card, state.rel, state.scene);
+/**
+ * Momento intimo (contenuto esplicito): la foto la guidano le indicazioni dell'utente (posizione, POV, inquadratura),
+ * non il riassunto più vago che scrive il personaggio, e il prompt dev'essere esplicito e pulito.
+ * Prima le scene clou uscivano generiche anche quando il motore, con il prompt diretto, sapeva fare quella posa.
+ */
+function explicitShot({ together, viewer, man }) {
+  const her = man ? 'his' : 'her', him = man ? 'him' : 'her', she = man ? 'He' : 'She', self = man ? 'himself' : 'herself';
+  return [
+    'EXPLICIT SHOT: this photo comes from a sexual moment between two adults. Show it directly and explicitly.',
+    'Priorities, in this order: (1) the directions in the user\'s message (sex position or pose, point of view, camera angle and distance, which body parts are visible, what each body is doing, clothing state); (2) the photo description; (3) the scene. When they disagree, the user\'s directions win. Never replace a requested position or point of view with a different or softer one.',
+    `Structure, overriding the order in the guide: start with the shot type and the point of view (e.g. "Explicit POV photo from the viewer's eyes, looking down at ${him}..."), then the exact position and sexual action in plain anatomical words, then ${her} body and what is exposed, then the setting in one short sentence, then the light. Keep facial expression and eye direction concrete.`,
+    'Clean and concrete: every sentence describes something visible. No mood words, no metaphors, no poetic adjectives, no "sensual atmosphere", no euphemisms, no hedging. 80-170 words.',
+    together
+      ? `Point of view: unless the user asks otherwise, it is the viewer's own eyes or phone (POV): the viewer${viewer ? ` (${viewer})` : ''} is the partner, so only the parts of the viewer's body that would really be in frame from their eyes appear (hands, arms, legs, torso, genitals when the position puts them in view), never the viewer's face. A third-person view of both only if the user asks for it.`
+      : `${she} is alone and takes the photo ${self} for the person ${she.toLowerCase()} is texting (selfie, mirror selfie, or phone propped up), unless the user asks for another framing.`,
+  ].join('\n');
+}
+
+const clip = (t, n) => { const x = String(t || '').trim(); return x.length > n ? `${x.slice(0, n)}…` : x; };
+
+/**
+ * Richiesta al prompt engineer per una foto/video del personaggio.
+ * userText / reply: ultimo messaggio dell'utente e risposta del personaggio (cosa sta succedendo e indicazioni sulla foto).
+ * figure: le proporzioni del corpo dette a parole (motori senza LoRA del corpo, come Z-Image).
+ * level: livello di contenuto (di norma dalla scena, vedi photoLevel in chat.js).
+ */
+export function characterMediaRequest({ card, state, media, width, height, seconds, sourceDescription, userText, reply, user, figure, level = contentLevel(card, state.rel, state.scene) }) {
   const s = state.scene;
+  const together = s.presence === 'together';
+  const explicit = level === 'explicit' && media.type === 'image';
   const who = `${card.gender === 'uomo' ? 'adult man' : card.gender === 'altro' ? 'adult person' : 'adult woman'}, ${card.age} years old`;
   const when = new Date().toLocaleString('en-GB', { weekday: 'long', hour: '2-digit', minute: '2-digit' });
+  const viewer = user ? [user.gender === 'uomo' ? 'an adult man' : user.gender === 'donna' ? 'an adult woman' : '', clip(user.look, 200)].filter(Boolean).join(', ') : '';
   return [
     `Subject: ${who}. Appearance (keep it exactly, it defines who this is): ${visualSignature(card.look, level) || '(not specified)'}`,
+    figure ? `Figure (keep these proportions exactly and clearly visible${level === 'neutral' ? ', through normal clothes' : ''}): ${figure}.` : null,
     ...(sourceDescription !== undefined ? [`Starting image (the video starts exactly from it): ${sourceDescription || '(no description)'}`] : []),
-    `Current situation: ${s.presence === 'together' ? 'with the viewer in person' : 'alone, taking a photo for the person they are texting'}${s.place ? `, at ${s.place}` : ''}${s.activity ? `, ${s.activity}` : ''}. Local time: ${when}.${s.outfit ? ` Currently wearing: ${s.outfit}.` : ''}`,
+    `Current situation: ${together ? 'with the viewer in person' : 'alone, taking a photo for the person they are texting'}${s.place ? `, at ${s.place}` : ''}${s.activity ? `, ${s.activity}` : ''}. Local time: ${when}.${s.outfit ? ` Currently wearing: ${s.outfit}.` : ''}`,
+    userText ? `The user's latest message (it may be in Italian; ${explicit ? 'its directions for the photo are binding' : 'if it gives directions for the photo, such as pose, point of view or framing, follow them exactly'}): «${clip(userText, 1200)}»` : null,
+    reply && together ? `What is happening right now (from the character's last reply): «${clip(reply, 700)}»` : null,
     `What the photo should show (written by the character): ${media.description}`,
     LEVEL[level],
+    explicit ? explicitShot({ together, viewer, man: card.gender === 'uomo' }) : null,
     card.style === 'krea' || media.type === 'video' ? 'Look: a real, candid, unretouched photo (phone camera), natural light and skin texture.' : 'Look: a clean, flattering but natural phone photo.',
-    media.type === 'image' ? CHAT_SNAPSHOT : null,
+    media.type === 'image' && !explicit ? (together ? CHAT_SNAPSHOT_TOGETHER : CHAT_SNAPSHOT) : null,
     REAL_PHOTO,
     `Output format: ${width}x${height}${seconds ? `, duration ${seconds} seconds` : ''}.`,
     'Write the final prompt now.',

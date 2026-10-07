@@ -76,10 +76,18 @@ export function intimacyText(card, rel, scene) {
   return `INTIMACY: you feel safe and attracted enough that flirting, sensuality and sex are open to you when the moment and your own desire call for it. It stays your choice: your mood, wants and boundaries count and you can say no or slow down. Let the user lead the pace as much as you do. ${now} Afterwards life goes on: tenderness, humour, ordinary things.`;
 }
 
-/** Livello di contenuto per le foto: mai oltre il tetto del personaggio, e solo se la scena lo giustifica. */
-export function contentLevel(card, rel, scene) {
+// Parole di sesso esplicito (italiano e inglese): bastano a dire che il momento è intimo anche se la scena non è stata aggiornata
+const EXPLICIT_WORDS = /\b(?:scop(?:ami|armi|arti|are|iamo|ando|ata|ato|erei|erti)|sesso|nud[aoie]|tett[ae]|pompin\w*|succhi\w*|lecc(?:ami|armi|arti|are|ando)\w*|pecorina|a\s+90|cavalc\w*|missionari\w*|penetr\w*|orgasm\w*|sborr\w*|capezzol\w*|clitoride|vagina|sex|fuck\w*|naked|nude|blowjob|doggy\w*|cowgirl|missionary|pussy|cock|dick|tits|boobs|cum)\b/i;
+export const explicitHint = (text) => EXPLICIT_WORDS.test(String(text || ''));
+
+/**
+ * Livello di contenuto per le foto: mai oltre il tetto del personaggio, e solo se la scena lo giustifica.
+ * hint: testo del momento (messaggio dell'utente, risposta): con parole esplicite e intimità aperta la foto è esplicita
+ * anche se Gemma non ha portato la scena a "intimate" (nelle scene clou capitava spesso, e la foto usciva vestita).
+ */
+export function contentLevel(card, rel, scene, hint = '') {
   if (!intimacyOpen(card, rel)) return 'neutral';
-  if (scene.intimacy === 'intimate') return 'explicit';
+  if (scene.intimacy === 'intimate' || explicitHint(hint)) return 'explicit';
   if (scene.intimacy === 'flirt') return 'sensual';
   return 'neutral';
 }

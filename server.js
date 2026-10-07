@@ -108,12 +108,12 @@ app.get('/api/status', wrap(async (req, res) => {
 
 app.get('/api/config', wrap(async (req, res) => {
   let models = [];
-  try { models = (await ollama.listModels()).filter((m) => m.tools); } catch {}
+  // Anche i modelli senza tool (es. un Qwen da provare): la chat scrive foto e scena a parole e il server le riconosce
+  try { models = (await ollama.listModels()).filter((m) => m.tools || m.completion); } catch {}
   res.json({
     defaultModel: config.ollama.model,
     options: {
       relations: RELATIONS, paces: PACES, intimacy: INTIMACY, styles: STYLES, dims: DIM_LABEL,
-      bodyScale: { krea: FAMILIES.krea2.autoScale, zimage: FAMILIES.zimage.autoScale },   // taglie automatiche per stile
       body: Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, { label: b.label, short: b.short, hint: b.hint, range: bodyRange(k), sizes: Object.fromEntries(Object.entries(b.sizes).map(([s, [l]]) => [s, l])), strengths: Object.fromEntries(Object.entries(b.sizes).map(([s, [, v]]) => [s, v])) }])),
     },
     models,
@@ -427,6 +427,7 @@ const server = app.listen(config.port, config.host, () => {
   }).then(async () => {
     const all = [...Object.keys(BODY), ...Object.keys(DERIVED)].map((part) => ({ part }));
     for (const [family, f] of Object.entries(FAMILIES)) {
+      if (!f.body) continue;   // Z-Image: solo Lenovo
       const found = await installedLoras(all, family);
       if (found.length < all.length) console.log(`  LoRA del corpo per ${f.label} non trovate su ComfyUI (le foto escono senza): ${all.filter((l) => !found.some((x) => x.part === l.part)).map((l) => (BODY[l.part] || DERIVED[l.part]).files[family]).join(', ')}`);
     }

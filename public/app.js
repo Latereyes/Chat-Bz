@@ -578,15 +578,16 @@ function renderModel() {
   const cur = models.find((m) => m.name === name);
   el.modelName.textContent = cur?.label || name.replace(/:latest$/, '');
   el.modelMenu.innerHTML = models.length
-    ? models.map((m) => `<button class="menu-item" data-model="${esc(m.name)}" title="${esc(m.name)}"><div>${esc(m.label || m.name)}<small>${esc([m.params, m.quant, m.vision ? 'vede le immagini' : ''].filter(Boolean).join(' · '))}</small></div>${m.name === name ? `<span class="check">${icon('check', 16)}</span>` : ''}</button>`).join('')
-    : '<div class="menu-note">Nessun modello Ollama con supporto ai tool trovato.</div>';
+    ? '<div class="menu-note">Modello di chat (vale per i messaggi successivi)</div>' + models.map((m) => `<button class="menu-item" data-model="${esc(m.name)}" title="${esc(m.name)}"><div>${esc(m.label || m.name)}${m.name === state.config.defaultModel ? ' <small class="inline">predefinito</small>' : ''}<small>${esc([m.params, m.quant, m.vision ? 'vede le immagini' : '', m.tools ? '' : 'senza tool: foto e scena a parole'].filter(Boolean).join(' · '))}</small></div>${m.name === name ? `<span class="check">${icon('check', 16)}</span>` : ''}</button>`).join('')
+    : '<div class="menu-note">Nessun modello Ollama trovato.</div>';
 }
+$('#model-pill').onclick = (e) => { e.stopPropagation(); el.gpuMenu.hidden = true; el.modelMenu.hidden = !el.modelMenu.hidden; };
 el.modelMenu.onclick = (e) => {
   const b = e.target.closest('[data-model]'); if (!b) return;
   prefs.model = b.dataset.model; savePrefs(); renderModel(); el.modelMenu.hidden = true;
 };
 document.addEventListener('click', (e) => {
-  if (!e.target.closest('#model-menu') && !e.target.closest('[data-user-act="model"]')) el.modelMenu.hidden = true;
+  if (!e.target.closest('#model-menu')) el.modelMenu.hidden = true;
   if (!e.target.closest('#gpu-menu')) el.gpuMenu.hidden = true;
 });
 
@@ -749,7 +750,7 @@ function renderManualBox() {
     const [lo, hi] = b.range || [-8, 8];
     const v = cardManual?.[k] ?? 0;
     return `<label title="${esc(b.label)}: ${esc(b.hint || 'negativo = più piccolo, 0 = spento, positivo = più grande')}"><span>${esc(b.label)}</span><input type="range" data-part="${k}" min="${lo}" max="${hi}" step="0.5" value="${v}"><output>${v}</output></label>`;
-  }).join('') + `<small class="hint">Valgono per le foto in chat, sul social e nello Studio e sostituiscono le taglie ricavate dall'aspetto.${cf.style.value === 'zimage' ? ' Con Z-Image servono le versioni Z-Image delle LoRA su ComfyUI.' : ''}</small>`;
+  }).join('') + `<small class="hint">Valgono per le foto in chat, sul social e nello Studio e sostituiscono le taglie ricavate dall'aspetto.${cf.style.value === 'zimage' ? ' Con Z-Image niente LoRA del corpo (rovinano la foto): le proporzioni vanno nel prompt a parole.' : ''}</small>`;
 }
 function showBody() {
   const p = $('#cm-body');
@@ -766,8 +767,7 @@ $('#cm-manual').addEventListener('change', (e) => {
   if (e.target.checked) {
     // si parte dalle forze delle taglie automatiche, se ci sono
     const opts = state.config?.options?.body || {};
-    const scale = state.config?.options?.bodyScale?.[cf.style.value] ?? 1;   // su Z-Image le stesse LoRA sono più forti
-    cardManual = Object.fromEntries(Object.keys(opts).map((k) => [k, Math.round(((cardBody?.look === cf.look.value && opts[k].strengths?.[cardBody.body?.[k]]) || 0) * scale * 2) / 2]));
+    cardManual = Object.fromEntries(Object.keys(opts).map((k) => [k, Math.round(((cardBody?.look === cf.look.value && opts[k].strengths?.[cardBody.body?.[k]]) || 0) * 2) / 2]));
   } else cardManual = null;
   showBody();
 });
@@ -1216,7 +1216,7 @@ function fillStudioOpts() {
     const [lo, hi] = b.range || [-3, 3];
     const v = Math.min(hi, Math.max(lo, Number(p.body?.[k]) || 0));
     return `<label title="${esc(b.label)}: ${esc(b.hint || 'negativo = più piccolo, 0 = spento, positivo = più grande')}"><span>${esc(b.label)}</span><input type="range" data-part="${k}" min="${lo}" max="${hi}" step="0.5" value="${v}"><output>${v}</output></label>`;
-  }).join('') + '<small class="hint">Valgono con Krea 2 e Z-Image (con altri motori si passa a quello del personaggio) e sostituiscono il fisico del personaggio.</small>';
+  }).join('') + '<small class="hint">LoRA del corpo con Krea 2; con Z-Image le proporzioni vanno nel prompt a parole (le LoRA rompono la foto). Con altri motori si passa a quello del personaggio. Sostituiscono il fisico del personaggio.</small>';
   syncVideoOpt();
 }
 /** Con un motore video la richiesta è già un video: «Anche video» non serve. */
@@ -1976,7 +1976,6 @@ document.addEventListener('click', (e) => { if (!e.target.closest('#user-menu'))
 userMenu.onclick = (e) => {
   const act = e.target.closest('[data-user-act]')?.dataset.userAct;
   userMenu.hidden = true;
-  if (act === 'model') { e.stopPropagation(); el.modelMenu.hidden = false; return; }
   if (act === 'profile') openProfile();
   if (act === 'password') showPasswordForm(false);
   if (act === 'users') openUsers();

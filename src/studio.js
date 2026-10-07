@@ -21,7 +21,7 @@ export function stop(ownerId) { running.get(ownerId)?.abort(); }
 
 // Motore automatico con un personaggio: lo stesso delle sue foto in chat
 const BY_STYLE = { krea: 'krea2-real', zimage: 'zimage-turbo' };
-// Le LoRA del corpo si agganciano ai grafi con Krea 2 o Z-Image: col fisico a mano si usa uno di questi
+// Fisico a mano: LoRA del corpo sui grafi Krea 2; Z-Image lo regge solo a parole nel prompt (le LoRA lo rompono)
 const BODY_ENGINES = ['krea2-real', 'krea2-turbo', 'reflex-real', 'zimage-turbo'];
 const MAX_ATTACHMENTS = 3;
 
@@ -40,7 +40,7 @@ function subjectLine(card) {
   return `Main subject: ${who}. Appearance (keep it exactly, it defines who this is): ${visualSignature(card.look, 'explicit') || '(not specified)'}`;
 }
 
-/** Fisico a mano: le LoRA da sole non bastano se il prompt parla di vestiti larghi, quindi lo si dice anche a parole. */
+/** Fisico a mano: le LoRA da sole non bastano se il prompt parla di vestiti larghi (e su Z-Image non ci sono), quindi lo si dice anche a parole. */
 function figureLine(card, manualBody) {
   if (!manualBody || card?.gender === 'uomo') return null;
   const fig = figureText({ gender: 'donna', bodyManual: Object.fromEntries(manualBody.map((l) => [l.part, l.strength])) });

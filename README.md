@@ -63,9 +63,14 @@ Il prompt è diviso in un **blocco stabile** (regole + scheda, nel messaggio di 
 - Il personaggio manda foto con il tool `send_photo` (o con il pulsante **Foto**). Se Gemma invece scrive la foto nel testo ("*Ti mando una foto:* [descrizione]"), la descrizione viene tolta dal messaggio e la foto parte lo stesso. Motore in base allo stile scelto nella scheda: `krea2-real` per il realismo spontaneo, `zimage-turbo` per un look curato.
 - Il prompt finale lo scrive il prompt engineer con la guida del modello (`workflows/<id>/guide.md`), l'aspetto fisso del personaggio e la scena attuale.
 - Il **livello di contenuto** della foto (neutro / sensuale / esplicito) segue la scena e non supera mai il limite del personaggio: una foto in cucina resta una foto in cucina.
+- **Momenti intimi**: con l'intimità aperta la foto è esplicita quando la scena è intima, oppure quando il tuo messaggio lo è anche se Gemma non ha aggiornato la scena. Il prompt engineer riceve il tuo ultimo messaggio e la risposta del personaggio. Le tue indicazioni (posizione, POV, inquadratura, cosa si vede) valgono più della descrizione del personaggio. Il prompt è esplicito e asciutto: inquadratura e POV in apertura, poi posizione e azione, niente atmosfera. Di persona la foto è in POV di chi è con lei, non un selfie, salvo richiesta.
+- **Fisico nelle foto**: le LoRA del corpo (loraholic) si usano solo con Krea 2. Su Z-Image rompevano la foto e sono state tolte: resta solo Lenovo, e le proporzioni vanno nel prompt a parole.
 - Video (`send_video`, pulsante **Video**) solo su richiesta: anima l'ultima foto del personaggio con MiniMax H3 (image to video, come in ChatBz 1). Se negli ultimi messaggi non c'è una sua foto, prima ne genera una della scena e poi anima quella, così il video le somiglia sempre.
 - Il testo arriva subito, la foto dopo, con l'anteprima live. La prima foto diventa l'immagine del profilo; puoi cambiarla dal pulsante **Profilo** sotto ogni foto.
 - Le foto che mandi tu vengono descritte da Qwen3-VL (workflow `qwen3vl-vision`), così Gemma sa cosa c'è.
+
+### Modello di chat
+Il pulsante con il chip in alto sceglie il modello di Ollama per i messaggi successivi (chat, studio, risposte alle storie). La riflessione a riposo e il social restano su `OLLAMA_MODEL`. Ci sono anche i modelli senza tool, per provarli, ad esempio il Qwen installato per LocalAI: con loro la chat non passa i tool, e foto e scena le ricava il server dal testo (`[PHOTO: ...]` e controllo della scena). Come in LocalAI, il `num_ctx` del Modelfile vale al posto di `OLLAMA_CTX` (Qwen Coder: 16k), e i nomi del menu sono in `config.ollama.labels`. Ogni cambio tra Gemma e Qwen scarica un modello per caricare l'altro.
 
 ### Studio immagini
 L'"Image Assistant" di ChatBz 1, non più come personaggio ma come sezione a parte (**Studio immagini** nella barra laterale), con una sua cronologia per utente.

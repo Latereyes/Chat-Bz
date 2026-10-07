@@ -6,25 +6,27 @@ import config from './config.js';
  * LoRA del corpo (seno, glutei, magra↔morbida, seno naturale↔rifatto), come in ChatBz 1 ma scelte in automatico:
  * dalla descrizione dell'aspetto si ricava una taglia per ogni parte, e la taglia diventa la forza della LoRA.
  * Forze tarate su foto reali (Krea 2 Real, 2026-10-05).
- * Ci sono per Krea 2 (tutti i grafi: Real, Turbo, i2i, Reflex/Qwen → Krea Real) e per Z-Image: vengono agganciate dopo
+ * Solo per Krea 2 (tutti i grafi: Real, Turbo, i2i, Reflex/Qwen → Krea Real): vengono agganciate dopo
  * la LoRA Lenovo se c'è, altrimenti in fondo alla catena di LoRA del modello.
+ * Su Z-Image niente LoRA del corpo: rompevano la foto a qualsiasi forza (prova sul PC 2026-10-07), regge solo Lenovo.
+ * Lì le proporzioni vanno nel prompt a parole (figureText).
  */
 export const BODY = {
   breast: {
-    label: 'Seno', files: { krea2: 'breast_size_v2_krea2_loraholic.safetensors', zimage: 'breast_size_v2_loraholic.safetensors' },
+    label: 'Seno', files: { krea2: 'breast_size_v2_krea2_loraholic.safetensors' },
     sizes: { small: ['piccolo', -2], medium: ['medio', 0], large: ['grande', 1.5], huge: ['molto grande', 3] },
   },
   butt: {
-    label: 'Glutei', files: { krea2: 'ass_krea2_loraholic.safetensors', zimage: 'ass_2_loraholic.safetensors' },
+    label: 'Glutei', files: { krea2: 'ass_krea2_loraholic.safetensors' },
     sizes: { small: ['piccoli', -1.5], medium: ['medi', 0], large: ['grandi', 2], huge: ['molto grandi', 3.5] },
   },
   build: {
-    label: 'Corporatura', files: { krea2: 'skinny_fat_v2_loraholic.safetensors', zimage: 'size_v2_loraholic.safetensors' },
+    label: 'Corporatura', files: { krea2: 'skinny_fat_v2_loraholic.safetensors' },
     sizes: { very_slim: ['molto magra', -3], slim: ['magra', -2], athletic: ['atletica', -1], average: ['media', 0], curvy: ['morbida', 2], plump: ['in carne', 4.5] },
   },
   // seno naturale (−) ↔ rifatto (+): l'autore indica -5..+5; senza indicazioni nell'aspetto resta spenta
   implants: {
-    label: 'Seno naturale/rifatto', short: 'Seno', range: [-5, 5], hint: 'negativo = naturale, 0 = spento, positivo = rifatto', files: { krea2: 'breast_fake_real_krea2_loraholic.safetensors', zimage: 'fake_real_loraholic.safetensors' },
+    label: 'Seno naturale/rifatto', short: 'Seno', range: [-5, 5], hint: 'negativo = naturale, 0 = spento, positivo = rifatto', files: { krea2: 'breast_fake_real_krea2_loraholic.safetensors' },
     sizes: { natural: ['naturale', 0], fake: ['rifatto', 3] },
   },
 };
@@ -35,7 +37,7 @@ export const BODY = {
 export const DERIVED = {
   nipples: {
     label: 'Capezzoli', from: 'breast', range: [-5, 5],
-    files: { krea2: 'nipples_protruding_krea2_loraholic.safetensors', zimage: 'nipples_protruding_loraholic.safetensors' },
+    files: { krea2: 'nipples_protruding_krea2_loraholic.safetensors' },
   },
 };
 const loraDef = (part) => BODY[part] || DERIVED[part];
@@ -54,15 +56,15 @@ export function withDerived(loras) {
   return out;
 }
 
-// Modelli che reggono le LoRA del corpo (stesse LoRA di loraholic, una versione per modello):
+// Modelli con LoRA nel grafo (Lenovo, e per Krea 2 anche quelle del corpo di loraholic):
 // unet = nome del modello nel grafo, lenovoFile / lenovo = file e forza della LoRA Lenovo quando la si aggiunge,
-// autoScale = quanto scalare le forze delle taglie automatiche (tarate su Krea 2; su Z-Image le stesse LoRA
-// sono molto più forti: seno +3 è già grande, +8 appesantisce tutto il corpo — prova sul PC 2026-10-07).
-// I cursori a mano restano quelli scelti.
+// body = regge le LoRA del corpo.
 export const FAMILIES = {
-  krea2: { label: 'Krea 2', unet: /krea2/i, lenovoFile: 'lenovo_krea2.safetensors', lenovo: 1.2, autoScale: 1 },
-  zimage: { label: 'Z-Image', unet: /^zit|z[-_ ]?image/i, lenovoFile: 'lenovo_z.safetensors', lenovo: 1, autoScale: 0.4 },
+  krea2: { label: 'Krea 2', unet: /krea2/i, lenovoFile: 'lenovo_krea2.safetensors', lenovo: 1.2, body: true },
+  zimage: { label: 'Z-Image', unet: /^zit|z[-_ ]?image/i, lenovoFile: 'lenovo_z.safetensors', lenovo: 1, body: false },
 };
+/** La famiglia regge le LoRA del corpo? (Z-Image no: solo Lenovo) */
+export const hasBodyLoras = (family) => !!FAMILIES[family]?.body;
 
 /** Tiene solo valori validi: { breast: 'large', ... }. */
 export function normalizeBody(b) {
@@ -190,12 +192,11 @@ function nearestSize(part, strength) {
 
 /** LoRA da applicare per questo personaggio: [{ part, strength }] (solo quelle diverse da 0), per la famiglia del modello. */
 export function bodyLoras(card, family = 'krea2') {
-  if (!card || card.gender === 'uomo') return [];   // LoRA addestrate su corpi femminili
+  if (!card || card.gender === 'uomo' || !hasBodyLoras(family)) return [];   // LoRA addestrate su corpi femminili
   if (card.bodyManual) return manualBodyLoras(card.bodyManual) || [];   // regolato a mano: vince sull'aspetto
   const body = normalizeBody(card.body) || bodyFromKeywords(card.look) || {};
-  const scale = FAMILIES[family]?.autoScale ?? 1;
   return Object.entries(body)
-    .map(([part, size]) => ({ part, strength: Math.round(BODY[part].sizes[size][1] * scale * 10) / 10 }))
+    .map(([part, size]) => ({ part, strength: BODY[part].sizes[size][1] }))
     .filter((l) => l.strength !== 0);
 }
 
@@ -216,7 +217,7 @@ function findBodyFile(files, part, family) {
 
 /** Tiene solo le LoRA installate su ComfyUI per la famiglia del modello (file in BODY[part].files). */
 export async function installedLoras(loras, family = 'krea2') {
-  if (!loras?.length || !FAMILIES[family]) return [];
+  if (!loras?.length || !hasBodyLoras(family)) return [];
   const files = await comfyLoras();
   if (!files) return [];
   const out = [];
@@ -227,7 +228,7 @@ export async function installedLoras(loras, family = 'krea2') {
   return out;
 }
 
-/** Famiglia del modello del grafo ('krea2' | 'zimage'), dal nome del modello caricato; null se non regge le LoRA del corpo. */
+/** Famiglia del modello del grafo ('krea2' | 'zimage'), dal nome del modello caricato (per Lenovo); null se non è nessuna delle due. */
 export function bodyFamily(graph) {
   for (const n of Object.values(graph)) {
     if (n.class_type !== 'UNETLoader') continue;
@@ -297,10 +298,10 @@ export function applyLenovo(graph, family, on, file) {
 
 /**
  * Aggancia le LoRA del corpo dopo ogni LoRA Lenovo del grafo, altrimenti in fondo alla catena del modello
- * (Krea 2 Turbo / i2i, Z-Image): chi usava quel nodo usa l'ultima aggiunta.
+ * (Krea 2 Turbo / i2i): chi usava quel nodo usa l'ultima aggiunta. Mai su Z-Image.
  */
 export function applyBodyLoras(graph, loras, family = bodyFamily(graph)) {
-  if (!loras?.length || !family) return 0;
+  if (!loras?.length || !hasBodyLoras(family)) return 0;
   let anchors = Object.keys(graph).filter((id) => isLenovo(graph[id]));
   if (!anchors.length) anchors = chainEnds(graph, family);
   for (const anchor of anchors) {

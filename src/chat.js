@@ -9,8 +9,8 @@ import { emit, emitMedia, enqueue, describeImage, mediaUrl, cancel } from './job
 import { workflows, getWorkflow, dimensions, dimensionsForRatio, frameCount, randomSeed, ASPECTS } from './workflows.js';
 import { promptProfile } from './auth.js';
 import { systemPrompt, nowBlock, tools, promptEngineerSystem, characterMediaRequest, cleanPrompt, sceneCheckPrompt, CHAT_LOOK_CHOICE, splitLook } from './prompts.js';
-import { bodyFamily } from './body.js';
-import { updateScene } from './relationship.js';
+import { bodyFamily, hasBodyLoras, figureText } from './body.js';
+import { updateScene, contentLevel } from './relationship.js';
 import * as queue from './queue.js';
 import * as social from './social.js';
 
@@ -23,6 +23,8 @@ const MAX_ATTACHMENTS = 4;
 
 // Foto in chat ("istantanee"): il motore dipende dallo stile del personaggio
 const INSTANT = { krea: 'krea2-real', zimage: 'zimage-turbo' };
+// Senza tool la foto si chiede nel testo: extractTag la riconosce e la toglie dal messaggio
+const NO_TOOLS_NOTE = 'you cannot call tools now: to send a photo write [PHOTO: English description of the photo] on a line of its own (for a video [VIDEO: ...]); never write tool names or JSON.';
 const FORCE_NOTE = {
   photo: '\n\n[The user tapped «Foto»: answer by sending a photo with send_photo.]',
   video: '\n\n[The user tapped «Video»: answer by sending a video with send_video.]',
@@ -47,8 +49,8 @@ function lastCharacterPhoto(conv, within = 12) {
   return null;
 }
 
-/** Cronologia nel formato di Ollama, entro il budget di contesto. */
-function history(conv, upTo) {
+/** Cronologia nel formato di Ollama, entro il budget di contesto (quello del modello scelto). */
+function history(conv, upTo, numCtx = config.ollama.numCtx) {
   const msgs = [];
   for (const m of conv.messages.slice(0, upTo)) {
     if (m.role === 'user') {
@@ -65,7 +67,7 @@ function history(conv, upTo) {
     else msgs.push({ role: 'assistant', content, at: m.createdAt });
   }
   // Taglio dei messaggi più vecchi oltre il budget (~3 caratteri per token, riserva per il prompt di sistema)
-  const budget = config.ollama.numCtx * 3 - 16000;
+  const budget = numCtx * 3 - 16000;
   let size = msgs.reduce((n, m) => n + m.content.length, 0);
   let trimmed = false;
   while (size > budget && msgs.length > 2) {
@@ -203,17 +205,28 @@ function mediaFromCall(conv, call, callIndex) {
   return null;
 }
 
-/** Riscrive la descrizione del personaggio nel prompt ottimizzato per il modello (in streaming). */
-async function engineerPrompt(conv, msg, media, model, signal) {
+/**
+ * Riscrive la descrizione del personaggio nel prompt ottimizzato per il modello (in streaming).
+ * ctx: ultimo messaggio dell'utente e risposta del personaggio, così le indicazioni dell'utente (posa, POV) arrivano alla foto.
+ */
+async function engineerPrompt(conv, msg, media, model, signal, ctx = {}) {
   const w = getWorkflow(media.workflow, media.type, media.mode);
-  const look = media.type === 'image' && !!bodyFamily(w.graph);   // Lenovo sì/no lo sceglie Gemma
+  const family = media.type === 'image' ? bodyFamily(w.graph) : null;
+  const look = !!family;   // Lenovo sì/no lo sceglie Gemma
+  // Senza LoRA del corpo (Z-Image, altri motori) le proporzioni vanno dette a parole
+  const figure = media.type === 'image' && !hasBodyLoras(family) ? figureText(conv.card) : '';
+  // Momento: dal messaggio dell'utente sempre, dalla risposta del personaggio solo se la scena è già almeno di flirt
+  const s = conv.state.scene;
+  const level = contentLevel(conv.card, conv.state.rel, s, [ctx.userText, s.intimacy !== 'none' ? ctx.reply : ''].join('\n'));
+  const explicit = media.type === 'image' && level === 'explicit';
   let text = '';
   const out = await ollama.chat({
     model, signal, think: false,
-    options: { temperature: 0.7 },
+    // Scena esplicita: meno fantasia, più fedeltà alle indicazioni
+    options: { temperature: explicit ? 0.45 : 0.7 },
     messages: [
       { role: 'system', content: promptEngineerSystem(w) },
-      { role: 'user', content: characterMediaRequest({ card: conv.card, state: conv.state, media, width: media.width, height: media.height, seconds: media.seconds, sourceDescription: media.sourceFile || media.sourceMediaId ? media.sourceDescription : undefined }) + (look ? `\n${CHAT_LOOK_CHOICE}` : '') },
+      { role: 'user', content: characterMediaRequest({ card: conv.card, state: conv.state, media, width: media.width, height: media.height, seconds: media.seconds, sourceDescription: media.sourceFile || media.sourceMediaId ? media.sourceDescription : undefined, userText: ctx.userText, reply: ctx.reply, user: promptProfile(conv.ownerId), figure, level }) + (look ? `\n${CHAT_LOOK_CHOICE}` : '') },
     ],
     onChunk: (c) => {
       if (!c.content) return;
@@ -326,7 +339,11 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
   const idx = conv.messages.indexOf(msg);
   const userMsg = initiative ? null : conv.messages.slice(0, idx).findLast((m) => m.role === 'user');
   const onWait = (active) => emit(conv.id, { type: 'status', messageId: msg.id, status: 'waiting', reason: active.label });
-  const visionModel = (await ollama.capabilities(model).catch(() => [])).includes('vision');
+  const caps = await ollama.capabilities(model).catch(() => []);
+  const visionModel = caps.includes('vision');
+  // Modello senza tool (es. un Qwen da provare): niente tool nella richiesta, foto e scena le ricava il server dal testo
+  const toolModel = caps.includes('tools');
+  const numCtx = await ollama.contextSize(model);
   try {
     // Foto inviate dall'utente: descritte dal modello visivo di ComfyUI (Gemma uncensored non vede le immagini)
     const unread = (userMsg?.attachments || []).filter((a) => !a.description && !a.visionError);
@@ -348,10 +365,12 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       msg.status = 'streaming';
       emit(conv.id, { type: 'status', messageId: msg.id, status: 'streaming' });
 
-      const { msgs, trimmed } = history(conv, idx);
+      const { msgs, trimmed } = history(conv, idx, numCtx);
       const prevAt = initiative ? conv.messages[idx - 1]?.createdAt : conv.messages.slice(0, Math.max(0, idx - 1)).findLast((m) => m.status !== 'pending')?.createdAt;
       const memories = memory.forPrompt(conv.id, 14, userMsg?.content);
-      const block = nowBlock({ card: conv.card, state: conv.state, memories, lastGapMs: prevAt ? Date.now() - prevAt : null, trimmed, initiative, social: social.chatContext(conv), user: promptProfile(conv.ownerId), style: styleNotes(conv, idx, initiative ? '' : userMsg?.content, promptProfile(conv.ownerId)) });
+      const style = styleNotes(conv, idx, initiative ? '' : userMsg?.content, promptProfile(conv.ownerId));
+      if (!toolModel) style.push(NO_TOOLS_NOTE);
+      const block = nowBlock({ card: conv.card, state: conv.state, memories, lastGapMs: prevAt ? Date.now() - prevAt : null, trimmed, initiative, social: social.chatContext(conv), user: promptProfile(conv.ownerId), style });
       const convo = [{ role: 'system', content: systemPrompt(conv.card, { user: promptProfile(conv.ownerId) }) }, ...msgs.map(({ role, content }) => ({ role, content }))];
       if (initiative || convo.at(-1).role !== 'user') convo.push({ role: 'user', content: block });
       else convo.at(-1).content = `${block}\n\n${convo.at(-1).content}${FORCE_NOTE[tool] || ''}`;
@@ -360,7 +379,7 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
         convo.at(-1).images = userMsg.attachments.map((a) => { try { return fs.readFileSync(path.join(config.paths.media, a.file)).toString('base64'); } catch { return null; } }).filter(Boolean);
       }
 
-      const allTools = tools({ canAnimate: !!lastCharacterPhoto(conv) });
+      const allTools = toolModel ? tools({ canAnimate: !!lastCharacterPhoto(conv) }) : [];
       let sceneChanged = false;
       for (let round = 0; round < 3; round++) {
         const result = await ollama.chat({
@@ -413,7 +432,7 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       for (const md of msg.media) {
         const src = md.sourceMediaId && msg.media.find((x) => x.id === md.sourceMediaId);
         if (src) md.sourceDescription = src.prompt || src.description;
-        md.prompt = await engineerPrompt(conv, msg, md, model, signal);
+        md.prompt = await engineerPrompt(conv, msg, md, model, signal, { userText: userMsg?.content, reply: msg.content });
         emitMedia(conv, msg, md);
       }
     }, { onWait });
