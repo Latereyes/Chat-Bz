@@ -742,24 +742,46 @@ function bodySummary(card) {
 }
 // Forze regolate a mano nello studio (personaggio creato da una sua foto): vincono sulle taglie automatiche
 let cardManual = null;
+// Cursori del fisico a mano nella scheda (stessi dello studio): spenti = taglie automatiche dall'aspetto
+function renderManualBox() {
+  const parts = state.config?.options?.body || {};
+  $('#cm-manual-box').innerHTML = Object.entries(parts).map(([k, b]) => {
+    const [lo, hi] = b.range || [-8, 8];
+    const v = cardManual?.[k] ?? 0;
+    return `<label title="${esc(b.label)}: negativo = più piccolo, 0 = spento, positivo = più grande"><span>${esc(b.label)}</span><input type="range" data-part="${k}" min="${lo}" max="${hi}" step="0.5" value="${v}"><output>${v}</output></label>`;
+  }).join('') + `<small class="hint">${cf.style.value === 'krea' ? 'Valgono per le foto in chat e sul social e sostituiscono le taglie ricavate dall\'aspetto.' : 'Valgono solo con lo stile «Realistico spontaneo (Krea 2)»: con questo stile le foto non le usano.'}</small>`;
+}
 function showBody() {
   const p = $('#cm-body');
+  const woman = cf.gender.value !== 'uomo';
+  $('#cm-manual-row').hidden = !woman;
+  $('#cm-manual').checked = !!cardManual;
+  $('#cm-manual-box').hidden = !cardManual || !woman;
+  if (cardManual && woman) { renderManualBox(); p.hidden = true; return; }
   const same = cardBody && cardBody.look === cf.look.value;
-  if (cardManual && cf.gender.value !== 'uomo') {
-    p.innerHTML = `Fisico nelle foto regolato a mano: ${esc(bodyTag(cardManual))}. <button type="button" class="link" id="cm-body-auto">Torna automatico</button>`;
-    p.hidden = false;
-    return;
-  }
-  p.textContent = cf.gender.value === 'uomo' ? '' : same ? bodySummary(cardBody) : cf.look.value.trim() ? "Il fisico nelle foto verrà ricavato dall'aspetto al salvataggio." : '';
+  p.textContent = !woman ? '' : same ? bodySummary(cardBody) : cf.look.value.trim() ? "Il fisico nelle foto verrà ricavato dall'aspetto al salvataggio." : '';
   p.hidden = !p.textContent;
 }
-$('#cm-body').addEventListener('click', (e) => { if (e.target.closest('#cm-body-auto')) { cardManual = null; showBody(); } });
+$('#cm-manual').addEventListener('change', (e) => {
+  if (e.target.checked) {
+    // si parte dalle forze delle taglie automatiche, se ci sono
+    const opts = state.config?.options?.body || {};
+    cardManual = Object.fromEntries(Object.keys(opts).map((k) => [k, (cardBody?.look === cf.look.value && opts[k].strengths?.[cardBody.body?.[k]]) || 0]));
+  } else cardManual = null;
+  showBody();
+});
+$('#cm-manual-box').addEventListener('input', (e) => {
+  const i = e.target.closest('input[data-part]');
+  if (!i || !cardManual) return;
+  i.nextElementSibling.textContent = i.value;
+  cardManual[i.dataset.part] = Number(i.value);
+});
 function fillCard(card) {
   for (const k of CARD_FIELDS) if (cf[k] && card[k] !== undefined) cf[k].value = card[k];
   cf.initiative.checked = card.initiative !== false;
   cf.social.checked = card.social !== false;
   cardBody = card.body ? { look: card.look, body: card.body } : null;
-  cardManual = card.bodyManual || null;
+  cardManual = card.bodyManual ? { ...card.bodyManual } : null;
   showBody();
 }
 function readCard() {
@@ -774,6 +796,7 @@ function readCard() {
 }
 cf.look.addEventListener('input', showBody);
 cf.gender.addEventListener('change', showBody);
+cf.style.addEventListener('change', () => { if (cardManual) renderManualBox(); });
 
 function setTab(tab) {
   $$('.tab', cm).forEach((t) => t.classList.toggle('on', t.dataset.tab === tab));

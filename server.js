@@ -113,7 +113,7 @@ app.get('/api/config', wrap(async (req, res) => {
     defaultModel: config.ollama.model,
     options: {
       relations: RELATIONS, paces: PACES, intimacy: INTIMACY, styles: STYLES, dims: DIM_LABEL,
-      body: Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, { label: b.label, range: bodyRange(k), sizes: Object.fromEntries(Object.entries(b.sizes).map(([s, [l]]) => [s, l])) }])),
+      body: Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, { label: b.label, range: bodyRange(k), sizes: Object.fromEntries(Object.entries(b.sizes).map(([s, [l]]) => [s, l])), strengths: Object.fromEntries(Object.entries(b.sizes).map(([s, [, v]]) => [s, v])) }])),
     },
     models,
     workflows: workflows().map(publicInfo),
