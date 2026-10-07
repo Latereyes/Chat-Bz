@@ -23,6 +23,8 @@ Variabili d'ambiente (i default sono in `src/config.js`):
 |---|---|---|
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | quando Ollama tornerà sull'altro PC: `http://192.168.1.12:11434` |
 | `COMFY_URL` | `http://127.0.0.1:8188` | idem per ComfyUI |
+| `AGENT_URL` | `http://127.0.0.1:7070` | agent del PC (remote-app-controller) che fa da arbitro della GPU tra ChatBz e LocalAI |
+| `GPU_ARBITER` | `1` | `0` = ignora l'agent e usa solo l'arbitro interno |
 | `OLLAMA_MODEL` | `gemma4-12b-uncensored:latest` | modello di chat (deve supportare i tool) |
 | `OLLAMA_CTX` | `24576` | contesto |
 | `PORT` | `3100` | così può girare accanto a LocalAI (3000) |

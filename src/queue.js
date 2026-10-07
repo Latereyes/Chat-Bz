@@ -8,7 +8,8 @@ import { newId } from './store.js';
  * Coda persistente "a goccia" (sostituisce la coda in memoria di ChatBz 1).
  * Ogni lavoro è una riga nel database: un riavvio non perde nulla, quello rimasto a metà riparte.
  * Si lavora un pezzo alla volta e solo quando:
- *  - la GPU è libera (la chat e le foto in chat passano sempre prima, hanno la loro coda in gpu.js)
+ *  - la GPU è libera (la chat e le foto in chat passano sempre prima, hanno la loro coda in gpu.js),
+ *    anche per le altre app del PC (LocalAI) quando c'è l'agent
  *  - non stai chattando da qualche secondo (DRIP_IDLE_SEC)
  *  - la coda dell'utente non è in pausa
  * Tra i lavori pronti si preferisce quello che usa il modello già in VRAM (prima i testi, poi le immagini),
@@ -90,7 +91,6 @@ export function setPaused(ownerId, paused) {
   if (!paused) kick();
 }
 
-const gpuIdle = () => { const s = gpu.state(); return !s.active && !s.queued.length; };
 export const userIdle = () => Date.now() - lastActivity > config.drip.idleMs;
 
 async function execute(job) {
@@ -102,7 +102,7 @@ async function execute(job) {
   notify(job.owner_id);
   try {
     if (job.gpu === 'none') await fn(job, job.payload);
-    else await gpu.run(job.gpu, job.label || 'Social', () => fn(job, job.payload));
+    else await gpu.run(job.gpu, job.label || 'Social', () => fn(job, job.payload), { priority: job.priority === PRIORITY.reply ? 'normal' : 'low' });
     q.remove.run(job.id);
   } catch (e) {
     console.warn(`[coda] ${job.label || job.kind}: ${e.message}`);
@@ -122,7 +122,7 @@ async function tick() {
     // Senza GPU: subito
     for (const j of due.filter((x) => x.gpu === 'none')) await execute(j);
 
-    if (!gpuIdle() || !userIdle()) return;
+    if (!userIdle() || !(await gpu.idle())) return;
     let ready = due.filter((x) => x.gpu !== 'none');
     if (!ready.length) {
       for (const { owner_id: owner } of q.owners.all()) {
