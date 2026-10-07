@@ -33,10 +33,11 @@ export const BODY = {
  * dal suo intervallo (-8..+8) al loro (-5..+5) — scelta dell'utente, 2026-10-07.
  */
 export const DERIVED = {
-  nipples: {
-    label: 'Capezzoli', from: 'breast', range: [-5, 5],
-    files: { krea2: 'nipples_protruding_krea2_loraholic.safetensors', zimage: 'nipples_protruding_loraholic.safetensors' },
-  },
+  // Tolta per ora: sul PC rompe l'immagine (2026-10-07). Per riattivarla basta togliere il commento.
+  // nipples: {
+  //   label: 'Capezzoli', from: 'breast', range: [-5, 5],
+  //   files: { krea2: 'nipples_protruding_krea2_loraholic.safetensors', zimage: 'nipples_protruding_loraholic.safetensors' },
+  // },
 };
 const loraDef = (part) => BODY[part] || DERIVED[part];
 
