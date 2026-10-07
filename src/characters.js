@@ -63,7 +63,7 @@ Reply ONLY with JSON with these keys (Italian text unless stated):
  "speech": "2-3 sentences: how they talk and text (register, slang, emoji, length, typical expressions)",
  "boundaries": "1-2 sentences: things they don't like or won't do, topics they avoid",
  "look": "ENGLISH, 50-90 words, for an image model: apparent age, ethnicity, build and body shape (say explicitly how slim or curvy, breast size and butt size), face, eyes, hair (color, length, style), skin, distinctive marks, usual style of clothes. No pose, no background, no camera words",
- "body": {"breast": "${Object.keys(BODY.breast.sizes).join('|')}", "butt": "${Object.keys(BODY.butt.sizes).join('|')}", "build": "${Object.keys(BODY.build.sizes).join('|')}"} (must match the look),
+ "body": {"breast": "${Object.keys(BODY.breast.sizes).join('|')}", "butt": "${Object.keys(BODY.butt.sizes).join('|')}", "build": "${Object.keys(BODY.build.sizes).join('|')}", "implants": "natural|fake"} (must match the look; implants "fake" only if the look says augmented/implants),
  "style": "krea" (realistic candid photos) | "zimage" (polished, glamorous or stylised),
  "pace": "lenta" | "media" | "rapida" (how fast they open up emotionally and physically),
  "startPlace": "where they are when the story begins (short, Italian)",

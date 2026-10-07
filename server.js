@@ -113,7 +113,7 @@ app.get('/api/config', wrap(async (req, res) => {
     defaultModel: config.ollama.model,
     options: {
       relations: RELATIONS, paces: PACES, intimacy: INTIMACY, styles: STYLES, dims: DIM_LABEL,
-      body: Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, { label: b.label, range: bodyRange(k), sizes: Object.fromEntries(Object.entries(b.sizes).map(([s, [l]]) => [s, l])), strengths: Object.fromEntries(Object.entries(b.sizes).map(([s, [, v]]) => [s, v])) }])),
+      body: Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, { label: b.label, short: b.short, hint: b.hint, range: bodyRange(k), sizes: Object.fromEntries(Object.entries(b.sizes).map(([s, [l]]) => [s, l])), strengths: Object.fromEntries(Object.entries(b.sizes).map(([s, [, v]]) => [s, v])) }])),
     },
     models,
     workflows: workflows().map(publicInfo),
@@ -420,10 +420,10 @@ const server = app.listen(config.port, config.host, () => {
     const off = list.filter((w) => w.available === false);
     if (off.length) console.log(`  Workflow non disponibili (modelli mancanti): ${off.map((w) => `${w.name} → ${w.missing.join(', ')}`).join(' | ')}`);
   }).then(async () => {
-    const all = Object.entries(BODY).map(([part, b]) => ({ part, file: b.file }));
+    const all = Object.keys(BODY).map((part) => ({ part }));
     for (const [family, f] of Object.entries(FAMILIES)) {
       const found = await installedLoras(all, family);
-      if (found.length < all.length) console.log(`  LoRA del corpo per ${f.label} non trovate su ComfyUI (le foto escono senza): ${all.filter((l) => !found.some((x) => x.part === l.part)).map((l) => family === 'krea2' ? l.file : BODY[l.part].label).join(', ')}`);
+      if (found.length < all.length) console.log(`  LoRA del corpo per ${f.label} non trovate su ComfyUI (le foto escono senza): ${all.filter((l) => !found.some((x) => x.part === l.part)).map((l) => BODY[l.part].files[family]).join(', ')}`);
     }
   });
   refresh();

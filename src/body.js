@@ -3,7 +3,7 @@ import * as comfy from './comfy.js';
 import config from './config.js';
 
 /**
- * LoRA del corpo (seno, glutei, magra↔morbida), come in ChatBz 1 ma scelte in automatico:
+ * LoRA del corpo (seno, glutei, magra↔morbida, seno naturale↔rifatto), come in ChatBz 1 ma scelte in automatico:
  * dalla descrizione dell'aspetto si ricava una taglia per ogni parte, e la taglia diventa la forza della LoRA.
  * Forze tarate su foto reali (Krea 2 Real, 2026-10-05).
  * Ci sono per Krea 2 (tutti i grafi: Real, Turbo, i2i, Reflex/Qwen → Krea Real) e per Z-Image: vengono agganciate dopo
@@ -11,23 +11,28 @@ import config from './config.js';
  */
 export const BODY = {
   breast: {
-    label: 'Seno', file: 'breast_size_v2_krea2_loraholic.safetensors', match: /breast|bust|boob/i,
+    label: 'Seno', files: { krea2: 'breast_size_v2_krea2_loraholic.safetensors', zimage: 'breast_size_v2_loraholic.safetensors' },
     sizes: { small: ['piccolo', -2], medium: ['medio', 0], large: ['grande', 1.5], huge: ['molto grande', 3] },
   },
   butt: {
-    label: 'Glutei', file: 'ass_krea2_loraholic.safetensors', match: /(^|[^a-z])ass|butt|glute/i,
+    label: 'Glutei', files: { krea2: 'ass_krea2_loraholic.safetensors', zimage: 'ass_2_loraholic.safetensors' },
     sizes: { small: ['piccoli', -1.5], medium: ['medi', 0], large: ['grandi', 2], huge: ['molto grandi', 3.5] },
   },
   build: {
-    label: 'Corporatura', file: 'skinny_fat_v2_loraholic.safetensors', match: /skinny|fat|weight/i,
+    label: 'Corporatura', files: { krea2: 'skinny_fat_v2_loraholic.safetensors', zimage: 'size_v2_loraholic.safetensors' },
     sizes: { very_slim: ['molto magra', -3], slim: ['magra', -2], athletic: ['atletica', -1], average: ['media', 0], curvy: ['morbida', 2], plump: ['in carne', 4.5] },
+  },
+  // seno naturale (−) ↔ rifatto (+): l'autore indica -5..+5; senza indicazioni nell'aspetto resta spenta
+  implants: {
+    label: 'Seno naturale/rifatto', short: 'Seno', range: [-5, 5], hint: 'negativo = naturale, 0 = spento, positivo = rifatto', files: { krea2: 'breast_fake_real_krea2_loraholic.safetensors', zimage: 'fake_real_loraholic.safetensors' },
+    sizes: { natural: ['naturale', 0], fake: ['rifatto', 3] },
   },
 };
 // Modelli che reggono le LoRA del corpo (stesse LoRA di loraholic, una versione per modello):
-// unet = nome del modello nel grafo, files = parola nel nome dei file LoRA, lenovo = forza della LoRA Lenovo quando la si aggiunge
+// unet = nome del modello nel grafo, lenovoFile / lenovo = file e forza della LoRA Lenovo quando la si aggiunge
 export const FAMILIES = {
-  krea2: { label: 'Krea 2', unet: /krea2/i, files: /krea/i, lenovo: 1.2 },
-  zimage: { label: 'Z-Image', unet: /^zit|z[-_ ]?image/i, files: /(^|[^a-z])zit|z[-_ ]?image/i, lenovo: 1 },
+  krea2: { label: 'Krea 2', unet: /krea2/i, lenovoFile: 'lenovo_krea2.safetensors', lenovo: 1.2 },
+  zimage: { label: 'Z-Image', unet: /^zit|z[-_ ]?image/i, lenovoFile: 'lenovo_z.safetensors', lenovo: 1 },
 };
 
 /** Tiene solo valori validi: { breast: 'large', ... }. */
@@ -41,10 +46,10 @@ export function normalizeBody(b) {
 // Parole chiave (inglese e italiano) per quando Gemma non risponde: si prende la prima che compare
 const WORDS = {
   breast: [
-    ['huge', /\b(huge|massive|enormous|very large|very big|gigantic)\s+(breasts?|bust|chest|boobs)|\b(seno|tette)\s+(enorm\w*|molto grand\w*)/i],
-    ['large', /\b(large|big|full|ample|generous|heavy|voluptuous)\s+(breasts?|bust|chest|boobs)|\b(busty|buxom)\b|\b(seno|tette)\s+(grand\w*|abbondant\w*|prosperos\w*)|\bprosperosa\b/i],
-    ['small', /\b(small|petite|tiny|modest|flat|little)\s+(breasts?|bust|chest|boobs)|\bflat[- ]chested\b|\b(seno|tette)\s+(piccol\w*|minut\w*)/i],
-    ['medium', /\b(medium|average|moderate|natural)[- ]?(sized)?\s+(breasts?|bust|chest|boobs)|\bseno\s+medi\w*/i],
+    ['huge', /\b(huge|massive|enormous|very large|very big|gigantic)\s+(?:(?:fake|natural|real|perky|round|firm|augmented|soft)\s+)?(breasts?|bust|chest|boobs)|\b(seno|tette)\s+(enorm\w*|molto grand\w*)/i],
+    ['large', /\b(large|big|full|ample|generous|heavy|voluptuous)\s+(?:(?:fake|natural|real|perky|round|firm|augmented|soft)\s+)?(breasts?|bust|chest|boobs)|\b(busty|buxom)\b|\b(seno|tette)\s+(grand\w*|abbondant\w*|prosperos\w*)|\bprosperosa\b/i],
+    ['small', /\b(small|petite|tiny|modest|flat|little)\s+(?:(?:fake|natural|real|perky|round|firm|augmented|soft)\s+)?(breasts?|bust|chest|boobs)|\bflat[- ]chested\b|\b(seno|tette)\s+(piccol\w*|minut\w*)/i],
+    ['medium', /\b(medium|average|moderate|natural)[- ]?(sized)?\s+(?:(?:fake|natural|real|perky|round|firm|augmented|soft)\s+)?(breasts?|bust|chest|boobs)|\bseno\s+medi\w*/i],
   ],
   butt: [
     ['huge', /\b(huge|massive|enormous|very large|very big)\s+(butt|ass|bottom|glutes|behind|rear)|\b(sedere|culo|glutei)\s+(enorm\w*|molto grand\w*)/i],
@@ -59,6 +64,10 @@ const WORDS = {
     ['athletic', /\b(athletic|toned|fit|muscular|sporty|lean)\b|\b(atletic\w*|tonic\w*|sportiv\w*|muscolos\w*)\b/i],
     ['slim', /\b(slim|slender|thin|petite|lithe|willowy|small[- ]framed)\b|\b(magr\w*|snell\w*|esil\w*|minut\w*)\b/i],
     ['average', /\b(average|medium|normal)\s+(build|frame|body)\b|\bcorporatura media\b/i],
+  ],
+  implants: [
+    ['fake', /\b(fake|augmented|enhanced|silicone|surgically enhanced)\s+(breasts?|bust|boobs|tits)|\b(breast|boob)\s+(implants?|job)|\bimplants\b|\b(seno|tette)\s+(rifatt\w*|siliconat\w*)|\bprotesi al seno\b/i],
+    ['natural', /\bnatural\s+(breasts?|bust|boobs|tits)|\b(seno|tette)\s+natural\w*/i],
   ],
 };
 
@@ -84,7 +93,7 @@ export async function analyzeBody(card, { model } = {}) {
       timeout: 45000,
       options: { temperature: 0, num_predict: 80 },
       messages: [
-        { role: 'system', content: `You read a character's appearance and classify their body for an image generator. Reply ONLY with JSON: {"breast": "${opts('breast')}", "butt": "${opts('butt')}", "build": "${opts('build')}"}. Use what the text says or clearly implies (e.g. "busty" → large breast, "petite" → slim build, small breast); use "medium"/"average" when it says nothing about that part.` },
+        { role: 'system', content: `You read a character's appearance and classify their body for an image generator. Reply ONLY with JSON: {"breast": "${opts('breast')}", "butt": "${opts('butt')}", "build": "${opts('build')}", "implants": "${opts('implants')}"}. Use what the text says or clearly implies (e.g. "busty" → large breast, "petite" → slim build, small breast); use "medium"/"average" when it says nothing about that part; "implants" is "fake" only if the text says augmented, implants, fake or silicone breasts, otherwise "natural".` },
         { role: 'user', content: `Gender: ${card.gender}\nAppearance: ${card.look}` },
       ],
     });
@@ -100,7 +109,7 @@ export async function analyzeBody(card, { model } = {}) {
 export function bodySummary(body) {
   const b = normalizeBody(body);
   if (!b) return '';
-  return Object.entries(b).map(([k, s]) => `${BODY[k].label} ${BODY[k].sizes[s][0]}`).join(' · ');
+  return Object.entries(b).map(([k, s]) => `${BODY[k].short || BODY[k].label} ${BODY[k].sizes[s][0]}`).join(' · ');
 }
 
 // Proporzioni dette a parole (inglese, senza nudità): le foto "presentabili" del social le perdevano
@@ -108,6 +117,7 @@ const FIGURE = {
   breast: { small: 'small bust', large: 'large full bust', huge: 'very large heavy bust' },
   butt: { small: 'narrow hips', large: 'wide hips and a round full bottom', huge: 'very wide hips and a big round bottom' },
   build: { very_slim: 'very slim frame', slim: 'slim figure', athletic: 'athletic toned figure', curvy: 'curvy hourglass figure', plump: 'soft, full plump figure' },
+  implants: { fake: 'breasts with a visibly augmented, round and perky implant shape' },
 };
 
 /** «large full bust, curvy hourglass figure»: corporatura per le foto vestite (solo personaggi femminili). */
@@ -120,10 +130,10 @@ export function figureText(card) {
 }
 
 /**
- * Limiti dei cursori a mano: l'intervallo indicato dall'autore delle LoRA (Civitai), -8..+8
+ * Limiti dei cursori a mano: l'intervallo indicato dall'autore delle LoRA (Civitai), -8..+8 (naturale/rifatto -5..+5)
  * (le taglie automatiche restano quelle tarate in BODY).
  */
-export const bodyRange = () => [-8, 8];
+export const bodyRange = (part) => BODY[part]?.range || [-8, 8];
 
 /** Forze scelte a mano { breast: 1.5, ... }: tutte le parti, limitate (0 se mancano); null se non è un oggetto. */
 export function normalizeManual(values) {
@@ -141,7 +151,7 @@ export function normalizeManual(values) {
 export function manualBodyLoras(values) {
   const v = normalizeManual(values);
   if (!v) return null;
-  return Object.entries(v).filter(([, s]) => s !== 0).map(([part, strength]) => ({ part, file: BODY[part].file, strength }));
+  return Object.entries(v).filter(([, s]) => s !== 0).map(([part, strength]) => ({ part, strength }));
 }
 
 /** Taglia più vicina a una forza a mano (per le proporzioni dette a parole). */
@@ -155,7 +165,7 @@ export function bodyLoras(card) {
   if (card.bodyManual) return manualBodyLoras(card.bodyManual) || [];   // regolato a mano: vince sull'aspetto
   const body = normalizeBody(card.body) || bodyFromKeywords(card.look) || {};
   return Object.entries(body)
-    .map(([part, size]) => ({ part, file: BODY[part].file, strength: BODY[part].sizes[size][1] }))
+    .map(([part, size]) => ({ part, strength: BODY[part].sizes[size][1] }))
     .filter((l) => l.strength !== 0);
 }
 
@@ -168,21 +178,13 @@ async function comfyLoras() {
   return files;
 }
 
-/** File di una LoRA del corpo per questa famiglia di modelli (nome esatto per Krea 2, altrimenti cercato per parole). */
+/** File di una LoRA del corpo per questa famiglia di modelli, col percorso che ha su ComfyUI (anche in una sottocartella). */
 function findBodyFile(files, part, family) {
-  const base = (f) => f.replace(/\\/g, '/').split('/').pop();
-  if (family === 'krea2') {
-    const exact = files.find((f) => base(f) === BODY[part].file);
-    if (exact) return exact;
-  }
-  const hits = files.filter((f) => BODY[part].match.test(base(f)) && FAMILIES[family].files.test(base(f)));
-  return hits.find((f) => /loraholic/i.test(base(f))) || hits[0] || null;
+  const want = BODY[part]?.files[family];
+  return (want && files.find((f) => f.replace(/\\/g, '/').split('/').pop() === want)) || null;
 }
 
-/**
- * Tiene solo le LoRA installate su ComfyUI per la famiglia del modello, col nome esatto (anche in una sottocartella).
- * Krea 2: i file di BODY; Z-Image: i file con la parte (breast / ass / skinny_fat) e "zimage" o "zit" nel nome.
- */
+/** Tiene solo le LoRA installate su ComfyUI per la famiglia del modello (file in BODY[part].files). */
 export async function installedLoras(loras, family = 'krea2') {
   if (!loras?.length || !FAMILIES[family]) return [];
   const files = await comfyLoras();
@@ -235,9 +237,7 @@ function insertAfter(graph, anchor, node) {
 export async function lenovoLora(family) {
   const files = await comfyLoras();
   if (!files || !FAMILIES[family]) return null;
-  const base = (f) => f.replace(/\\/g, '/').split('/').pop();
-  const hits = files.filter((f) => /lenovo/i.test(base(f)) && FAMILIES[family].files.test(base(f)));
-  return hits[0] || null;
+  return files.find((f) => f.replace(/\\/g, '/').split('/').pop() === FAMILIES[family].lenovoFile) || null;
 }
 
 /**

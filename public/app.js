@@ -737,7 +737,7 @@ const CARD_FIELDS = ['name', 'age', 'gender', 'style', 'personality', 'life', 's
 let cardBody = null;
 function bodySummary(card) {
   const opts = state.config?.options?.body || {};
-  const parts = Object.entries(card.body || {}).filter(([k]) => opts[k]).map(([k, s]) => `${opts[k].label.toLowerCase()} ${opts[k].sizes[s] || s}`);
+  const parts = Object.entries(card.body || {}).filter(([k]) => opts[k]).map(([k, s]) => `${(opts[k].short || opts[k].label).toLowerCase()} ${opts[k].sizes[s] || s}`);
   return parts.length ? `Fisico nelle foto (automatico, dall'aspetto): ${parts.join(', ')}.` : '';
 }
 // Forze regolate a mano nello studio (personaggio creato da una sua foto): vincono sulle taglie automatiche
@@ -748,7 +748,7 @@ function renderManualBox() {
   $('#cm-manual-box').innerHTML = Object.entries(parts).map(([k, b]) => {
     const [lo, hi] = b.range || [-8, 8];
     const v = cardManual?.[k] ?? 0;
-    return `<label title="${esc(b.label)}: negativo = più piccolo, 0 = spento, positivo = più grande"><span>${esc(b.label)}</span><input type="range" data-part="${k}" min="${lo}" max="${hi}" step="0.5" value="${v}"><output>${v}</output></label>`;
+    return `<label title="${esc(b.label)}: ${esc(b.hint || 'negativo = più piccolo, 0 = spento, positivo = più grande')}"><span>${esc(b.label)}</span><input type="range" data-part="${k}" min="${lo}" max="${hi}" step="0.5" value="${v}"><output>${v}</output></label>`;
   }).join('') + `<small class="hint">Valgono per le foto in chat, sul social e nello Studio e sostituiscono le taglie ricavate dall'aspetto.${cf.style.value === 'zimage' ? ' Con Z-Image servono le versioni Z-Image delle LoRA su ComfyUI.' : ''}</small>`;
 }
 function showBody() {
@@ -1214,7 +1214,7 @@ function fillStudioOpts() {
   so.bodyBox.innerHTML = Object.entries(parts).map(([k, b]) => {
     const [lo, hi] = b.range || [-3, 3];
     const v = Math.min(hi, Math.max(lo, Number(p.body?.[k]) || 0));
-    return `<label title="${esc(b.label)}: negativo = più piccolo, 0 = spento, positivo = più grande"><span>${esc(b.label)}</span><input type="range" data-part="${k}" min="${lo}" max="${hi}" step="0.5" value="${v}"><output>${v}</output></label>`;
+    return `<label title="${esc(b.label)}: ${esc(b.hint || 'negativo = più piccolo, 0 = spento, positivo = più grande')}"><span>${esc(b.label)}</span><input type="range" data-part="${k}" min="${lo}" max="${hi}" step="0.5" value="${v}"><output>${v}</output></label>`;
   }).join('') + '<small class="hint">Valgono con Krea 2 e Z-Image (con altri motori si passa a quello del personaggio) e sostituiscono il fisico del personaggio.</small>';
   syncVideoOpt();
 }
