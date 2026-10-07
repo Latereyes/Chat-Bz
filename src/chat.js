@@ -86,6 +86,8 @@ const VIDEO_WORD = /\b(?:video\w*|clip)\b/i;
 const BRACKET = /\[([^\[\]\n]{12,})\]|\(((?:foto|selfie|photo|video|immagine)[^()\n]{8,})\)/i;
 const ANNOUNCE = /\b(?:ti\s+(?:mando|invio|giro|faccio\s+vedere)|eccoti|ecco(?:mi)?\b[^.!?\n]{0,20}\b(?:foto|selfie)|guarda(?:\s+qui)?\s*[:!]|sending\s+(?:you\s+)?(?:a\s+)?(?:pic|photo)|here'?s\s+(?:a\s+)?(?:pic|photo|selfie))/i;
 const ASKS_MEDIA = /\b(?:mand\w*|invi\w*|fa(?:mmi|i)\s+vedere|fammel\w*\s+vedere|scatta\w*|send|show)\b[^.!?\n]{0,40}\b(?:foto\w*|selfie|pic\w*|photo\w*|video\w*|immagin\w*)\b|\b(?:foto|selfie|pic|photo|video)\s*\?/i;
+// Video chiesto a parole: «mandami/fammi/gira un video», «un video?»
+const ASKS_VIDEO = /\b(?:mand\w*|invi\w*|fa(?:mmi|i|resti|rmi)|gira\w*|registr\w*|vorrei|voglio|send|make|record)\b[^.!?\n]{0,40}\b(?:video\w*|videin\w*|clip)\b|\b(?:video|videino|clip)\s*\?/i;
 
 function cut(text, start, len) {
   let before = text.slice(0, start).replace(/[:：]\s*(\**)\s*$/, '$1').trimEnd();
@@ -145,6 +147,16 @@ const parseArgs = (a) => {
   try { return JSON.parse(a); } catch { return { description: a }; }
 };
 
+/** Video che parte da una foto già fatta (image to video). */
+function videoFromPhoto(base, photo, duration) {
+  const w = getWorkflow(null, 'video', 'img2video');
+  if (!w) return null;
+  const { seconds, frames } = frameCount(w, duration || 5);
+  return { ...base, type: 'video', mode: 'img2video', workflow: w.id, workflowName: w.name, seconds, frames,
+    aspect: photo.aspect, ...dimensionsForRatio(w, (photo.width || 3) / (photo.height || 4)),
+    sourceFile: photo.file, sourceUrl: mediaUrl(photo.file), sourceDescription: photo.prompt || photo.description };
+}
+
 /** Trasforma send_photo / send_video in un media da generare. */
 function mediaFromCall(conv, call, callIndex) {
   const name = call.function?.name;
@@ -161,15 +173,10 @@ function mediaFromCall(conv, call, callIndex) {
   }
   if (name === 'send_video') {
     const photo = lastCharacterPhoto(conv);
-    const w = photo ? getWorkflow(null, 'video', 'img2video') : getWorkflow(null, 'video');
+    if (photo) return videoFromPhoto(base, photo, args.duration);
+    const w = getWorkflow(null, 'video');
     if (!w) return null;
     const { seconds, frames } = frameCount(w, args.duration || 5);
-    if (photo) {
-      const ratio = (photo.width || 3) / (photo.height || 4);
-      return { ...base, type: 'video', mode: 'img2video', workflow: w.id, workflowName: w.name, seconds, frames,
-        aspect: photo.aspect, ...dimensionsForRatio(w, ratio),
-        sourceFile: photo.file, sourceUrl: mediaUrl(photo.file), sourceDescription: photo.prompt || photo.description };
-    }
     // Nessuna foto recente: prima una foto della scena, poi si anima quella (così il video le somiglia, come in ChatBz 1)
     const still = mediaFromCall(conv, { function: { name: 'send_photo', arguments: { description: `Still first frame of a short video: ${description}`, aspect_ratio: '9:16' } } }, callIndex);
     const wi = getWorkflow(null, 'video', 'img2video');
@@ -378,6 +385,10 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
         }
       }
       if (!calls.length && tag.call) calls.push(tag.call);
+      // Video chiesto a parole ("mandami un video"): Gemma spesso risponde solo a parole, senza send_video
+      if (!calls.length && !tool && userMsg?.content && ASKS_VIDEO.test(userMsg.content) && msg.content.trim()) {
+        calls.push({ function: { name: 'send_video', arguments: { description: `${userMsg.content}\n\n(reply: ${msg.content.trim()})` } } });
+      }
       if (!calls.length && (tool === 'photo' || tool === 'video')) {
         calls.push({ function: { name: tool === 'photo' ? 'send_photo' : 'send_video', arguments: { description: userMsg?.content || 'a casual selfie' } } });
       }
@@ -410,6 +421,32 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
   }
   // Le immagini partono dopo il testo: la risposta è già visibile mentre ComfyUI lavora
   for (const md of msg.media) if (md.status === 'engineering') enqueue(conv, msg, md);
+}
+
+/** Anima una foto della chat (immagine → video), con un'indicazione facoltativa sul movimento. */
+export function animateMedia(conv, messageId, mediaId, { text, seconds, model } = {}) {
+  if (running.has(conv.id)) throw new Error('Sta già rispondendo');
+  const msg = conv.messages.find((m) => m.id === messageId);
+  const src = msg?.media?.find((m) => m.id === mediaId && m.type === 'image' && m.status === 'done' && m.file);
+  if (!src) throw new Error('Foto non trovata');
+  const description = String(text || '').trim() || 'subtle natural movement, the moment comes alive';
+  const md = videoFromPhoto({ id: store.newId(), toolName: 'send_video', description, prompt: '', seed: randomSeed(), status: 'engineering', createdAt: Date.now() }, src, seconds);
+  if (!md) throw new Error('Nessun workflow video disponibile su ComfyUI');
+  msg.media.push(md);
+  emitMedia(conv, msg, md);
+  store.save(conv, { touch: false });
+  const ac = new AbortController();
+  running.set(conv.id, ac);
+  gpu.run('ollama', 'Scrivo il prompt del video', async () => {
+    md.prompt = await engineerPrompt(conv, msg, md, model || config.ollama.model, ac.signal);
+    emitMedia(conv, msg, md);
+  }).then(() => enqueue(conv, msg, md)).catch((e) => {
+    md.status = ac.signal.aborted ? 'cancelled' : 'error';
+    md.error = ac.signal.aborted ? null : e.message;
+    emitMedia(conv, msg, md);
+    store.save(conv, { touch: false });
+  }).finally(() => running.delete(conv.id));
+  return md;
 }
 
 /** Rigenera un media: stessa impostazione, nuovo seed (o prompt modificato). Nessun passaggio da Gemma. */

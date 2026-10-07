@@ -311,6 +311,10 @@ app.post('/api/characters/:id/media/:mediaId/cancel', wrap(async (req, res) => {
   res.json({ ok: cancel(req.params.mediaId) });
 }));
 
+app.post('/api/characters/:id/messages/:messageId/media/:mediaId/animate', wrap(async (req, res) => {
+  const { text, seconds, model } = req.body || {};
+  res.json(chat.animateMedia(ownConv(req), req.params.messageId, req.params.mediaId, { text, seconds, model }));
+}));
 app.post('/api/characters/:id/messages/:messageId/media/:mediaId/regenerate', wrap(async (req, res) => {
   res.json(chat.regenerateMedia(ownConv(req), req.params.messageId, req.params.mediaId, { prompt: req.body?.prompt }));
 }));

@@ -210,6 +210,12 @@ ${workflow.guide || 'Write a detailed, natural-language English prompt.'}
 - Every person in sexual or suggestive content must be an adult and described as such. Never sexualize minors; if a request does, write a non-sexual version instead.`;
 }
 
+/**
+ * Foto dei personaggi (chat e social): sempre foto vere, mai "artistiche". Con Z-Image Gemma tendeva a scegliere
+ * macchina e obiettivo ("shot on a 50mm at f/1.8") e lo stile usciva da servizio fotografico.
+ */
+export const REAL_PHOTO = 'It must look like a real photograph of a real person in a real moment: never artistic, painterly, cinematic, editorial or stylised, no dramatic color grading. Describe light and framing in plain words (close-up, from slightly above, soft window light) and never name cameras, lenses, focal lengths or f-stops.';
+
 /** Richiesta al prompt engineer per una foto/video del personaggio. */
 export function characterMediaRequest({ card, state, media, width, height, seconds, sourceDescription }) {
   const level = contentLevel(card, state.rel, state.scene);
@@ -222,7 +228,8 @@ export function characterMediaRequest({ card, state, media, width, height, secon
     `Current situation: ${s.presence === 'together' ? 'with the viewer in person' : 'alone, taking a photo for the person they are texting'}${s.place ? `, at ${s.place}` : ''}${s.activity ? `, ${s.activity}` : ''}. Local time: ${when}.${s.outfit ? ` Currently wearing: ${s.outfit}.` : ''}`,
     `What the photo should show (written by the character): ${media.description}`,
     LEVEL[level],
-    card.style === 'krea' || media.type === 'video' ? 'Look (usual for this character; a posed or carefully lit moment may look more polished): a real, candid, unretouched photo (phone camera), natural light and skin texture.' : 'Look (usual for this character; a spontaneous moment may look like a phone snapshot): polished, flattering, well-lit photo.',
+    card.style === 'krea' || media.type === 'video' ? 'Look (usual for this character; a posed or carefully lit moment may look more polished): a real, candid, unretouched photo (phone camera), natural light and skin texture.' : 'Look (usual for this character; a spontaneous moment may look like a phone snapshot): a clean, flattering, well-lit but natural photo.',
+    REAL_PHOTO,
     `Output format: ${width}x${height}${seconds ? `, duration ${seconds} seconds` : ''}.`,
     'Write the final prompt now.',
   ].join('\n');
