@@ -8,8 +8,7 @@ import { BODY, normalizeBody, normalizeManual } from './body.js';
  *  - vita:     life (lavoro, routine, persone, progetti in corso)
  *  - aspetto:  look (descrizione visiva in inglese, usata per foto e video), style (motore immagini),
  *              body (taglie ricavate in automatico dall'aspetto → LoRA del corpo, vedi body.js),
- *              bodyManual (forze regolate a mano nello studio o nella scheda: se ci sono vincono sulle taglie),
- *              lenovo (LoRA del look amatoriale sì/no, per Krea 2 e Z-Image)
+ *              bodyManual (forze regolate a mano nello studio o nella scheda: se ci sono vincono sulle taglie)
  *  - rapporto: relation (punto di partenza), pace (quanto in fretta si apre), intimacy (tetto deciso dall'utente)
  */
 export const RELATIONS = {
@@ -40,7 +39,6 @@ export function normalizeCard(c = {}) {
     style: pick(c.style, STYLES, 'krea'),
     body: normalizeBody(c.body),
     bodyManual: normalizeManual(c.bodyManual),          // forze delle LoRA del corpo scelte a mano (studio o scheda)
-    lenovo: typeof c.lenovo === 'boolean' ? c.lenovo : null,   // LoRA Lenovo (look amatoriale) sì/no; null = come il workflow
     relation: pick(c.relation, RELATIONS, 'sconosciuti'),
     pace: pick(c.pace, PACES, 'media'),
     intimacy: pick(c.intimacy, INTIMACY, 'confidenza'),

@@ -110,7 +110,7 @@ export function socialPhotoRequest({ card, friend, profile, photo, media, kind, 
     `What the photo should show (written by the person): ${photo.description}`,
     fromImage && subject !== 'none' ? 'The input image is only for identity (face, hair, body): describe a NEW outfit that fits this place and moment, and do not keep the clothes, accessories, props (bottles, bags, phones) or background of the input image.' : null,
     LEVEL[level],
-    card.style === 'krea' ? 'Look: a real, candid, unretouched photo (phone camera), natural light and skin texture, slightly imperfect framing.' : 'Look: polished, flattering, well-lit photo.',
+    card.style === 'krea' ? 'Look (usual for this character; a posed or carefully lit shot may look more polished): a real, candid, unretouched photo (phone camera), natural light and skin texture, slightly imperfect framing.' : 'Look (usual for this character; a spontaneous moment may look like a phone snapshot): polished, flattering, well-lit photo.',
     `Output format: ${media.width}x${media.height}.`,
     'Write the final prompt now.',
   ].filter(Boolean).join('\n');

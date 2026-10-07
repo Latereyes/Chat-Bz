@@ -780,7 +780,6 @@ function fillCard(card) {
   for (const k of CARD_FIELDS) if (cf[k] && card[k] !== undefined) cf[k].value = card[k];
   cf.initiative.checked = card.initiative !== false;
   cf.social.checked = card.social !== false;
-  cf.lenovo.checked = typeof card.lenovo === 'boolean' ? card.lenovo : card.style !== 'zimage';   // come il workflow: Krea 2 Real ce l'ha
   cardBody = card.body ? { look: card.look, body: card.body } : null;
   cardManual = card.bodyManual ? { ...card.bodyManual } : null;
   showBody();
@@ -791,7 +790,6 @@ function readCard() {
   out.age = Number(out.age);
   out.initiative = cf.initiative.checked;
   out.social = cf.social.checked;
-  out.lenovo = cf.lenovo.checked;
   if (cardBody && cardBody.look === out.look) out.body = cardBody.body;
   out.bodyManual = cardManual;
   return out;
@@ -1050,7 +1048,8 @@ function renderMedia(msg, md) {
   } else {
     $('.st', card).innerHTML = statusText(md);
   }
-  if (md.status === 'engineering') $('.media-prompt pre', card).textContent = md._draft || md.prompt || '';
+  // l'etichetta [look: …] con cui Gemma sceglie Lenovo non fa parte del prompt
+  if (md.status === 'engineering') $('.media-prompt pre', card).textContent = (md._draft || md.prompt || '').replace(/\[\s*look\s*:[^\]]*\]?\s*$/i, '').trimEnd();
   if (md.status === 'running') patchProgress(card, md);
 }
 

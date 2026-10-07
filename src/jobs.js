@@ -94,8 +94,8 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
   // Lenovo e LoRA del corpo del personaggio (grafi Krea 2 e Z-Image, solo LoRA installate su ComfyUI)
   const family = media.type === 'image' ? bodyFamily(graph) : null;
   if (family) {
-    // Lenovo sì/no: scelto nello studio, altrimenti dal personaggio, altrimenti come nel workflow
-    const lenovo = typeof media.lenovo === 'boolean' ? media.lenovo : typeof card?.lenovo === 'boolean' ? card.lenovo : null;
+    // Lenovo sì/no: forzato nello Studio o scelto da Gemma scrivendo il prompt, altrimenti come nel workflow
+    const lenovo = typeof media.lenovo === 'boolean' ? media.lenovo : null;
     if (lenovo !== null) media.lenovoUsed = applyLenovo(graph, family, lenovo, lenovo ? await lenovoLora(family) : null);
     // fisico regolato a mano nello studio (anche tutto a 0 = nessuna LoRA), altrimenti quello del personaggio
     const loras = await installedLoras(media.manualBody ? media.manualBody : bodyLoras(card), family);

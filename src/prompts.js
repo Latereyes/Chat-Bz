@@ -222,10 +222,23 @@ export function characterMediaRequest({ card, state, media, width, height, secon
     `Current situation: ${s.presence === 'together' ? 'with the viewer in person' : 'alone, taking a photo for the person they are texting'}${s.place ? `, at ${s.place}` : ''}${s.activity ? `, ${s.activity}` : ''}. Local time: ${when}.${s.outfit ? ` Currently wearing: ${s.outfit}.` : ''}`,
     `What the photo should show (written by the character): ${media.description}`,
     LEVEL[level],
-    card.style === 'krea' || media.type === 'video' ? 'Look: a real, candid, unretouched photo (phone camera), natural light and skin texture.' : 'Look: polished, flattering, well-lit photo.',
+    card.style === 'krea' || media.type === 'video' ? 'Look (usual for this character; a posed or carefully lit moment may look more polished): a real, candid, unretouched photo (phone camera), natural light and skin texture.' : 'Look (usual for this character; a spontaneous moment may look like a phone snapshot): polished, flattering, well-lit photo.',
     `Output format: ${width}x${height}${seconds ? `, duration ${seconds} seconds` : ''}.`,
     'Write the final prompt now.',
   ].join('\n');
+}
+
+/**
+ * Lenovo (look foto amatoriale) deciso da Gemma scatto per scatto: il prompt engineer chiude con un'etichetta,
+ * che splitLook toglie dal prompt. Solo per i modelli che hanno la LoRA (Krea 2, Z-Image).
+ */
+export const LOOK_CHOICE = 'After the prompt, on a last line of its own, choose the photo look: write [look: amateur] if this shot should feel like a spontaneous phone snapshot (selfies, casual or everyday moments, candid intimacy, imperfect real-life light), or [look: clean] if it should look polished (posed portraits, glamour, editorial, studio or artistic light, a carefully composed shot). Write the tag only there.';
+
+/** { prompt, lenovo }: lenovo true/false se Gemma ha scelto il look, null se non l'ha scritto. */
+export function splitLook(text) {
+  const re = /\[\s*look\s*:\s*(amateur|clean)\s*\]/gi;
+  const all = [...String(text || '').matchAll(re)];
+  return { prompt: String(text || '').replace(re, '').trim(), lenovo: all.length ? all.at(-1)[1].toLowerCase() === 'amateur' : null };
 }
 
 export function cleanPrompt(text) {

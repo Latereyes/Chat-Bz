@@ -5,8 +5,8 @@ import { gpu } from './gpu.js';
 import * as queue from './queue.js';
 import { emit, emitMedia, enqueue, mediaUrl } from './jobs.js';
 import { workflows, getWorkflow, dimensions, dimensionsForRatio, frameCount, randomSeed, ASPECTS } from './workflows.js';
-import { promptEngineerSystem, visualSignature, cleanPrompt } from './prompts.js';
-import { figureText, manualBodyLoras } from './body.js';
+import { promptEngineerSystem, visualSignature, cleanPrompt, LOOK_CHOICE, splitLook } from './prompts.js';
+import { figureText, manualBodyLoras, bodyFamily } from './body.js';
 
 /**
  * Studio immagini: l'"Image Assistant" di ChatBz 1, non più come personaggio ma come strumento a parte.
@@ -159,13 +159,14 @@ export function send(conv, opts = {}) {
 
 async function engineer(conv, msg, md, { text, card, model, signal, sources }) {
   const w = getWorkflow(md.workflow, md.type, md.mode);
+  const look = md.type === 'image' && typeof md.lenovo !== 'boolean' && !!bodyFamily(w.graph);   // Lenovo non forzato: lo sceglie Gemma
   let out = '';
   const res = await ollama.chat({
     model, signal, think: false,
     options: { temperature: 0.7 },
     messages: [
       { role: 'system', content: `${promptEngineerSystem(w)}\n\n${STUDIO_RULES}` },
-      { role: 'user', content: request({ text, card, media: md, sources, sourceDescription: md.mode === 'img2video' ? md.sourceDescription : undefined }) },
+      { role: 'user', content: request({ text, card, media: md, sources, sourceDescription: md.mode === 'img2video' ? md.sourceDescription : undefined }) + (look ? `\n${LOOK_CHOICE}` : '') },
     ],
     onChunk: (c) => {
       if (!c.content) return;
@@ -173,7 +174,9 @@ async function engineer(conv, msg, md, { text, card, model, signal, sources }) {
       emit(conv.id, { type: 'prompt_delta', messageId: msg.id, mediaId: md.id, delta: c.content });
     },
   });
-  return cleanPrompt(res.content || out) || text;
+  const { prompt, lenovo } = splitLook(res.content || out);
+  if (look && lenovo !== null) md.lenovo = lenovo;
+  return cleanPrompt(prompt) || text;
 }
 
 async function run(conv, msg, { text, card, raw, model, sources }) {
