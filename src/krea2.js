@@ -72,3 +72,11 @@ export function profileFor(level, variant) {
   const sampler = level === 'explicit' && 'explicitSampler' in v ? v.explicitSampler : base.sampler;
   return { ...base, loras, sampler: sampler || undefined };
 }
+
+/**
+ * Foto con due personaggi che hanno ognuno la sua LoRA: due LoRA di volti nello stesso grafo si mescolano (volti fusi,
+ * vestiti scambiati). Si genera la scena senza le LoRA dei volti (persona 1 a sinistra, persona 2 a destra), poi si
+ * ritocca ogni volto da solo con la sua LoRA (Impact Pack: volti trovati con face_yolov8m, ordinati da sinistra).
+ * denoise: quanto il ritocco ridisegna il volto (più alto = più somigliante alla LoRA, ma meno legato alla scena).
+ */
+export const DUO_FACES = { denoise: 0.5, steps: 8, cfg: 1, sampler: 'euler', scheduler: 'simple', cropFactor: 2.5, guideSize: 1024, feather: 8 };

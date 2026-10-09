@@ -2,7 +2,7 @@ import * as ollama from './ollama.js';
 import { intimacyOpen, explicitWord } from './relationship.js';
 import { visualSignature, promptEngineerSystem, cleanPrompt, splitLook } from './prompts.js';
 import { figureText, bodyFamily, hasBodyLoras, hasLenovo, applyLenovo, applyBodyLoras, chainEnds, insertAfter, removeLora, FAMILIES } from './body.js';
-import { LORAS, profileFor } from './krea2.js';
+import { LORAS, profileFor, DUO_FACES } from './krea2.js';
 
 /**
  * Foto dei personaggi (chat, social; lo Studio prende solo LoRA e Lenovo), in quattro passi che restituiscono
@@ -268,7 +268,7 @@ export function duoPhotoRequest({ cards, scene = {}, media, level, exchanges = [
   const name = user?.name || 'User';
   const people = cards.map((card, i) => {
     const fig = figureText(card);
-    return `Person ${i + 1}${fromImage ? ` (input image ${i + 1})` : ''}: ${WHO(card)}. Appearance (keep it exactly): ${visualSignature(card.look, level) || '(not specified)'}${fig ? ` Figure: ${fig}${level === 'neutral' ? ', visible through the clothes' : ''}.` : ''}`;
+    return `Person ${i + 1} = ${card.name}, on the ${i ? 'RIGHT' : 'LEFT'}${fromImage ? ` (input image ${i + 1})` : ''}: ${WHO(card)}. Appearance (keep it exactly): ${visualSignature(card.look, level) || '(not specified)'}${fig ? ` Figure: ${fig}${level === 'neutral' ? ', visible through the clothes' : ''}.` : ''}`;
   });
   const convo = exchanges.map((e) => [
     e.user ? `${name}: «${clip(e.user, 700)}»` : null,
@@ -277,6 +277,7 @@ export function duoPhotoRequest({ cards, scene = {}, media, level, exchanges = [
   return [
     'Subjects: two adults in the same photo.',
     ...people,
+    'Positions: Person 1 is on the LEFT of the frame and Person 2 on the RIGHT (say it explicitly, e.g. "on the left, ...; on the right, ..."). Each one keeps their own clothes, hair and features: never swap or mix them. When the conversation gives someone an outfit or an action by name, give it to that person. Names are only for you: in the prompt describe the people, never write their names.',
     fromImage ? 'The input images are only for identity (faces, hair, bodies): describe outfits and a scene that fit this moment, not the clothes or background of the input images.' : null,
     `Situation: ${together ? 'in person with the viewer' : 'the two of them together, texting the viewer'}${scene.place ? `, at ${scene.place}` : ''}${scene.activity ? `, ${scene.activity}` : ''}. Local time: ${when}.${scene.outfit ? ` Currently wearing: ${scene.outfit}.` : ''}`,
     convo ? `Conversation (most recent last; it may be in Italian; their replies are labelled with their names):\n${convo}` : null,
@@ -300,11 +301,8 @@ export async function engineerDuoPhoto({ workflow, cards, states, scene, media, 
   const useHm = level === 'explicit' && family === 'krea2' && 'hmnsfw' in profileFor('explicit').loras && workflow.mode === 'text2img';
   const hm = useHm ? hmTokens([...exchanges].reverse().flatMap((e) => [e.user, e.reply]).concat(fromText ? [] : [media.description]), { together: scene?.presence === 'together' }) : null;
   const request = duoPhotoRequest({ cards, scene, media, level, exchanges, user, family, hm, fromText, fromImage: workflow.mode === 'duo' });
-  const loras = family === 'krea2' ? cards.map((c) => c.lora).filter((l) => l?.file) : [];
-  // due volti dalle LoRA nello stesso grafo si mescolano: un po' più leggere (da tarare)
-  const charLoras = loras.map((l) => ({ ...l, strength: loras.length > 1 ? Math.round((l.strength ?? 1) * 0.8 * 100) / 100 : l.strength }));
-  const trigger = loras.map((l) => l.trigger).filter(Boolean).join(', ');
-  const result = { level, reason: lv.reason, hm, request, charLoras, lenovo: hasLenovo(family) ? true : null, prompt: '' };
+  const { charLoras, duoFaces, trigger } = duoLoras(cards, family, workflow.mode);
+  const result = { level, reason: lv.reason, hm, request, charLoras, duoFaces, lenovo: hasLenovo(family) ? true : null, prompt: '' };
   if (dryRun) return { ...result, prompt: finishPrompt('(prompt di Gemma)', { hm, trigger }) };
   let text = '';
   const out = await ollama.chat({
@@ -317,6 +315,65 @@ export async function engineerDuoPhoto({ workflow, cards, states, scene, media, 
   if (hasLenovo(family) && lenovo !== null) result.lenovo = lenovo;
   result.prompt = finishPrompt(cleanPrompt(prompt) || media.description, { hm, trigger });
   return result;
+}
+
+/** Volto di un personaggio per il ritocco con la sua LoRA: parola chiave e tratti del viso. */
+export const faceText = (card) => [card.lora?.trigger, `close-up photo of the face of an ${WHO(card)}`, clip(visualSignature(card.look, 'neutral'), 260), 'natural skin texture, real photo'].filter(Boolean).join(', ');
+
+/**
+ * LoRA dei personaggi in una foto a due (Krea 2 da testo). Con la LoRA di almeno uno: duoFaces = ritocco del volto
+ * di ciascuno da solo (indice = posizione da sinistra, null = nessun ritocco) e niente parole chiave nella scena;
+ * charLoras = riserva se sul PC manca il rilevamento dei volti (LoRA insieme nel grafo, più leggere).
+ */
+export function duoLoras(cards, family, mode = 'text2img') {
+  const loras = family === 'krea2' && mode !== 'duo' ? cards.map((c) => (c?.lora?.file ? c.lora : null)) : [];
+  const present = loras.filter(Boolean);
+  if (!present.length) return { charLoras: [], duoFaces: undefined, trigger: '' };
+  if (present.length === 1 && mode === 'text2img' && cards.length === 1) return { charLoras: present, duoFaces: undefined, trigger: present[0].trigger || '' };
+  return {
+    charLoras: present.map((l) => ({ ...l, strength: present.length > 1 ? Math.round((l.strength ?? 1) * 0.8 * 100) / 100 : l.strength ?? 1 })),
+    duoFaces: cards.map((c, i) => (loras[i] ? { file: loras[i].file, strength: loras[i].strength ?? 1, text: faceText(c) } : null)),
+    trigger: '',
+  };
+}
+
+/**
+ * Ritocco dei volti, uno per persona, ognuno con la sua LoRA (foto a due su Krea 2). Va chiamata dopo applyPhotoStack,
+ * senza le LoRA dei volti nella catena principale. faces[i] = volto i-esimo da sinistra (null = lascialo com'è).
+ * Restituisce quanti volti ritocca (0 = grafo invariato).
+ */
+export function applyDuoFaces(graph, faces, { files = null, seed = 0 } = {}) {
+  if (bodyFamily(graph) !== 'krea2' || !faces?.some(Boolean)) return 0;
+  const ids = Object.keys(graph);
+  const save = ids.find((id) => graph[id].class_type === 'SaveImage');
+  const clipId = ids.find((id) => graph[id].class_type === 'CLIPLoader');
+  const vaeId = ids.find((id) => graph[id].class_type === 'VAELoader');
+  const end = chainEnds(graph, 'krea2')[0];
+  if (!save || !clipId || !vaeId || !end) return 0;
+  let n = Math.max(0, ...ids.map(Number).filter(Number.isFinite)) + 100;
+  const node = (class_type, inputs, title) => { const id = String(++n); graph[id] = { class_type, inputs, ...(title ? { _meta: { title } } : {}) }; return id; };
+  let image = graph[save].inputs.images;
+  const det = node('UltralyticsDetectorProvider', { model_name: 'bbox/face_yolov8m.pt' });
+  const segs = node('BboxDetectorSEGS', { bbox_detector: [det, 0], image, threshold: 0.5, dilation: 10, crop_factor: DUO_FACES.cropFactor, drop_size: 10, labels: 'all' });
+  let done = 0;
+  faces.forEach((f, i) => {
+    const file = f?.file && findFile(files, f.file);
+    if (!file) return;
+    const lora = node('LoraLoaderModelOnly', { model: [end, 0], lora_name: file, strength_model: f.strength ?? 1 }, `Volto ${i + 1}`);
+    const pos = node('CLIPTextEncode', { clip: [clipId, 0], text: f.text || '' });
+    const neg = node('ConditioningZeroOut', { conditioning: [pos, 0] });
+    const one = node('ImpactSEGSOrderedFilter', { segs: [segs, 0], target: 'x1', order: false, take_start: i, take_count: 1 });
+    const fix = node('DetailerForEach', {
+      image, segs: [one, 0], model: [lora, 0], clip: [clipId, 0], vae: [vaeId, 0], positive: [pos, 0], negative: [neg, 0],
+      guide_size: DUO_FACES.guideSize, guide_size_for: true, max_size: DUO_FACES.guideSize, seed: seed + i, steps: DUO_FACES.steps, cfg: DUO_FACES.cfg,
+      sampler_name: DUO_FACES.sampler, scheduler: DUO_FACES.scheduler, denoise: DUO_FACES.denoise, feather: DUO_FACES.feather,
+      noise_mask: true, force_inpaint: true, wildcard: '', cycle: 1,
+    }, `Ritocco volto ${i + 1}`);
+    image = [fix, 0];
+    done++;
+  });
+  if (done) graph[save].inputs.images = image;
+  return done;
 }
 
 /** Cosa scrivere sotto la foto: «Esplicito · scena intima». */

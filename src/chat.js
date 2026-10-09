@@ -371,7 +371,8 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       const style = styleNotes(conv, idx, initiative ? '' : userMsg?.content, user);
       if (!toolModel) style.push(NO_TOOLS_NOTE);
       const lastGapMs = prevAt ? Date.now() - prevAt : null;
-      const block = G ? G.nowBlock({ lastGapMs, user, style, initiative })
+      if (G) await G.ensurePremise(model, user);
+      const block = G ? G.nowBlock({ lastGapMs, user, style, initiative, userText: userMsg?.content || '' })
         : nowBlock({ card: conv.card, state: conv.state, memories: memory.forPrompt(conv.id, 14, userMsg?.content), lastGapMs, trimmed, initiative, social: social.chatContext(conv), user, style });
       const convo = [{ role: 'system', content: G ? G.system(user) : systemPrompt(conv.card, { user }) }, ...msgs.map(({ role, content }) => ({ role, content }))];
       if (initiative || convo.at(-1).role !== 'user') convo.push({ role: 'user', content: block });

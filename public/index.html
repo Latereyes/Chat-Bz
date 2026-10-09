@@ -340,11 +340,12 @@
           <label class="fld">Secondo personaggio<select name="b"></select></label>
         </div>
         <label class="fld">Nome della chat<small>facoltativo</small><input name="name" maxlength="60" placeholder="es. Hitomi e Giorgia"></label>
+        <label class="fld">La situazione<small>perché siete insieme e cosa sta succedendo. Vuota: la immaginano loro al primo messaggio</small><textarea name="premise" rows="3" maxlength="800" placeholder="es. Alessia è venuta da Hitomi per prepararsi alla festa di stasera, tu passi a prenderle e loro non sono ancora pronte"></textarea></label>
         <div class="grid2" id="gm-start">
           <label class="fld">Si parte<select name="presence"><option value="apart">A distanza (chat di gruppo)</option><option value="together">Insieme, tutti e tre</option></select></label>
           <label class="fld">Dove<input name="place" maxlength="200" placeholder="es. a casa di Hitomi"></label>
         </div>
-        <p class="hint" id="gm-hint">Rispondono tutti e due, ognuno con il suo carattere e il suo rapporto con te. Con «Foto» chiedi una foto di uno dei due o di tutti e due: con Krea 2 si usano le loro LoRA.</p>
+        <p class="hint" id="gm-hint">Parlano tra loro e con te, ognuno con il suo carattere e il suo rapporto con te; non sempre rispondono tutti e due. Con «Foto» chiedi una foto di uno dei due o di tutti e due: con Krea 2 si usano le loro LoRA.</p>
         <div class="row-end" id="gm-manage" hidden><button class="btn" type="button" id="gm-reset">Ricomincia</button><button class="btn" type="button" id="gm-delete">Elimina chat</button></div>
         <div class="row-end"><span class="spacer"></span><button class="btn" type="button" data-close>Annulla</button><button class="btn primary" type="submit" id="gm-save">Crea e inizia</button></div>
       </form>

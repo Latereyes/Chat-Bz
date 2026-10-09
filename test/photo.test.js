@@ -170,8 +170,12 @@ test('foto con due personaggi: vale il tetto piÃ¹ basso, LoRA di tutti e due piÃ
   const two = { ...CHARACTERS.krea, lora: { file: 'Sara.safetensors', trigger: 'S4r4', strength: 1 } };
   const r = await engineerDuoPhoto({ workflow: KREA, cards: [open, two], states: [sOpen, sOpen], scene: sOpen.scene, media, userText: 'cavalcami, una foto di voi due', user: USER, dryRun: true });
   assert.equal(r.level, 'explicit');
+  // volti: ognuno ritoccato con la sua LoRA, nessuna parola chiave nella scena; LoRA insieme solo come riserva
+  assert.deepEqual(r.duoFaces.map((f) => f.file), ['Krea220Hitomi.safetensors', 'Sara.safetensors']);
+  assert.match(r.duoFaces[0].text, /^H1t0m1, /);
+  assert.doesNotMatch(r.prompt, /H1t0m1|S4r4/);
   assert.deepEqual(r.charLoras.map((l) => l.strength), [0.8, 0.8]);
-  assert.match(r.prompt, /H1t0m1, S4r4/);
+  assert.match(r.request, /Person 1 is on the LEFT/);
   assert.match(r.request, /Person 1.*\n.*Person 2|Person 2/s);
   assert.match(r.request, /two of them|both of them|viewer is with both/);
 });
@@ -181,4 +185,24 @@ test('due LoRA del personaggio nello stesso grafo', () => {
   applyPhotoStack(g, { level: 'neutral', files: [...FILES, 'Sara.safetensors'], charLoras: [{ file: 'Krea220Hitomi.safetensors', strength: 0.8 }, { file: 'Sara.safetensors', strength: 0.8 }] });
   assert.equal(strength(g, 'Krea220Hitomi.safetensors'), 0.8);
   assert.equal(strength(g, 'Sara.safetensors'), 0.8);
+});
+
+test('foto a due: scena senza LoRA dei volti, poi un ritocco per volto da sinistra', async () => {
+  const { applyDuoFaces } = await import('../src/photo.js');
+  const g = structuredClone(KREA.graph);
+  applyPhotoStack(g, { level: 'neutral', lenovo: true, files: FILES });
+  const sampler = Object.values(g).find((n) => n.class_type === 'KSampler');
+  const n = applyDuoFaces(g, [{ file: 'Krea220Hitomi.safetensors', strength: 1, text: 'H1t0m1, face' }, null], { files: FILES, seed: 5 });
+  assert.equal(n, 1);
+  const fix = Object.entries(g).filter(([, x]) => x.class_type === 'DetailerForEach');
+  assert.equal(fix.length, 1);
+  const save = Object.values(g).find((x) => x.class_type === 'SaveImage');
+  assert.equal(save.inputs.images[0], fix[0][0]);
+  const filter = g[fix[0][1].inputs.segs[0]];
+  assert.deepEqual([filter.inputs.target, filter.inputs.order, filter.inputs.take_start], ['x1', false, 0]);
+  assert.equal(g[fix[0][1].inputs.model[0]].inputs.lora_name, 'Krea220Hitomi.safetensors');
+  // la scena principale non passa dalla LoRA del volto
+  const chain = []; for (let id = String(sampler.inputs.model[0]); g[id]; id = String(g[id].inputs.model?.[0])) chain.push(g[id].inputs.lora_name || g[id].class_type);
+  assert.ok(!chain.includes('Krea220Hitomi.safetensors'));
+  assert.equal(applyDuoFaces(structuredClone(ZIMAGE.graph), [{ file: 'Krea220Hitomi.safetensors' }], { files: FILES }), 0);
 });

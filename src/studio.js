@@ -7,7 +7,7 @@ import { emit, emitMedia, enqueue, mediaUrl } from './jobs.js';
 import { workflows, getWorkflow, dimensions, dimensionsForRatio, frameCount, randomSeed, ASPECTS } from './workflows.js';
 import { promptEngineerSystem, visualSignature, cleanPrompt, LOOK_CHOICE, splitLook } from './prompts.js';
 import { figureText, manualBodyLoras, bodyFamily, hasLenovo } from './body.js';
-import { studioLevel, hmTokens, finishPrompt, LEVELS, CONTENT } from './photo.js';
+import { studioLevel, hmTokens, finishPrompt, duoLoras, LEVELS, CONTENT } from './photo.js';
 import { profileFor, VARIANTS } from './krea2.js';
 
 /**
@@ -41,8 +41,9 @@ const whoOf = (card) => `${card.gender === 'uomo' ? 'adult man' : card.gender ==
 function subjectLine(cards = []) {
   if (!cards.length) return null;
   if (cards.length === 1) return `Main subject: ${whoOf(cards[0])}. Appearance (keep it exactly, it defines who this is): ${visualSignature(cards[0].look, 'explicit') || '(not specified)'}`;
-  return ['Two main subjects in the same image: keep them clearly distinct (say for each one where they are in the frame and what they look like) so faces and bodies do not blend.',
-    ...cards.map((c, i) => { const fig = figureText(c); return `Person ${i + 1}: ${whoOf(c)}. Appearance (keep it exactly): ${visualSignature(c.look, 'explicit') || '(not specified)'}${fig ? ` Figure: ${fig}.` : ''}`; })].join('\n');
+  return ['Two main subjects in the same image: Person 1 on the LEFT of the frame, Person 2 on the RIGHT (say it explicitly). Keep them clearly distinct: each one keeps their own clothes, hair and features, never swapped or mixed.',
+    'When the request gives someone an outfit or an action by name, give it to that person. Names are only for you: in the prompt describe the people, never write their names.',
+    ...cards.map((c, i) => { const fig = figureText(c); return `Person ${i + 1} = ${c.name}, on the ${i ? 'RIGHT' : 'LEFT'}: ${whoOf(c)}. Appearance (keep it exactly): ${visualSignature(c.look, 'explicit') || '(not specified)'}${fig ? ` Figure: ${fig}.` : ''}`; })].join('\n');
 }
 
 /** Fisico a mano: le LoRA da sole non bastano se il prompt parla di vestiti larghi (e su Z-Image non ci sono), quindi lo si dice anche a parole. */
@@ -202,8 +203,12 @@ function studioPrompt(prompt, md, family, { text, cards = [], raw = false }) {
   if (family !== 'krea2' || md.mode !== 'text2img' && md.mode !== 'img2img') return prompt;
   const hm = !raw && md.level === 'explicit' && 'hmnsfw' in profileFor('explicit', md.variant).loras ? hmTokens([text], { together: false }) : null;
   if (hm) md.hm = hm;
-  const loras = cards.map((c) => c?.lora).filter((l) => l?.file);
-  if (loras.length) md.charLoras = loras.map((l) => ({ ...l, strength: loras.length > 1 ? Math.round((l.strength ?? 1) * 0.8 * 100) / 100 : l.strength ?? 1 }));
+  // un personaggio: la sua LoRA nel grafo e la parola chiave in testa; due: scena senza LoRA dei volti e poi ogni
+  // volto ritoccato con la sua (duoFaces, vedi applyDuoFaces), così non si fondono e non si scambiano i vestiti
+  const two = cards.length > 1 ? duoLoras(cards, family, md.mode) : null;
+  const loras = two ? [] : cards.map((c) => c?.lora).filter((l) => l?.file);
+  if (two?.duoFaces) Object.assign(md, { duoFaces: two.duoFaces, charLoras: two.charLoras });
+  else if (loras.length) md.charLoras = loras.map((l) => ({ ...l, strength: l.strength ?? 1 }));
   const trigger = loras.map((l) => l.trigger).filter(Boolean).filter((t) => !prompt.toLowerCase().includes(t.toLowerCase())).join(', ');
   // prompt diretto: resta com'è (anche con i token HMNSFW scritti a mano), si aggiungono solo le parole chiave
   if (raw) return trigger ? `${trigger}, ${prompt}` : prompt;

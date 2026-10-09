@@ -225,7 +225,7 @@ app.get('/api/characters/:id', wrap(async (req, res) => res.json(withUrls(ownCon
 
 /** Nuova chat a due: tu e due dei tuoi personaggi. */
 app.post('/api/groups', wrap(async (req, res) => {
-  const { members, name, presence, place } = req.body || {};
+  const { members, name, presence, place, premise } = req.body || {};
   const ids = [...new Set(Array.isArray(members) ? members.map(String) : [])];
   const chars = ids.map((id) => store.get(id)).filter((c) => c && !c.group && c.ownerId === req.user.id);
   if (chars.length !== 2) throw httpError(400, 'Scegli due personaggi diversi');
@@ -233,6 +233,8 @@ app.post('/api/groups', wrap(async (req, res) => {
     name: String(name || '').trim() || `${chars[0].card.name} e ${chars[1].card.name}`,
     scene: { presence: presence === 'together' ? 'together' : 'apart', place: String(place || '').trim().slice(0, 200) },
   });
+  // la situazione: scritta da te, altrimenti la immagina Gemma al primo messaggio
+  if (String(premise || '').trim()) g.state.premise = String(premise).trim().slice(0, 800);
   await store.save(g);
   res.json(withUrls(g));
 }));
@@ -243,6 +245,7 @@ app.patch('/api/characters/:id', wrap(async (req, res) => {
   if (c.group) {
     const name = String(req.body?.name || '').trim().slice(0, 60);
     if (name) c.card.name = name;
+    if (typeof req.body?.premise === 'string') c.state.premise = req.body.premise.trim().slice(0, 800) || undefined;
     await store.save(c, { touch: false });
     return res.json(withUrls(c));
   }

@@ -1017,6 +1017,7 @@ function openGroupModal(g) {
   gf.b.innerHTML = opts(b);
   gf.a.disabled = gf.b.disabled = !!g;   // i due personaggi di una chat esistente non cambiano
   gf.name.value = g?.name || '';
+  gf.premise.value = g?.premise || '';
   gf.presence.value = 'apart';
   gf.place.value = '';
   $('#gm-title').textContent = g ? g.name : 'Nuova chat a due';
@@ -1030,13 +1031,13 @@ gf.addEventListener('submit', async (e) => {
   e.preventDefault();
   try {
     if (gmGroup) {
-      const g = await api(`/api/characters/${gmGroup.id}`, { method: 'PATCH', body: { name: gf.name.value } });
+      const g = await api(`/api/characters/${gmGroup.id}`, { method: 'PATCH', body: { name: gf.name.value, premise: gf.premise.value } });
       if (state.conv?.id === g.id) { state.conv.name = g.name; renderHead(); setTitle(g.name); }
       gm.hidden = true;
       return loadConvs();
     }
     if (gf.a.value === gf.b.value) return alert('Scegli due personaggi diversi.');
-    const g = await api('/api/groups', { body: { members: [gf.a.value, gf.b.value], name: gf.name.value, presence: gf.presence.value, place: gf.place.value } });
+    const g = await api('/api/groups', { body: { members: [gf.a.value, gf.b.value], name: gf.name.value, presence: gf.presence.value, place: gf.place.value, premise: gf.premise.value } });
     gm.hidden = true;
     await loadConvs();
     openConv(g.id);

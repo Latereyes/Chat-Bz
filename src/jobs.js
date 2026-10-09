@@ -6,9 +6,12 @@ import config from './config.js';
 import * as comfy from './comfy.js';
 import * as store from './store.js';
 import { gpu } from './gpu.js';
-import { getWorkflow, buildGraph } from './workflows.js';
+import { getWorkflow, buildGraph, workflows } from './workflows.js';
 import { bodyLoras, withDerived, installedLoras, bodyFamily, lenovoLora, comfyLoras } from './body.js';
-import { applyPhotoStack } from './photo.js';
+import { applyPhotoStack, applyDuoFaces } from './photo.js';
+
+/** Sul PC c'è il rilevamento dei volti (Impact Pack + face_yolov8m)? Lo usano già i workflow che lo richiedono. */
+const faceTools = () => workflows().some((w) => w.available !== false && (w.requires || []).some((r) => r.file === 'bbox/face_yolov8m.pt'));
 
 /** Bus globale degli eventi verso il frontend (SSE). */
 export const bus = new EventEmitter();
@@ -79,7 +82,7 @@ export function enqueue(conv, msg, media) {
  * Va chiamata con la GPU già assegnata a ComfyUI (dentro gpu.run('comfy', ...)).
  * Usata dalla chat, dallo studio e dalla coda a goccia del social.
  */
-export async function renderMedia(media, { ownerId, card, signal, onEvent = () => {} }) {
+export async function renderMedia(media, { ownerId, card, signal, onEvent = () => {}, noFaces = false }) {
   const w = getWorkflow(media.workflow, media.type, media.mode);
   if (!w) throw new Error('Workflow non disponibile su ComfyUI');
   // Immagine di partenza (image to image / image to video / stessa persona): va caricata su ComfyUI
@@ -98,11 +101,18 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
     const lenovo = typeof media.lenovo === 'boolean' ? media.lenovo : null;
     // fisico regolato a mano nello studio (anche tutto a 0 = nessuna LoRA), altrimenti quello del personaggio
     const body = await installedLoras(withDerived(media.manualBody ? media.manualBody : bodyLoras(card, family)), family);
+    const files = await comfyLoras();
+    // Due personaggi con la loro LoRA: scena senza LoRA dei volti, poi ogni volto ritoccato con la sua (se c'è il rilevamento volti)
+    const faces = !noFaces && family === 'krea2' && media.mode === 'text2img' && media.duoFaces?.some(Boolean) && faceTools();
     const res = applyPhotoStack(graph, {
       level: media.level || 'neutral', lenovo, lenovoFile: lenovo ? await lenovoLora(family) : null,
-      bodyLoras: body, charLoras: media.charLoras || (media.charLora && card?.lora ? [card.lora] : []), prompt: media.prompt, files: await comfyLoras(), variant: media.variant || null,
+      bodyLoras: body, charLoras: faces ? [] : media.charLoras || (media.charLora && card?.lora ? [card.lora] : []), prompt: media.prompt, files, variant: media.variant || null,
       stack: media.mode === 'text2img' || media.mode === 'img2img', sampler: media.mode === 'text2img',
     });
+    if (faces) {
+      media.facesFixed = applyDuoFaces(graph, media.duoFaces, { files, seed: media.seed });
+      res.loras.push(...media.duoFaces.map((f, i) => f && { key: 'face', label: `volto ${i + 1}: ${f.file.replace(/\.safetensors?$/i, '')}`, strength: f.strength }).filter(Boolean));
+    }
     media.lenovoUsed = res.lenovo;
     media.loras = res.body;
     media.stack = res.loras;
@@ -111,17 +121,28 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
   }
 
   let lastPreview = 0;
-  const { files } = await comfy.run(graph, {
-    signal,
-    onEvent: (e) => {
-      if (e.type === 'progress') onEvent({ type: 'progress', mediaId: media.id, value: e.value, max: e.max });
-      else if (e.type === 'node') onEvent({ type: 'progress', mediaId: media.id, phase: e.title });
-      else if (e.type === 'preview' && Date.now() - lastPreview > 350) {
-        lastPreview = Date.now();
-        onEvent({ type: 'preview', mediaId: media.id, dataUrl: e.dataUrl });
-      }
-    },
-  });
+  let result;
+  try {
+    result = await comfy.run(graph, {
+      signal,
+      onEvent: (e) => {
+        if (e.type === 'progress') onEvent({ type: 'progress', mediaId: media.id, value: e.value, max: e.max });
+        else if (e.type === 'node') onEvent({ type: 'progress', mediaId: media.id, phase: e.title });
+        else if (e.type === 'preview' && Date.now() - lastPreview > 350) {
+          lastPreview = Date.now();
+          onEvent({ type: 'preview', mediaId: media.id, dataUrl: e.dataUrl });
+        }
+      },
+    });
+  } catch (e) {
+    // Ritocco dei volti rifiutato da ComfyUI (nodi dell'Impact Pack diversi sul PC): si rifà la foto come prima, LoRA insieme
+    if (!media.facesFixed || signal?.aborted) throw e;
+    console.warn(`[foto] ritocco dei volti non riuscito, rifaccio la foto senza: ${e.message}`);
+    media.facesError = e.message.slice(0, 300);
+    media.facesFixed = 0;
+    return renderMedia(media, { ownerId, card, signal, onEvent, noFaces: true });
+  }
+  const { files } = result;
 
   const out = files.find((f) => /\.(mp4|webm|mov|gif)$/i.test(f.filename)) || files[0];
   if (!out) throw new Error('ComfyUI non ha restituito alcun file');
