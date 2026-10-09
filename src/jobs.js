@@ -7,7 +7,8 @@ import * as comfy from './comfy.js';
 import * as store from './store.js';
 import { gpu } from './gpu.js';
 import { getWorkflow, buildGraph } from './workflows.js';
-import { bodyLoras, withDerived, installedLoras, applyBodyLoras, bodyFamily, applyLenovo, lenovoLora } from './body.js';
+import { bodyLoras, withDerived, installedLoras, bodyFamily, lenovoLora, comfyLoras } from './body.js';
+import { applyPhotoStack } from './photo.js';
 
 /** Bus globale degli eventi verso il frontend (SSE). */
 export const bus = new EventEmitter();
@@ -91,15 +92,22 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
     width: media.width, height: media.height, frames: media.frames,
     image, image2, image3, denoise: media.denoise,
   });
-  // Lenovo e LoRA del corpo del personaggio (grafi Krea 2 e Z-Image, solo LoRA installate su ComfyUI)
+  // Lenovo, LoRA del corpo, LoRA di supporto di Krea 2 e del personaggio (solo LoRA installate su ComfyUI), vedi photo.js
   const family = media.type === 'image' ? bodyFamily(graph) : null;
   if (family) {
-    // Lenovo sì/no: forzato nello Studio o scelto da Gemma scrivendo il prompt, altrimenti come nel workflow
     const lenovo = typeof media.lenovo === 'boolean' ? media.lenovo : null;
-    if (lenovo !== null) media.lenovoUsed = applyLenovo(graph, family, lenovo, lenovo ? await lenovoLora(family) : null);
     // fisico regolato a mano nello studio (anche tutto a 0 = nessuna LoRA), altrimenti quello del personaggio
-    const loras = await installedLoras(withDerived(media.manualBody ? media.manualBody : bodyLoras(card, family)), family);
-    if (applyBodyLoras(graph, loras, family)) media.loras = loras.map(({ part, strength }) => ({ part, strength }));
+    const body = await installedLoras(withDerived(media.manualBody ? media.manualBody : bodyLoras(card, family)), family);
+    const res = applyPhotoStack(graph, {
+      level: media.level || 'neutral', lenovo, lenovoFile: lenovo ? await lenovoLora(family) : null,
+      bodyLoras: body, charLora: media.charLora ? card?.lora : null, prompt: media.prompt, files: await comfyLoras(),
+      stack: media.mode === 'text2img' || media.mode === 'img2img', sampler: media.mode === 'text2img',
+    });
+    media.lenovoUsed = res.lenovo;
+    media.loras = res.body;
+    media.stack = res.loras;
+    media.sampler = res.sampler || undefined;
+    if (res.missing.length) console.warn(`[foto] LoRA non installate su ComfyUI, salto: ${res.missing.join(', ')}`);
   }
 
   let lastPreview = 0;

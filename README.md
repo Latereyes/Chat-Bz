@@ -62,9 +62,14 @@ Il prompt è diviso in un **blocco stabile** (regole + scheda, nel messaggio di 
 ### Foto e video
 - Il personaggio manda foto con il tool `send_photo` (o con il pulsante **Foto**). Se Gemma invece scrive la foto nel testo ("*Ti mando una foto:* [descrizione]"), la descrizione viene tolta dal messaggio e la foto parte lo stesso. Motore in base allo stile scelto nella scheda: `krea2-real` per il realismo spontaneo, `zimage-turbo` per un look curato.
 - Il prompt finale lo scrive il prompt engineer con la guida del modello (`workflows/<id>/guide.md`), l'aspetto fisso del personaggio e la scena attuale.
-- Il **livello di contenuto** della foto (neutro / sensuale / esplicito) segue la scena e non supera mai il limite del personaggio: una foto in cucina resta una foto in cucina.
-- **Momenti intimi**: con l'intimità aperta la foto è esplicita quando la scena è intima, oppure quando il tuo messaggio lo è anche se Gemma non ha aggiornato la scena. Il prompt engineer riceve il tuo ultimo messaggio e la risposta del personaggio. Le tue indicazioni (posizione, POV, inquadratura, cosa si vede) valgono più della descrizione del personaggio. Il prompt è esplicito e asciutto: inquadratura e POV in apertura, poi posizione e azione, niente atmosfera. Di persona la foto è in POV di chi è con lei, non un selfie, salvo richiesta.
-- **Fisico nelle foto**: le LoRA del corpo (loraholic) si usano solo con Krea 2. Su Z-Image rompevano la foto e sono state tolte: resta solo Lenovo, e le proporzioni vanno nel prompt a parole.
+- Le foto passano da un solo modulo, `src/photo.js` (chat e social; lo Studio prende LoRA e Lenovo), in quattro passi:
+  1. **Filtro**: Normale (vestita come richiede la situazione), Sensuale (intimo, costume, nudo coperto, pose provocanti; niente genitali né atti sessuali) o Esplicito. Sensuale con la scena "flirt" o parole come intimo, lingerie, bikini, sexy; Esplicito con la scena "intimate" o parole esplicite. Mai oltre il tetto del personaggio: con l'intimità chiusa resta Normale. Il filtro e il perché si vedono sotto la foto, con le LoRA usate.
+  2. **Richiesta al prompt engineer**: un solo blocco di regole per filtro. In Normale guida la descrizione del personaggio; in Esplicito guidano le tue indicazioni (posizione, POV, inquadratura) e Gemma vede gli **ultimi 3 scambi**, così una posizione detta due messaggi prima non si perde. Temperatura 0.7 / 0.6 / 0.4.
+  3. **Prompt**: in Esplicito su Krea 2, se nella conversazione c'è una posizione (cowgirl, missionario, pecorina, handjob, anche anal) o un finale, il server mette in testa i token di HMNSFW (`HMNSFW cowgirl, ANGLE_POV_ABOVE, ...`). Con la LoRA del personaggio, la sua parola chiave.
+  4. **Grafo**: Lenovo (lo sceglie Gemma, di default sì), LoRA del corpo (in Esplicito scalate), LoRA di supporto di Krea 2 e LoRA del personaggio.
+- **Krea 2 è il motore su cui si lavora**: le LoRA di supporto (realismo, anti-rifiuto, Unlocked, MysticXXX, HMNSFW, Detailer) e le forze per filtro sono in `src/krea2.js`, un'ipotesi da tarare con il banco di prova. Quelle non installate si saltano. **Z-Image per ora resta grezzo**: niente Lenovo, niente LoRA, solo il prompt.
+- **LoRA del personaggio** (scheda, sotto l'aspetto): file, parola chiave e forza. Con Krea 2 il volto resta lo stesso in ogni foto (chat, social, Studio). Il primo è Hitomi: `node tools/importa-personaggio.js tools/personaggi/hitomi.json`.
+- **Fisico nelle foto**: le LoRA del corpo (loraholic) si usano solo con Krea 2; su ogni motore le proporzioni vanno anche nel prompt a parole.
 - Video (`send_video`, pulsante **Video**) solo su richiesta: anima l'ultima foto del personaggio con MiniMax H3 (image to video, come in ChatBz 1). Se negli ultimi messaggi non c'è una sua foto, prima ne genera una della scena e poi anima quella, così il video le somiglia sempre.
 - Il testo arriva subito, la foto dopo, con l'anteprima live. La prima foto diventa l'immagine del profilo; puoi cambiarla dal pulsante **Profilo** sotto ogni foto.
 - Le foto che mandi tu vengono descritte da Qwen3-VL (workflow `qwen3vl-vision`), così Gemma sa cosa c'è.
@@ -78,6 +83,15 @@ L'"Image Assistant" di ChatBz 1, non più come personaggio ma come sezione a par
 - Opzioni sopra il campo di testo: **motore** (i workflow testo → immagine e 🎬 testo → video disponibili, oppure automatico), **formato**, **chi** (uno dei tuoi personaggi: il suo aspetto va nel prompt e le sue LoRA del corpo nella foto), **prompt diretto** (il testo va al modello così com'è, senza Gemma), **anche video** (dopo la foto, MiniMax H3 la anima), **seed** fisso.
 - Allegando una foto la si modifica con Qwen-Image-Edit, oppure la si anima se il motore scelto è un video. Sotto ogni immagine: **Anima** (video che parte da quella foto), **Rigenera**, **Prompt** (modifica e rigenera).
 - Le immagini dello studio finiscono anche in Galleria; il cestino in alto svuota lo studio.
+
+### Banco di prova delle foto
+`node tools/prova-foto.js` prova le foto senza chattare, con 14 scenari (gli 8 del piano, le posizioni principali di Krea 2 in esplicito, il finale e Hitomi): `--elenco` li mostra.
+- `--solo-richieste` (senza modelli): filtro, motivo, richiesta a Gemma e LoRA per ogni scenario.
+- `--prompt` (Ollama): anche il prompt scritto da Gemma.
+- `--foto` (Ollama e ComfyUI): genera davvero e scrive `data/prove-foto/<data>/index.html`, una riga per scenario.
+- `--varianti base,realism-v2,senza-mystic` (o `tutte`): una colonna per variante delle LoRA di Krea 2 (`src/krea2.js`), stesso prompt e stesso seed. `--scenari 5,9` per provarne solo alcuni, `--seed` per fissarlo, `--zimage` per tre scenari anche su Z-Image.
+
+I test automatici (`npm test`) controllano filtri, token di HMNSFW e grafi (Lenovo, nessuna LoRA su Z-Image, anti-rifiuto solo in esplicito, LoRA mancanti saltate).
 
 ### Importare un personaggio
 `node tools/importa-personaggio.js tools/personaggi/giorgia.json` aggiunge un personaggio da un file JSON (scheda, avatar, scena iniziale), anche con il server acceso. `giorgia.json` è Giorgia di ChatBz 1 riscritta per la scheda nuova (non copiata: carattere, vita, modo di parlare, aspetto e inizio sono rifatti).
@@ -110,7 +124,10 @@ src/
   db.js              SQLite (node:sqlite): personaggi, stato, messaggi, memorie
   store.js           personaggio + conversazione in memoria, salvataggio incrementale
   characters.js      scheda del personaggio, bozza da un'idea
-  relationship.js    stato: scena, rapporto, intimità, livello di contenuto
+  relationship.js    stato: scena, rapporto, intimità
+  photo.js           foto dei personaggi: filtro, richiesta al prompt engineer, token HMNSFW, LoRA nel grafo
+  krea2.js           LoRA di supporto di Krea 2: catalogo, profilo per filtro, varianti da provare
+  body.js            LoRA del corpo e Lenovo
   prompts.js         prompt stabile + blocco <now>, tool, prompt engineer, riflessione
   chat.js            turno di chat: contesto → Gemma → scena/foto/video → coda
   memory.js          ricordi e riflessione a riposo
@@ -123,7 +140,8 @@ src/
   gpu.js comfy.js ollama.js jobs.js workflows.js auth.js   (da LocalAI)
 public/              interfaccia (HTML/CSS/JS, senza build)
 workflows/           workflow ComfyUI (API) + manifest + guide
-tools/               script di supporto per ComfyUI
+tools/               banco di prova delle foto, import dei personaggi, script di supporto per ComfyUI
+test/                test automatici (npm test)
 ```
 
 ## Prossime fasi

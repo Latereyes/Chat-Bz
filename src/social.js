@@ -9,7 +9,8 @@ import { promptProfile } from './auth.js';
 import { emit, mediaUrl, renderMedia } from './jobs.js';
 import { getWorkflow, dimensions, dimensionsForRatio, randomSeed } from './workflows.js';
 import { promptEngineerSystem, cleanPrompt, LOOK_CHOICE, splitLook, ARTSY_POST_CHANCE } from './prompts.js';
-import { bodyFamily } from './body.js';
+import { bodyFamily, hasLenovo } from './body.js';
+import { finishPrompt } from './photo.js';
 import { profilePrompt, composePrompt, socialPhotoRequest, commentPrompt, catchupPrompt } from './social-prompts.js';
 import * as notify from './notify.js';
 import * as memory from './memory.js';
@@ -231,7 +232,8 @@ function avatarRatio(conv) {
   return 3 / 4;
 }
 
-const sameFace = (c) => config.social.identity && c?.card.style === 'krea' && !!c.avatar;
+// Con una LoRA del personaggio il volto lo dà la LoRA (Krea 2 da testo): niente «stessa persona» dalla foto profilo
+const sameFace = (c) => config.social.identity && c?.card.style === 'krea' && !!c.avatar && !c.card.lora?.file;
 
 /**
  * Motore di ogni foto. Caroselli: se il personaggio compare ed è in stile Krea, "stessa persona, nuova scena"
@@ -262,17 +264,23 @@ const levelFor = (card) => (config.social.level === 'sensual' && card.intimacy !
 
 async function engineer(conv, friend, prof, md, kind, model) {
   const w = getWorkflow(md.workflow, md.type, md.mode);
-  const look = md.type === 'image' && !!bodyFamily(w.graph);   // Lenovo sì/no lo sceglie Gemma
+  const family = md.type === 'image' ? bodyFamily(w.graph) : null;
+  const look = hasLenovo(family);   // Lenovo sì/no lo sceglie Gemma (solo Krea 2: Z-Image resta grezzo)
+  md.level = levelFor(conv.card);
+  md.levelReason = 'social';
   const out = await ollama.complete({
     model, timeout: 120000, options: { temperature: 0.7, num_predict: 450 },
     messages: [
       { role: 'system', content: promptEngineerSystem(w) },
-      { role: 'user', content: socialPhotoRequest({ card: conv.card, friend: friend?.card, profile: prof, photo: md, media: md, kind, level: levelFor(conv.card) }) + (look ? `\n${LOOK_CHOICE}` : '') },
+      { role: 'user', content: socialPhotoRequest({ card: conv.card, friend: friend?.card, profile: prof, photo: md, media: md, kind, level: md.level }) + (look ? `\n${LOOK_CHOICE}` : '') },
     ],
   });
   const { prompt, lenovo } = splitLook(out);
-  if (look && lenovo !== null) md.lenovo = lenovo;
-  return cleanPrompt(prompt) || md.description;
+  if (look) md.lenovo = lenovo ?? true;
+  // Volto del personaggio dalla sua LoRA (Krea 2 da testo, solo lui nella foto)
+  const charLora = family === 'krea2' && md.mode === 'text2img' && md.subject === 'me' && conv.card.lora?.file ? conv.card.lora : null;
+  if (charLora) md.charLora = true;
+  return finishPrompt(cleanPrompt(prompt) || md.description, { trigger: charLora?.trigger });
 }
 
 queue.register('post.plan', async (job, payload) => {

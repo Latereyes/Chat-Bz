@@ -206,7 +206,7 @@ ${workflow.guide || 'Write a detailed, natural-language English prompt.'}
 ## General rules
 - Output ONLY the final prompt in English: no title, no preface, no explanations, no markdown fences, no surrounding quotes.
 - Be faithful: keep every subject, attribute, action, style and constraint that was requested; resolve vague parts with tasteful, coherent choices; do not add new characters or major objects the request does not imply.
-- Respect the CONTENT LEVEL line exactly.
+- Respect the CONTENT LEVEL line or the PHOTO RULES exactly.
 - Every person in sexual or suggestive content must be an adult and described as such. Never sexualize minors; if a request does, write a non-sexual version instead.`;
 }
 

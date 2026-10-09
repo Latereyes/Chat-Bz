@@ -79,6 +79,8 @@ export function intimacyText(card, rel, scene) {
 // Parole di sesso esplicito (italiano e inglese): bastano a dire che il momento è intimo anche se la scena non è stata aggiornata
 const EXPLICIT_WORDS = /\b(?:scop(?:ami|armi|arti|are|iamo|ando|ata|ato|erei|erti)|sesso|nud[aoie]|tett[ae]|pompin\w*|succhi\w*|lecc(?:ami|armi|arti|are|ando)\w*|pecorina|a\s+90|cavalc\w*|missionari\w*|penetr\w*|orgasm\w*|sborr\w*|capezzol\w*|clitoride|vagina|sex|fuck\w*|naked|nude|blowjob|doggy\w*|cowgirl|missionary|pussy|cock|dick|tits|boobs|cum)\b/i;
 export const explicitHint = (text) => EXPLICIT_WORDS.test(String(text || ''));
+/** La prima parola esplicita del testo (per dire perché una foto è uscita esplicita), o null. */
+export const explicitWord = (text) => String(text || '').match(EXPLICIT_WORDS)?.[0] || null;
 
 /**
  * Livello di contenuto per le foto: mai oltre il tetto del personaggio, e solo se la scena lo giustifica.

@@ -98,7 +98,7 @@
               <label class="so-check" title="Usa il testo così com'è, senza farlo riscrivere a Gemma"><input type="checkbox" id="so-raw"><span>Prompt diretto</span></label>
               <label class="so-check" title="Dopo la foto genera anche un breve video che parte da lì"><input type="checkbox" id="so-video"><span>Anche video</span></label>
               <label title="Seed fisso (vuoto = casuale)"><span>Seed</span><input id="so-seed" inputmode="numeric" placeholder="seed casuale" size="10"></label>
-              <label title="LoRA Lenovo, il look foto amatoriale (Krea 2 e Z-Image): di solito lo sceglie Gemma in base alla scena"><span>Lenovo</span><select id="so-lenovo"><option value="">Lenovo: decide Gemma</option><option value="on">Con Lenovo</option><option value="off">Senza Lenovo</option></select></label>
+              <label title="LoRA Lenovo, il look foto amatoriale (solo Krea 2: Z-Image per ora resta grezzo): di solito lo sceglie Gemma in base alla scena"><span>Lenovo</span><select id="so-lenovo"><option value="">Lenovo: decide Gemma</option><option value="on">Con Lenovo</option><option value="off">Senza Lenovo</option></select></label>
               <label class="so-check" title="Regola a mano le LoRA del corpo (Krea 2 o Z-Image)"><input type="checkbox" id="so-body"><span>Fisico a mano</span></label>
               <div class="so-body" id="so-body-box" hidden></div>
             </div>
@@ -209,6 +209,12 @@
           <div class="so-body" id="cm-manual-box" hidden></div>
         </div>
         <p class="hint" id="cm-body" hidden></p>
+        <div class="grid3 cm-lora" title="Solo foto con Krea 2: la LoRA tiene lo stesso volto in ogni foto, la parola chiave va in testa al prompt">
+          <label class="fld">LoRA del personaggio<small>volto coerente (Krea 2), facoltativa</small><input name="loraFile" list="cm-lora-list" placeholder="es. Krea2 - Hitomi.safetensors" autocomplete="off"></label>
+          <label class="fld">Parola chiave<input name="loraTrigger" maxlength="60" placeholder="es. H1t0m1"></label>
+          <label class="fld">Forza<input name="loraStrength" type="number" min="0" max="2" step="0.05" value="1"></label>
+          <datalist id="cm-lora-list"></datalist>
+        </div>
 
         <h3>Rapporto</h3>
         <div class="grid2">

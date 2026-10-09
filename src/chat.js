@@ -8,9 +8,9 @@ import { gpu } from './gpu.js';
 import { emit, emitMedia, enqueue, describeImage, mediaUrl, cancel } from './jobs.js';
 import { workflows, getWorkflow, dimensions, dimensionsForRatio, frameCount, randomSeed, ASPECTS } from './workflows.js';
 import { promptProfile } from './auth.js';
-import { systemPrompt, nowBlock, tools, promptEngineerSystem, characterMediaRequest, cleanPrompt, sceneCheckPrompt, CHAT_LOOK_CHOICE, splitLook } from './prompts.js';
-import { bodyFamily, hasBodyLoras, figureText } from './body.js';
-import { updateScene, contentLevel } from './relationship.js';
+import { systemPrompt, nowBlock, tools, promptEngineerSystem, characterMediaRequest, cleanPrompt, sceneCheckPrompt } from './prompts.js';
+import { engineerPhoto, photoLevel } from './photo.js';
+import { updateScene } from './relationship.js';
 import * as queue from './queue.js';
 import * as social from './social.js';
 
@@ -133,7 +133,7 @@ function extractTag(text, userText = '') {
   // Nessuna descrizione, ma la risposta annuncia una foto che l'utente ha chiesto
   if (ASKS_MEDIA.test(userText) && ANNOUNCE.test(clean)) {
     const video = VIDEO_WORD.test(userText) && !/\bfoto|selfie|photo\b/i.test(userText);
-    return { text: clean.trim(), call: { function: { name: video ? 'send_video' : 'send_photo', arguments: { description: `${userText}\n\n(reply: ${clean.trim()})` } } } };
+    return { text: clean.trim(), call: { function: { name: video ? 'send_video' : 'send_photo', arguments: { description: `${userText}\n\n(reply: ${clean.trim()})`, fromText: true } } } };
   }
   return { text: clean.trim(), call: null };
 }
@@ -207,36 +207,33 @@ function mediaFromCall(conv, call, callIndex) {
 
 /**
  * Riscrive la descrizione del personaggio nel prompt ottimizzato per il modello (in streaming).
- * ctx: ultimo messaggio dell'utente e risposta del personaggio, così le indicazioni dell'utente (posa, POV) arrivano alla foto.
+ * Foto: filtro, richiesta e prompt da photo.js (in esplicito Gemma vede gli ultimi 3 scambi, così le indicazioni
+ * dell'utente dette prima non si perdono). Video: la richiesta di sempre, con il filtro della foto.
+ * ctx: ultimo messaggio dell'utente e risposta del personaggio.
  */
 async function engineerPrompt(conv, msg, media, model, signal, ctx = {}) {
   const w = getWorkflow(media.workflow, media.type, media.mode);
-  const family = media.type === 'image' ? bodyFamily(w.graph) : null;
-  const look = !!family;   // Lenovo sì/no lo sceglie Gemma
-  // Senza LoRA del corpo (Z-Image, altri motori) le proporzioni vanno dette a parole
-  const figure = media.type === 'image' && !hasBodyLoras(family) ? figureText(conv.card) : '';
-  // Momento: dal messaggio dell'utente sempre, dalla risposta del personaggio solo se la scena è già almeno di flirt
-  const s = conv.state.scene;
-  const level = contentLevel(conv.card, conv.state.rel, s, [ctx.userText, s.intimacy !== 'none' ? ctx.reply : ''].join('\n'));
-  const explicit = media.type === 'image' && level === 'explicit';
+  const user = promptProfile(conv.ownerId);
+  const onChunk = (delta) => emit(conv.id, { type: 'prompt_delta', messageId: msg.id, mediaId: media.id, delta });
+  if (media.type === 'image') {
+    const r = await engineerPhoto({ workflow: w, card: conv.card, state: conv.state, media, messages: conv.messages, idx: conv.messages.indexOf(msg),
+      userText: ctx.userText, reply: ctx.reply, user, model, signal, onChunk, fromText: !!media.args?.fromText });
+    Object.assign(media, { level: r.level, levelReason: r.reason, hm: r.hm || undefined, charLora: r.charLora || undefined });
+    if (r.lenovo !== null) media.lenovo = r.lenovo;
+    return r.prompt;
+  }
+  const { level } = photoLevel({ card: conv.card, state: conv.state, userText: ctx.userText, reply: ctx.reply });
   let text = '';
   const out = await ollama.chat({
     model, signal, think: false,
-    // Scena esplicita: meno fantasia, più fedeltà alle indicazioni
-    options: { temperature: explicit ? 0.45 : 0.7 },
+    options: { temperature: 0.7 },
     messages: [
       { role: 'system', content: promptEngineerSystem(w) },
-      { role: 'user', content: characterMediaRequest({ card: conv.card, state: conv.state, media, width: media.width, height: media.height, seconds: media.seconds, sourceDescription: media.sourceFile || media.sourceMediaId ? media.sourceDescription : undefined, userText: ctx.userText, reply: ctx.reply, user: promptProfile(conv.ownerId), figure, level }) + (look ? `\n${CHAT_LOOK_CHOICE}` : '') },
+      { role: 'user', content: characterMediaRequest({ card: conv.card, state: conv.state, media, width: media.width, height: media.height, seconds: media.seconds, sourceDescription: media.sourceFile || media.sourceMediaId ? media.sourceDescription : undefined, userText: ctx.userText, reply: ctx.reply, user, level }) },
     ],
-    onChunk: (c) => {
-      if (!c.content) return;
-      text += c.content;
-      emit(conv.id, { type: 'prompt_delta', messageId: msg.id, mediaId: media.id, delta: c.content });
-    },
+    onChunk: (c) => { if (c.content) { text += c.content; onChunk(c.content); } },
   });
-  const { prompt, lenovo } = splitLook(out.content || text);
-  if (look && lenovo !== null) media.lenovo = lenovo;
-  return cleanPrompt(prompt) || media.description;
+  return cleanPrompt(out.content || text) || media.description;
 }
 
 function checkAttachments(conv, list) {
@@ -420,10 +417,10 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       // Video chiesto a parole ("mandami un video"): Gemma spesso risponde solo a parole, senza send_video
       if (!calls.length && !tool && userMsg?.content && ASKS_VIDEO.test(userMsg.content) && msg.content.trim()
         && conv.state.scene.presence !== 'together' && !REFUSES_VIDEO.test(msg.content)) {
-        calls.push({ function: { name: 'send_video', arguments: { description: `${userMsg.content}\n\n(reply: ${msg.content.trim()})` } } });
+        calls.push({ function: { name: 'send_video', arguments: { description: `${userMsg.content}\n\n(reply: ${msg.content.trim()})`, fromText: true } } });
       }
       if (!calls.length && (tool === 'photo' || tool === 'video')) {
-        calls.push({ function: { name: tool === 'photo' ? 'send_photo' : 'send_video', arguments: { description: userMsg?.content || 'a casual selfie' } } });
+        calls.push({ function: { name: tool === 'photo' ? 'send_photo' : 'send_video', arguments: { description: userMsg?.content || 'a casual selfie', fromText: !!userMsg?.content } } });
       }
       calls.slice(0, 2).forEach((c, i) => { const md = mediaFromCall(conv, c, i); if (md) msg.media.push(...[md].flat()); });
       for (const md of msg.media) emitMedia(conv, msg, md);

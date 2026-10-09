@@ -1,6 +1,7 @@
 import * as ollama from './ollama.js';
 import config from './config.js';
 import { BODY, normalizeBody, normalizeManual } from './body.js';
+import { normalizeCharLora } from './photo.js';
 
 /**
  * Scheda del personaggio, a strati:
@@ -8,7 +9,8 @@ import { BODY, normalizeBody, normalizeManual } from './body.js';
  *  - vita:     life (lavoro, routine, persone, progetti in corso)
  *  - aspetto:  look (descrizione visiva in inglese, usata per foto e video), style (motore immagini),
  *              body (taglie ricavate in automatico dall'aspetto → LoRA del corpo, vedi body.js),
- *              bodyManual (forze regolate a mano nello studio o nella scheda: se ci sono vincono sulle taglie)
+ *              bodyManual (forze regolate a mano nello studio o nella scheda: se ci sono vincono sulle taglie),
+ *              lora (LoRA del personaggio con la sua parola chiave: il volto resta lo stesso in ogni foto di Krea 2)
  *  - rapporto: relation (punto di partenza), pace (quanto in fretta si apre), intimacy (tetto deciso dall'utente)
  */
 export const RELATIONS = {
@@ -39,6 +41,7 @@ export function normalizeCard(c = {}) {
     style: pick(c.style, STYLES, 'krea'),
     body: normalizeBody(c.body),
     bodyManual: normalizeManual(c.bodyManual),          // forze delle LoRA del corpo scelte a mano (studio o scheda)
+    lora: normalizeCharLora(c.lora),                  // LoRA del personaggio (volto coerente, solo Krea 2): { file, trigger, strength }
     relation: pick(c.relation, RELATIONS, 'sconosciuti'),
     pace: pick(c.pace, PACES, 'media'),
     intimacy: pick(c.intimacy, INTIMACY, 'confidenza'),

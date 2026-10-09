@@ -19,7 +19,8 @@ import * as social from './src/social.js';
 import * as queue from './src/queue.js';
 import * as notify from './src/notify.js';
 import { publicCharacter, draftFromIdea, draftFromPhoto, PHOTO_QUESTION, normalizeCard, RELATIONS, PACES, INTIMACY, STYLES } from './src/characters.js';
-import { analyzeBody, BODY, DERIVED, FAMILIES, bodyRange, figureText, installedLoras, normalizeManual } from './src/body.js';
+import { analyzeBody, BODY, DERIVED, FAMILIES, bodyRange, figureText, installedLoras, normalizeManual, comfyLoras } from './src/body.js';
+import { LORAS } from './src/krea2.js';
 import { updateScene, initialState, DIM_LABEL, intimacyOpen, closeness } from './src/relationship.js';
 
 const app = express();
@@ -110,6 +111,9 @@ app.get('/api/config', wrap(async (req, res) => {
   let models = [];
   // Anche i modelli senza tool (es. un Qwen da provare): la chat scrive foto e scena a parole e il server le riconosce
   try { models = (await ollama.listModels()).filter((m) => m.tools || m.completion); } catch {}
+  // LoRA installate su ComfyUI: la scheda le propone per la LoRA del personaggio
+  // (al massimo 1,5 s: con ComfyUI irraggiungibile l'app parte lo stesso)
+  const loras = ((await Promise.race([comfyLoras(), new Promise((r) => setTimeout(r, 1500, null))])) || []).map((f) => f.replace(/\\/g, '/'));
   res.json({
     defaultModel: config.ollama.model,
     options: {
@@ -117,6 +121,7 @@ app.get('/api/config', wrap(async (req, res) => {
       body: Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, { label: b.label, short: b.short, hint: b.hint, range: bodyRange(k), sizes: Object.fromEntries(Object.entries(b.sizes).map(([s, [l]]) => [s, l])), strengths: Object.fromEntries(Object.entries(b.sizes).map(([s, [, v]]) => [s, v])) }])),
     },
     models,
+    loras,
     workflows: workflows().map(publicInfo),
   });
 }));
@@ -431,6 +436,9 @@ const server = app.listen(config.port, config.host, () => {
       const found = await installedLoras(all, family);
       if (found.length < all.length) console.log(`  LoRA del corpo per ${f.label} non trovate su ComfyUI (le foto escono senza): ${all.filter((l) => !found.some((x) => x.part === l.part)).map((l) => (BODY[l.part] || DERIVED[l.part]).files[family]).join(', ')}`);
     }
+    const files = (await comfyLoras()) || [];
+    const missing = Object.values(LORAS).filter((l) => !files.some((f) => f.replace(/\\/g, '/').split('/').pop() === l.file)).map((l) => l.file);
+    if (files.length && missing.length) console.log(`  LoRA di supporto di Krea 2 non trovate su ComfyUI (si saltano): ${missing.join(', ')}`);
   });
   refresh();
   setInterval(refresh, 5 * 60 * 1000);

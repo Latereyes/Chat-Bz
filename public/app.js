@@ -783,6 +783,10 @@ function fillCard(card) {
   cf.social.checked = card.social !== false;
   cardBody = card.body ? { look: card.look, body: card.body } : null;
   cardManual = card.bodyManual ? { ...card.bodyManual } : null;
+  cf.loraFile.value = card.lora?.file || '';
+  cf.loraTrigger.value = card.lora?.trigger || '';
+  cf.loraStrength.value = card.lora?.strength ?? 1;
+  $('#cm-lora-list').innerHTML = (state.config?.loras || []).map((f) => `<option value="${esc(f)}">`).join('');
   showBody();
 }
 function readCard() {
@@ -793,6 +797,7 @@ function readCard() {
   out.social = cf.social.checked;
   if (cardBody && cardBody.look === out.look) out.body = cardBody.body;
   out.bodyManual = cardManual;
+  out.lora = cf.loraFile.value.trim() ? { file: cf.loraFile.value.trim(), trigger: cf.loraTrigger.value.trim(), strength: Number(cf.loraStrength.value) || 1 } : null;
   return out;
 }
 cf.look.addEventListener('input', showBody);
@@ -1014,7 +1019,7 @@ function renderMedia(msg, md) {
   const grid = $('.media-grid', node);
   let card = grid.querySelector(`[data-id="${md.id}"]`);
   const ratio = (md.width || 1) / (md.height || 1);
-  const sig = `${md.status}|${md.url || ''}`;
+  const sig = `${md.status}|${md.url || ''}|${md.level || ''}|${(md.stack || []).length}`;
 
   if (!card) {
     card = document.createElement('div');
@@ -1044,6 +1049,7 @@ function renderMedia(msg, md) {
       <div class="media-head">${md.sourceUrl ? `<img class="src-thumb" src="${esc(md.sourceUrl)}" alt="" title="Immagine di partenza">` : icon(md.type, 15)}<span class="name">${esc(md.workflowName || '')}</span><span class="sep">·</span><span class="meta">${esc(meta)}</span><span class="grow"></span><span class="st">${statusText(md)}</span></div>
       ${frame ? `<div class="media-frame" style="aspect-ratio:${md.width}/${md.height}">${frame}</div>` : ''}
       ${md.status === 'error' ? `<div class="media-error">${esc(md.error || 'Errore sconosciuto')}</div>` : ''}
+      ${mediaInfo(md)}
       <div class="media-prompt" ${showPrompt ? '' : 'hidden'}><pre>${esc(md.prompt || md._draft || '')}</pre></div>
       ${mediaActions(md)}`;
   } else {
@@ -1052,6 +1058,15 @@ function renderMedia(msg, md) {
   // l'etichetta [look: …] con cui Gemma sceglie Lenovo non fa parte del prompt
   if (md.status === 'engineering') $('.media-prompt pre', card).textContent = (md._draft || md.prompt || '').replace(/\[\s*look\s*:[^\]]*\]?\s*$/i, '').trimEnd();
   if (md.status === 'running') patchProgress(card, md);
+}
+
+// Filtro della foto e perché, LoRA e Lenovo: si capisce subito perché è uscita così
+const LEVEL_LABEL = { neutral: 'Normale', sensual: 'Sensuale', explicit: 'Esplicito' };
+function mediaInfo(md) {
+  if (md.type !== 'image' || !md.level) return '';
+  const loras = [...(md.stack || []).map((l) => `${l.label} ${l.strength}`), md.lenovoUsed && 'Lenovo', ...(md.loras?.length ? ['corpo'] : [])].filter(Boolean);
+  const hm = md.hm ? ` · HMNSFW ${md.hm.position}${md.hm.angle ? ` ${md.hm.angle}` : ''}` : '';
+  return `<div class="media-level" title="${esc(loras.join(', '))}"><b>${LEVEL_LABEL[md.level] || md.level}</b>${md.levelReason ? ` · ${esc(md.levelReason)}` : ''}${esc(hm)}${loras.length ? ` · ${esc(loras.join(', '))}` : ''}</div>`;
 }
 
 function mediaActions(md) {

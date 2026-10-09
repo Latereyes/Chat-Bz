@@ -60,10 +60,13 @@ export function withDerived(loras) {
 // Modelli con LoRA nel grafo (Lenovo, e per Krea 2 anche quelle del corpo di loraholic):
 // unet = nome del modello nel grafo, lenovoFile / lenovo = file e forza della LoRA Lenovo quando la si aggiunge,
 // body = regge le LoRA del corpo.
+// Z-Image per ora resta grezzo (scelta dell'utente, 2026-10-09: ci si concentra su Krea 2): niente Lenovo, niente LoRA.
 export const FAMILIES = {
   krea2: { label: 'Krea 2', unet: /krea2/i, lenovoFile: 'lenovo_krea2.safetensors', lenovo: 1.2, body: true },
-  zimage: { label: 'Z-Image', unet: /^zit|z[-_ ]?image/i, lenovoFile: 'lenovo_z.safetensors', lenovo: 1, body: false },
+  zimage: { label: 'Z-Image', unet: /^zit|z[-_ ]?image/i, lenovoFile: null, lenovo: 1, body: false },
 };
+/** La famiglia usa Lenovo (look foto amatoriale)? Solo Krea 2 per ora. */
+export const hasLenovo = (family) => !!FAMILIES[family]?.lenovoFile;
 /** La famiglia regge le LoRA del corpo? (Z-Image no: solo Lenovo) */
 export const hasBodyLoras = (family) => !!FAMILIES[family]?.body;
 
@@ -203,7 +206,7 @@ export function bodyLoras(card, family = 'krea2') {
 
 // File LoRA presenti su ComfyUI (ricontrollati al massimo ogni 5 minuti)
 let loraCache = { at: 0, files: null };
-async function comfyLoras() {
+export async function comfyLoras() {
   if (Date.now() - loraCache.at < 5 * 60 * 1000 && loraCache.files) return loraCache.files;
   const files = await comfy.listModels('loras').catch(() => null);
   loraCache = { at: Date.now(), files };
@@ -240,7 +243,7 @@ export function bodyFamily(graph) {
 }
 
 /** Ultimo nodo della catena «modello → LoRA» partendo da ogni modello della famiglia. */
-function chainEnds(graph, family) {
+export function chainEnds(graph, family) {
   const unets = Object.keys(graph).filter((id) => graph[id].class_type === 'UNETLoader' && FAMILIES[family]?.unet.test(String(graph[id].inputs?.unet_name || '').replace(/\\/g, '/').split('/').pop()));
   return unets.map((id) => {
     let cur = id;
@@ -256,7 +259,7 @@ const isLenovo = (n) => n.class_type === 'LoraLoaderModelOnly' && /lenovo/i.test
 const nextId = (graph) => Math.max(0, ...Object.keys(graph).map(Number).filter(Number.isFinite)) + 1;
 
 /** Inserisce un nodo dopo «anchor»: chi usava l'uscita di anchor usa quella del nuovo nodo. */
-function insertAfter(graph, anchor, node) {
+export function insertAfter(graph, anchor, node) {
   const id = String(nextId(graph));
   for (const n of Object.values(graph)) {
     for (const [k, v] of Object.entries(n.inputs || {})) if (Array.isArray(v) && String(v[0]) === anchor && v[1] === 0) n.inputs[k] = [id, 0];
@@ -268,7 +271,7 @@ function insertAfter(graph, anchor, node) {
 /** File della LoRA Lenovo (look foto amatoriale) per la famiglia, se installato. */
 export async function lenovoLora(family) {
   const files = await comfyLoras();
-  if (!files || !FAMILIES[family]) return null;
+  if (!files || !FAMILIES[family]?.lenovoFile) return null;
   return files.find((f) => f.replace(/\\/g, '/').split('/').pop() === FAMILIES[family].lenovoFile) || null;
 }
 
@@ -277,16 +280,19 @@ export async function lenovoLora(family) {
  * true: se il grafo non ce l'ha, la aggiunge in fondo alla catena del modello (serve il file della famiglia).
  * Restituisce true/false = Lenovo presente nel grafo alla fine.
  */
+/** Toglie un nodo LoRA dalla catena: chi lo usava torna a usare il nodo prima. */
+export function removeLora(graph, id) {
+  const src = graph[id].inputs.model;
+  delete graph[id];
+  for (const n of Object.values(graph)) {
+    for (const [k, v] of Object.entries(n.inputs || {})) if (Array.isArray(v) && String(v[0]) === id && v[1] === 0) n.inputs[k] = src;
+  }
+}
+
 export function applyLenovo(graph, family, on, file) {
   const nodes = Object.keys(graph).filter((id) => isLenovo(graph[id]));
   if (on === false) {
-    for (const id of nodes) {
-      const src = graph[id].inputs.model;
-      delete graph[id];
-      for (const n of Object.values(graph)) {
-        for (const [k, v] of Object.entries(n.inputs || {})) if (Array.isArray(v) && String(v[0]) === id && v[1] === 0) n.inputs[k] = src;
-      }
-    }
+    for (const id of nodes) removeLora(graph, id);
     return false;
   }
   if (on === true && !nodes.length && file) {

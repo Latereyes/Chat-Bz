@@ -1,6 +1,7 @@
-import { LEVEL, REAL_PHOTO, ARTSY_POST, visualSignature, userText, genderWord, selfGenderText } from './prompts.js';
+import { REAL_PHOTO, ARTSY_POST, visualSignature, userText, genderWord, selfGenderText } from './prompts.js';
 import { stageText } from './relationship.js';
 import { figureText } from './body.js';
+import { CONTENT } from './photo.js';
 
 /**
  * Prompt del social: profilo, post e storie scritti dal personaggio, commenti e risposte.
@@ -109,7 +110,7 @@ export function socialPhotoRequest({ card, friend, profile, photo, media, kind, 
     profile?.world?.home && /home|kitchen|bedroom|living|sofa|bathroom|casa/i.test(photo.description) ? `Their home: ${profile.world.home}` : null,
     `What the photo should show (written by the person): ${photo.description}`,
     fromImage && subject !== 'none' ? 'The input image is only for identity (face, hair, body): describe a NEW outfit that fits this place and moment, and do not keep the clothes, accessories, props (bottles, bags, phones) or background of the input image.' : null,
-    LEVEL[level],
+    `CONTENT LEVEL: ${CONTENT[level]}`,
     card.style === 'krea' ? 'Look (usual for this character; a posed or carefully lit shot may look more polished): a real, candid, unretouched photo (phone camera), natural light and skin texture, slightly imperfect framing.' : 'Look (usual for this character; a spontaneous moment may look like a phone snapshot): a clean, flattering, well-lit but natural photo.',
     // storie sempre spontanee; nei post ogni tanto uno scatto artistico (deciso una volta per post, vedi media.artsy)
     kind !== 'story' && media.artsy ? ARTSY_POST : REAL_PHOTO,
