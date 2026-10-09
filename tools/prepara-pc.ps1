@@ -33,10 +33,10 @@ if ($cambi) {
 }
 git fetch origin $Branch
 if ($LASTEXITCODE -ne 0) { Ferma "git fetch non riuscito (connessione?)" }
-git checkout $Branch
+# il branch sul PC diventa uguale a quello su GitHub (anche se è stato rifatto da main): non ci sono
+# modifiche non salvate, e i file che non sono in git (data, prove, file tuoi) non vengono toccati
+git checkout -B $Branch "origin/$Branch"
 if ($LASTEXITCODE -ne 0) { Ferma "git checkout non riuscito" }
-git pull --ff-only origin $Branch
-if ($LASTEXITCODE -ne 0) { Ferma "git pull non riuscito" }
 Bene "branch $Branch aggiornato ($(git log -1 --format='%h %s'))"
 
 Passo 3 "Dipendenze (npm install)"
@@ -74,6 +74,11 @@ Passo "5b" "Rilevamento di persone e volti (foto con due personaggi)"
 $ultra = Join-Path $ComfyDir "models\ultralytics"
 if (Test-Path (Join-Path $ultra "bbox\face_yolov8m.pt")) { Bene "volti: bbox\face_yolov8m.pt" }
 else { Attento "MANCA ultralytics\bbox\face_yolov8m.pt: nelle foto a due i volti non vengono ritoccati uno per uno" }
+$nodes = Join-Path $ComfyDir "custom_nodes"
+foreach ($pack in @("ComfyUI-Impact-Pack", "ComfyUI-Impact-Subpack")) {
+  if (Get-ChildItem -Path $nodes -Directory -Filter "$pack*" -ErrorAction SilentlyContinue) { Bene "nodi: $pack" }
+  else { Attento "MANCA custom_nodes\$pack: senza, il ritocco dei volti non parte (le foto escono come prima)" }
+}
 $person = Join-Path $ultra "segm\person_yolov8m-seg.pt"
 if (Test-Path $person) { Bene "persone: segm\person_yolov8m-seg.pt" }
 else {
