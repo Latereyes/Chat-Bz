@@ -80,3 +80,9 @@ export function profileFor(level, variant) {
  * denoise: quanto il ritocco ridisegna il volto (più alto = più somigliante alla LoRA, ma meno legato alla scena).
  */
 export const DUO_FACES = { denoise: 0.5, steps: 8, cfg: 1, sampler: 'euler', scheduler: 'simple', cropFactor: 2.5, guideSize: 1024, feather: 8 };
+/**
+ * Prima del volto, se sul PC c'è il rilevamento delle persone (segm/person_yolov8m-seg.pt), si ritocca tutta la persona
+ * con la sua LoRA: così il fisico viene dalla LoRA e non solo dalle parole della scheda. denoise più basso del volto,
+ * perché vestiti, posa e posto devono restare quelli della scena.
+ */
+export const DUO_BODY = { model: 'segm/person_yolov8m-seg.pt', denoise: 0.42, cropFactor: 1.3, dropSize: 64 };

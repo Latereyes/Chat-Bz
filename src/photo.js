@@ -2,7 +2,7 @@ import * as ollama from './ollama.js';
 import { intimacyOpen, explicitWord } from './relationship.js';
 import { visualSignature, promptEngineerSystem, cleanPrompt, splitLook } from './prompts.js';
 import { figureText, bodyFamily, hasBodyLoras, hasLenovo, applyLenovo, applyBodyLoras, chainEnds, insertAfter, removeLora, FAMILIES } from './body.js';
-import { LORAS, profileFor, DUO_FACES } from './krea2.js';
+import { LORAS, profileFor, DUO_FACES, DUO_BODY } from './krea2.js';
 
 /**
  * Foto dei personaggi (chat, social; lo Studio prende solo LoRA e Lenovo), in quattro passi che restituiscono
@@ -318,6 +318,8 @@ export async function engineerDuoPhoto({ workflow, cards, states, scene, media, 
 }
 
 /** Volto di un personaggio per il ritocco con la sua LoRA: parola chiave e tratti del viso. */
+/** Tutta la persona per il ritocco con la sua LoRA (fisico della LoRA, vestiti e posa della scena). */
+export const bodyText = (card) => [card.lora?.trigger, `photo of an ${WHO(card)}`, clip(visualSignature(card.look, 'explicit'), 300), figureText(card), 'same pose, same clothes and same place as in the image, natural skin texture, real photo'].filter(Boolean).join(', ');
 export const faceText = (card) => [card.lora?.trigger, `close-up photo of the face of an ${WHO(card)}`, clip(visualSignature(card.look, 'neutral'), 260), 'natural skin texture, real photo'].filter(Boolean).join(', ');
 
 /**
@@ -332,7 +334,7 @@ export function duoLoras(cards, family, mode = 'text2img') {
   if (present.length === 1 && mode === 'text2img' && cards.length === 1) return { charLoras: present, duoFaces: undefined, trigger: present[0].trigger || '' };
   return {
     charLoras: present.map((l) => ({ ...l, strength: present.length > 1 ? Math.round((l.strength ?? 1) * 0.8 * 100) / 100 : l.strength ?? 1 })),
-    duoFaces: cards.map((c, i) => (loras[i] ? { file: loras[i].file, strength: loras[i].strength ?? 1, text: faceText(c) } : null)),
+    duoFaces: cards.map((c, i) => (loras[i] ? { file: loras[i].file, strength: loras[i].strength ?? 1, text: faceText(c), body: bodyText(c) } : null)),
     trigger: '',
   };
 }
@@ -342,7 +344,7 @@ export function duoLoras(cards, family, mode = 'text2img') {
  * senza le LoRA dei volti nella catena principale. faces[i] = volto i-esimo da sinistra (null = lascialo com'è).
  * Restituisce quanti volti ritocca (0 = grafo invariato).
  */
-export function applyDuoFaces(graph, faces, { files = null, seed = 0 } = {}) {
+export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = false } = {}) {
   if (bodyFamily(graph) !== 'krea2' || !faces?.some(Boolean)) return 0;
   const ids = Object.keys(graph);
   const save = ids.find((id) => graph[id].class_type === 'SaveImage');
@@ -353,25 +355,34 @@ export function applyDuoFaces(graph, faces, { files = null, seed = 0 } = {}) {
   let n = Math.max(0, ...ids.map(Number).filter(Number.isFinite)) + 100;
   const node = (class_type, inputs, title) => { const id = String(++n); graph[id] = { class_type, inputs, ...(title ? { _meta: { title } } : {}) }; return id; };
   let image = graph[save].inputs.images;
-  const det = node('UltralyticsDetectorProvider', { model_name: 'bbox/face_yolov8m.pt' });
-  const segs = node('BboxDetectorSEGS', { bbox_detector: [det, 0], image, threshold: 0.5, dilation: 10, crop_factor: DUO_FACES.cropFactor, drop_size: 10, labels: 'all' });
-  let done = 0;
-  faces.forEach((f, i) => {
+  const loras = faces.map((f, i) => {
     const file = f?.file && findFile(files, f.file);
-    if (!file) return;
-    const lora = node('LoraLoaderModelOnly', { model: [end, 0], lora_name: file, strength_model: f.strength ?? 1 }, `Volto ${i + 1}`);
-    const pos = node('CLIPTextEncode', { clip: [clipId, 0], text: f.text || '' });
+    return file ? node('LoraLoaderModelOnly', { model: [end, 0], lora_name: file, strength_model: f.strength ?? 1 }, `LoRA ${i + 1}`) : null;
+  });
+  // un ritocco per persona (i-esima da sinistra) con la sua LoRA, su una zona trovata da segs
+  const fixOne = (i, segs, text, { denoise, label }) => {
+    const pos = node('CLIPTextEncode', { clip: [clipId, 0], text: text || '' });
     const neg = node('ConditioningZeroOut', { conditioning: [pos, 0] });
     const one = node('ImpactSEGSOrderedFilter', { segs: [segs, 0], target: 'x1', order: false, take_start: i, take_count: 1 });
     const fix = node('DetailerForEach', {
-      image, segs: [one, 0], model: [lora, 0], clip: [clipId, 0], vae: [vaeId, 0], positive: [pos, 0], negative: [neg, 0],
+      image, segs: [one, 0], model: [loras[i], 0], clip: [clipId, 0], vae: [vaeId, 0], positive: [pos, 0], negative: [neg, 0],
       guide_size: DUO_FACES.guideSize, guide_size_for: true, max_size: DUO_FACES.guideSize, seed: seed + i, steps: DUO_FACES.steps, cfg: DUO_FACES.cfg,
-      sampler_name: DUO_FACES.sampler, scheduler: DUO_FACES.scheduler, denoise: DUO_FACES.denoise, feather: DUO_FACES.feather,
+      sampler_name: DUO_FACES.sampler, scheduler: DUO_FACES.scheduler, denoise, feather: DUO_FACES.feather,
       noise_mask: true, force_inpaint: true, wildcard: '', cycle: 1,
-    }, `Ritocco volto ${i + 1}`);
+    }, `${label} ${i + 1}`);
     image = [fix, 0];
-    done++;
-  });
+  };
+  // 1. tutta la persona (fisico dalla LoRA), se c'è il modello che trova le persone
+  if (persons) {
+    const det = node('UltralyticsDetectorProvider', { model_name: DUO_BODY.model });
+    const segs = node('SegmDetectorSEGS', { segm_detector: [det, 1], image, threshold: 0.5, dilation: 10, crop_factor: DUO_BODY.cropFactor, drop_size: DUO_BODY.dropSize, labels: 'all' });
+    faces.forEach((f, i) => { if (loras[i]) fixOne(i, segs, f.body || f.text, { denoise: DUO_BODY.denoise, label: 'Ritocco persona' }); });
+  }
+  // 2. il volto (somiglianza), trovato sull'immagine già ritoccata
+  const det = node('UltralyticsDetectorProvider', { model_name: 'bbox/face_yolov8m.pt' });
+  const segs = node('BboxDetectorSEGS', { bbox_detector: [det, 0], image, threshold: 0.5, dilation: 10, crop_factor: DUO_FACES.cropFactor, drop_size: 10, labels: 'all' });
+  let done = 0;
+  faces.forEach((f, i) => { if (loras[i]) { fixOne(i, segs, f.text, { denoise: DUO_FACES.denoise, label: 'Ritocco volto' }); done++; } });
   if (done) graph[save].inputs.images = image;
   return done;
 }

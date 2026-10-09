@@ -9,9 +9,16 @@ import { gpu } from './gpu.js';
 import { getWorkflow, buildGraph, workflows } from './workflows.js';
 import { bodyLoras, withDerived, installedLoras, bodyFamily, lenovoLora, comfyLoras } from './body.js';
 import { applyPhotoStack, applyDuoFaces } from './photo.js';
+import { DUO_BODY } from './krea2.js';
 
 /** Sul PC c'è il rilevamento dei volti (Impact Pack + face_yolov8m)? Lo usano già i workflow che lo richiedono. */
 const faceTools = () => workflows().some((w) => w.available !== false && (w.requires || []).some((r) => r.file === 'bbox/face_yolov8m.pt'));
+/** Modello che trova le persone (per il ritocco di tutta la persona nelle foto a due): c'è su ComfyUI? Ricontrollato ogni 5 minuti. */
+let ultra = { at: 0, files: null };
+async function hasUltralytics(file) {
+  if (Date.now() - ultra.at > 5 * 60 * 1000 || !ultra.files) ultra = { at: Date.now(), files: await comfy.listModels('ultralytics').catch(() => null) };
+  return !!ultra.files?.some((f) => f.replace(/\\/g, '/') === file);
+}
 
 /** Bus globale degli eventi verso il frontend (SSE). */
 export const bus = new EventEmitter();
@@ -110,8 +117,10 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
       stack: media.mode === 'text2img' || media.mode === 'img2img', sampler: media.mode === 'text2img',
     });
     if (faces) {
-      media.facesFixed = applyDuoFaces(graph, media.duoFaces, { files, seed: media.seed });
-      res.loras.push(...media.duoFaces.map((f, i) => f && { key: 'face', label: `volto ${i + 1}: ${f.file.replace(/\.safetensors?$/i, '')}`, strength: f.strength }).filter(Boolean));
+      const persons = await hasUltralytics(DUO_BODY.model);
+      media.facesFixed = applyDuoFaces(graph, media.duoFaces, { files, seed: media.seed, persons });
+      res.loras.push(...media.duoFaces.map((f, i) => f && { key: 'face', label: `${persons ? 'persona e volto' : 'volto'} ${i + 1}: ${f.file.replace(/\.safetensors?$/i, '')}`, strength: f.strength }).filter(Boolean));
+      if (!persons) console.warn(`[foto] foto a due: manca ultralytics/${DUO_BODY.model}, ritocco solo i volti (il fisico viene dalle parole)`);
     }
     media.lenovoUsed = res.lenovo;
     media.loras = res.body;

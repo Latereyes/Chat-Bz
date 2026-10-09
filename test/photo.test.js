@@ -206,3 +206,21 @@ test('foto a due: scena senza LoRA dei volti, poi un ritocco per volto da sinist
   assert.ok(!chain.includes('Krea220Hitomi.safetensors'));
   assert.equal(applyDuoFaces(structuredClone(ZIMAGE.graph), [{ file: 'Krea220Hitomi.safetensors' }], { files: FILES }), 0);
 });
+
+test('foto a due con il modello delle persone: prima tutta la persona, poi il volto, con la stessa LoRA', async () => {
+  const { applyDuoFaces } = await import('../src/photo.js');
+  const g = structuredClone(KREA.graph);
+  applyPhotoStack(g, { level: 'neutral', files: FILES });
+  applyDuoFaces(g, [{ file: 'Krea220Hitomi.safetensors', text: 'H1t0m1, face', body: 'H1t0m1, body' }, null], { files: FILES, persons: true });
+  const fixes = Object.entries(g).filter(([, x]) => x.class_type === 'DetailerForEach');
+  assert.equal(fixes.length, 2);
+  const [body, face] = fixes.map(([, x]) => x);
+  assert.equal(g[body.inputs.positive[0]].inputs.text, 'H1t0m1, body');
+  assert.equal(g[face.inputs.positive[0]].inputs.text, 'H1t0m1, face');
+  assert.ok(body.inputs.denoise < face.inputs.denoise);
+  // il volto si cerca sull'immagine già ritoccata, e la foto salvata è l'ultimo ritocco
+  const faceDet = g[g[face.inputs.segs[0]].inputs.segs[0]];
+  assert.equal(faceDet.inputs.image[0], fixes[0][0]);
+  assert.equal(Object.values(g).find((x) => x.class_type === 'SaveImage').inputs.images[0], fixes[1][0]);
+  assert.equal(body.inputs.model[0], face.inputs.model[0]);
+});

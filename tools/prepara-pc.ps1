@@ -70,6 +70,22 @@ foreach ($l in $lora) {
   else { Attento "MANCA $($l[0])  ($($l[1])): le foto escono senza questa LoRA" }
 }
 
+Passo "5b" "Rilevamento di persone e volti (foto con due personaggi)"
+$ultra = Join-Path $ComfyDir "models\ultralytics"
+if (Test-Path (Join-Path $ultra "bbox\face_yolov8m.pt")) { Bene "volti: bbox\face_yolov8m.pt" }
+else { Attento "MANCA ultralytics\bbox\face_yolov8m.pt: nelle foto a due i volti non vengono ritoccati uno per uno" }
+$person = Join-Path $ultra "segm\person_yolov8m-seg.pt"
+if (Test-Path $person) { Bene "persone: segm\person_yolov8m-seg.pt" }
+else {
+  Write-Host "    Manca segm\person_yolov8m-seg.pt (circa 55 MB): serve perché nelle foto a due il fisico venga dalla LoRA di ciascuno."
+  $si = Read-Host "    Lo scarico adesso? (s/n)"
+  if ($si -match "^[sS]") {
+    New-Item -ItemType Directory -Force -Path (Split-Path $person) | Out-Null
+    curl.exe -L --fail --retry 3 -o "$person" "https://huggingface.co/Bingsu/adetailer/resolve/main/person_yolov8m-seg.pt"
+    if ($LASTEXITCODE -eq 0) { Bene "scaricato: riavvia ComfyUI perché lo veda" } else { Attento "download non riuscito" }
+  } else { Attento "senza: nelle foto a due si ritoccano solo i volti, il fisico viene dalle parole della scheda" }
+}
+
 Passo 6 "Personaggio Hitomi"
 if (-not (Test-Path "data\users.json")) {
   Attento "ChatBz non è mai stato avviato qui: avvialo una volta (start.bat), chiudilo e rilancia lo script per importare Hitomi"
