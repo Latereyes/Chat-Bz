@@ -45,8 +45,9 @@ if ($LASTEXITCODE -ne 0) { Ferma "npm install non riuscito" }
 Bene "dipendenze a posto"
 
 Passo 4 "Test automatici (npm test)"
+# conta il codice di uscita: su Windows il riepilogo di node --test non ha lo stesso formato che altrove
 $out = npm test 2>&1 | Out-String
-if ($out -match "# fail 0") { Bene "tutti i test passano" }
+if ($LASTEXITCODE -eq 0) { Bene "tutti i test passano" }
 else { Write-Host $out; Ferma "qualche test non passa: manda l'output qui sopra a Claude" }
 
 Passo 5 "LoRA in $ComfyDir\models\loras"
