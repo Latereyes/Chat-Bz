@@ -146,4 +146,4 @@ test/                test automatici (npm test)
 
 ## Prossime fasi
 
-Il piano completo è in `piano/piano-chatbz2.md` nella cartella del progetto. Resta la creazione guidata con scelta del volto (ritratto di riferimento), rimandata per ora.
+Il piano completo è in `piano/piano-chatbz2.md` nella cartella del progetto. Per le foto: `piano/piano-immagini.md` e la lista dei prossimi passi sul PC in `piano/prossimi-passi.md`. Resta la creazione guidata con scelta del volto (ritratto di riferimento), rimandata per ora.
