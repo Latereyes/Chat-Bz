@@ -10,7 +10,7 @@ import { emit, mediaUrl, renderMedia } from './jobs.js';
 import { getWorkflow, dimensions, dimensionsForRatio, randomSeed } from './workflows.js';
 import { promptEngineerSystem, cleanPrompt, LOOK_CHOICE, splitLook, ARTSY_POST_CHANCE } from './prompts.js';
 import { bodyFamily, hasLenovo } from './body.js';
-import { finishPrompt, hmTokens, studioLevel } from './photo.js';
+import { finishPrompt, hmTokens, studioLevel, duoLoras } from './photo.js';
 import { profileFor } from './krea2.js';
 import { profilePrompt, composePrompt, socialPhotoRequest, commentPrompt, catchupPrompt } from './social-prompts.js';
 import * as notify from './notify.js';
@@ -298,9 +298,16 @@ async function engineer(conv, friend, prof, md, kind, model) {
   });
   const { prompt, lenovo } = splitLook(out);
   if (look) md.lenovo = lenovo ?? true;
-  // Volto del personaggio dalla sua LoRA (Krea 2 da testo, solo lui nella foto)
-  const charLora = family === 'krea2' && md.mode === 'text2img' && md.subject === 'me' && conv.card.lora?.file ? conv.card.lora : null;
+  // Volti dalle LoRA (Krea 2 da testo): solo lui/lei → la sua LoRA; solo l'amico → quella dell'amico;
+  // tutti e due → scena senza LoRA dei volti, poi ogni persona ritoccata con la sua (come nella chat a due)
+  const text2img = family === 'krea2' && md.mode === 'text2img';
+  const one = md.subject === 'me' ? conv.card : md.subject === 'friend' ? friend?.card : null;
+  const charLora = text2img && one?.lora?.file ? one.lora : null;
   if (charLora) md.charLora = true;
+  if (text2img && md.subject === 'both' && friend) {
+    const d = duoLoras([conv.card, friend.card], family, md.mode);
+    if (d.duoFaces) Object.assign(md, { duoFaces: d.duoFaces, charLoras: d.charLoras });
+  }
   // post esplicito con una posizione nella descrizione: token di HMNSFW, come in chat
   const hm = md.level === 'explicit' && family === 'krea2' && md.mode === 'text2img' && 'hmnsfw' in profileFor('explicit').loras ? hmTokens([md.description], { together: false }) : null;
   if (hm) md.hm = hm;

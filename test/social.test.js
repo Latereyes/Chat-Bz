@@ -37,3 +37,12 @@ test('post osé: un\'idea chiesta decide, entro i limiti', () => {
   assert.equal(hotLevel(card({ intimacy: 'confidenza' }), { hint: 'un selfie nuda allo specchio', random: 0.9 }), 'sensual');
   assert.equal(hotLevel(card({ intimacy: 'aperta' }), { hint: 'foto in bikini al mare', random: 0.9 }), 'sensual');
 });
+
+test('foto insieme nei post: nomi e posizioni, così vestiti e volti non si scambiano', async () => {
+  const { socialPhotoRequest } = await import('../src/social-prompts.js');
+  const a = card({ name: 'Alessia', look: 'Italian woman' }), b = card({ name: 'Hitomi', look: 'Japanese woman' });
+  const r = socialPhotoRequest({ card: a, friend: b, photo: { subject: 'both', description: 'selfie al bar' }, media: { width: 768, height: 1024, mode: 'text2img' }, kind: 'post', level: 'neutral' });
+  assert.match(r, /Person 1 = Alessia, on the LEFT/);
+  assert.match(r, /Person 2 = Hitomi, on the RIGHT/);
+  assert.match(r, /never write them in the prompt/);
+});

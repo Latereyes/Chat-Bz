@@ -106,7 +106,8 @@ export function socialPhotoRequest({ card, friend, profile, photo, media, kind, 
   const subject = photo.subject || (photo.showsMe ? 'me' : 'none');
   const one = subject === 'friend' ? friend : card;
   const people = subject === 'both'
-    ? `Subjects: two adults together in the same photo.\nPerson 1${fromImage ? ' (input image 1)' : ''}: ${appearance(card, level)}\nPerson 2${fromImage ? ' (input image 2)' : ''}: ${appearance(friend, level)}`
+    ? `Subjects: two adults together in the same photo.\nPerson 1 = ${card.name}, on the LEFT${fromImage ? ' (input image 1)' : ''}: ${appearance(card, level)}\nPerson 2 = ${friend.name}, on the RIGHT${fromImage ? ' (input image 2)' : ''}: ${appearance(friend, level)}
+Positions: Person 1 on the LEFT of the frame and Person 2 on the RIGHT (say it explicitly). Each one keeps their own clothes, hair and features: never swap or mix them. Names are only for you: never write them in the prompt.`
     : subject === 'none'
       ? 'No person is the subject: the photo shows a detail, an object, food or a place (a hand or arm at most, never a face).'
       : `Subject: ${fromImage ? 'the person in the input image; ' : ''}${appearance(one, level)}`;
