@@ -85,4 +85,11 @@ export const DUO_FACES = { denoise: 0.5, steps: 8, cfg: 1, sampler: 'euler', sch
  * con la sua LoRA: così il fisico viene dalla LoRA e non solo dalle parole della scheda. denoise più basso del volto,
  * perché vestiti, posa e posto devono restare quelli della scena.
  */
+/**
+ * Foto con un solo personaggio con la sua LoRA: ritocco del volto con la stessa LoRA (la scena ce l'ha già).
+ * La LoRA rende bene i volti grandi; nelle foto a figura intera o da lontano il volto è piccolo e la somiglianza cala.
+ * Si ritocca il volto più grande della foto. on: false lo spegne per tutte le foto singole.
+ */
+// denoise basso (0.35): ridisegna i tratti con la LoRA ma lascia espressione, bocca e sguardo della foto
+export const SINGLE_FACE = { on: true, denoise: 0.35 };
 export const DUO_BODY = { model: 'segm/person_yolov8m-seg.pt', denoise: 0.42, cropFactor: 1.3, dropSize: 64 };

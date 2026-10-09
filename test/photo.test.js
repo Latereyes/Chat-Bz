@@ -224,3 +224,23 @@ test('foto a due con il modello delle persone: prima tutta la persona, poi il vo
   assert.equal(Object.values(g).find((x) => x.class_type === 'SaveImage').inputs.images[0], fixes[1][0]);
   assert.equal(body.inputs.model[0], face.inputs.model[0]);
 });
+
+test('foto singola con LoRA: ritocco del volto più grande con la stessa LoRA, espressione dal prompt', async () => {
+  const { applySingleFace, expressionOf } = await import('../src/photo.js');
+  const g = structuredClone(KREA.graph);
+  applyPhotoStack(g, { level: 'neutral', files: FILES, charLoras: [CHARACTERS.hitomi.lora] });
+  const before = Object.values(g).filter((x) => x.class_type === 'LoraLoaderModelOnly' && x.inputs.lora_name === 'Krea220Hitomi.safetensors').length;
+  const prompt = 'A selfie at her desk. She is laughing with her mouth open, eyes squinting. Warm lamp light.';
+  assert.equal(applySingleFace(g, CHARACTERS.hitomi, { files: FILES, prompt }), 1);
+  const fix = Object.values(g).find((x) => x.class_type === 'DetailerForEach');
+  const filter = g[fix.inputs.segs[0]].inputs;
+  assert.deepEqual([filter.target, filter.order], ['area(=w*h)', true]);
+  // niente LoRA doppia: il ritocco usa la catena che ha già la LoRA del personaggio
+  assert.equal(Object.values(g).filter((x) => x.class_type === 'LoraLoaderModelOnly' && x.inputs.lora_name === 'Krea220Hitomi.safetensors').length, before);
+  const text = g[fix.inputs.positive[0]].inputs.text;
+  assert.match(text, /^H1t0m1, /);
+  assert.match(text, /laughing with her mouth open/);
+  assert.match(text, /same facial expression/);
+  assert.equal(expressionOf('A photo of a kitchen. Warm light.'), '');
+  assert.equal(applySingleFace(structuredClone(KREA.graph), CHARACTERS.krea, { files: FILES }), 0);   // senza LoRA niente ritocco
+});

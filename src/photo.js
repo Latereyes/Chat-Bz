@@ -2,7 +2,7 @@ import * as ollama from './ollama.js';
 import { intimacyOpen, explicitWord } from './relationship.js';
 import { visualSignature, promptEngineerSystem, cleanPrompt, splitLook } from './prompts.js';
 import { figureText, bodyFamily, hasBodyLoras, hasLenovo, applyLenovo, applyBodyLoras, chainEnds, insertAfter, removeLora, FAMILIES } from './body.js';
-import { LORAS, profileFor, DUO_FACES, DUO_BODY } from './krea2.js';
+import { LORAS, profileFor, DUO_FACES, DUO_BODY, SINGLE_FACE } from './krea2.js';
 
 /**
  * Foto dei personaggi (chat, social; lo Studio prende solo LoRA e Lenovo), in quattro passi che restituiscono
@@ -320,7 +320,13 @@ export async function engineerDuoPhoto({ workflow, cards, states, scene, media, 
 /** Volto di un personaggio per il ritocco con la sua LoRA: parola chiave e tratti del viso. */
 /** Tutta la persona per il ritocco con la sua LoRA (fisico della LoRA, vestiti e posa della scena). */
 export const bodyText = (card) => [card.lora?.trigger, `photo of an ${WHO(card)}`, clip(visualSignature(card.look, 'explicit'), 300), figureText(card), 'same pose, same clothes and same place as in the image, natural skin texture, real photo'].filter(Boolean).join(', ');
-export const faceText = (card) => [card.lora?.trigger, `close-up photo of the face of an ${WHO(card)}`, clip(visualSignature(card.look, 'neutral'), 260), 'natural skin texture, real photo'].filter(Boolean).join(', ');
+// Frasi del prompt che parlano dell'espressione: il ritocco del volto le ripete, così non la appiattisce
+const EXPRESSION = /\b(?:smil\w*|laugh\w*|grin\w*|express\w*|mouth|lips?|bit(?:es|ing) (?:her|his) lip|eyes?|gaz\w*|look(?:s|ing)? (?:at|up|down|away|into)|wink\w*|blush\w*|frown\w*|pout\w*|moan\w*|tongue|teeth|tears?|cry\w*|surpris\w*|shy|teasing|playful|seductive|sleepy|tired|orgasm\w*|pleasure|parted)\b/i;
+export function expressionOf(prompt) {
+  return String(prompt || '').split(/(?<=[.;])\s+/).filter((s) => EXPRESSION.test(s)).slice(0, 2).map((s) => clip(s, 200)).join(' ');
+}
+export const faceText = (card, prompt = '') => [card.lora?.trigger, `close-up photo of the face of an ${WHO(card)}`, clip(visualSignature(card.look, 'neutral'), 260),
+  expressionOf(prompt), 'exactly the same facial expression, mouth and eye direction as in the image', 'natural skin texture, real photo'].filter(Boolean).join(', ');
 
 /**
  * LoRA dei personaggi in una foto a due (Krea 2 da testo). Con la LoRA di almeno uno: duoFaces = ritocco del volto
@@ -344,7 +350,7 @@ export function duoLoras(cards, family, mode = 'text2img') {
  * senza le LoRA dei volti nella catena principale. faces[i] = volto i-esimo da sinistra (null = lascialo com'è).
  * Restituisce quanti volti ritocca (0 = grafo invariato).
  */
-export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = false } = {}) {
+export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = false, single = false } = {}) {
   if (bodyFamily(graph) !== 'krea2' || !faces?.some(Boolean)) return 0;
   const ids = Object.keys(graph);
   const save = ids.find((id) => graph[id].class_type === 'SaveImage');
@@ -355,7 +361,8 @@ export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = 
   let n = Math.max(0, ...ids.map(Number).filter(Number.isFinite)) + 100;
   const node = (class_type, inputs, title) => { const id = String(++n); graph[id] = { class_type, inputs, ...(title ? { _meta: { title } } : {}) }; return id; };
   let image = graph[save].inputs.images;
-  const loras = faces.map((f, i) => {
+  // foto singola: la LoRA è già nella catena principale, il ritocco usa quella (niente LoRA doppia)
+  const loras = single ? [findFile(files, faces[0]?.file) ? end : null] : faces.map((f, i) => {
     const file = f?.file && findFile(files, f.file);
     return file ? node('LoraLoaderModelOnly', { model: [end, 0], lora_name: file, strength_model: f.strength ?? 1 }, `LoRA ${i + 1}`) : null;
   });
@@ -363,7 +370,10 @@ export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = 
   const fixOne = (i, segs, text, { denoise, label }) => {
     const pos = node('CLIPTextEncode', { clip: [clipId, 0], text: text || '' });
     const neg = node('ConditioningZeroOut', { conditioning: [pos, 0] });
-    const one = node('ImpactSEGSOrderedFilter', { segs: [segs, 0], target: 'x1', order: false, take_start: i, take_count: 1 });
+    // foto a due: i-esima da sinistra; foto singola: il volto più grande
+    const one = node('ImpactSEGSOrderedFilter', single
+      ? { segs: [segs, 0], target: 'area(=w*h)', order: true, take_start: 0, take_count: 1 }
+      : { segs: [segs, 0], target: 'x1', order: false, take_start: i, take_count: 1 });
     const fix = node('DetailerForEach', {
       image, segs: [one, 0], model: [loras[i], 0], clip: [clipId, 0], vae: [vaeId, 0], positive: [pos, 0], negative: [neg, 0],
       guide_size: DUO_FACES.guideSize, guide_size_for: true, max_size: DUO_FACES.guideSize, seed: seed + i, steps: DUO_FACES.steps, cfg: DUO_FACES.cfg,
@@ -382,9 +392,15 @@ export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = 
   const det = node('UltralyticsDetectorProvider', { model_name: 'bbox/face_yolov8m.pt' });
   const segs = node('BboxDetectorSEGS', { bbox_detector: [det, 0], image, threshold: 0.5, dilation: 10, crop_factor: DUO_FACES.cropFactor, drop_size: 10, labels: 'all' });
   let done = 0;
-  faces.forEach((f, i) => { if (loras[i]) { fixOne(i, segs, f.text, { denoise: DUO_FACES.denoise, label: 'Ritocco volto' }); done++; } });
+  faces.forEach((f, i) => { if (loras[i]) { fixOne(i, segs, f.text, { denoise: single ? SINGLE_FACE.denoise : DUO_FACES.denoise, label: 'Ritocco volto' }); done++; } });
   if (done) graph[save].inputs.images = image;
   return done;
+}
+
+/** Foto con un solo personaggio con LoRA: ritocco del suo volto con la stessa LoRA (vedi SINGLE_FACE). */
+export function applySingleFace(graph, card, { files = null, seed = 0, prompt = '' } = {}) {
+  if (!SINGLE_FACE.on || !card?.lora?.file) return 0;
+  return applyDuoFaces(graph, [{ file: card.lora.file, text: faceText(card, prompt) }], { files, seed, single: true });
 }
 
 /** Cosa scrivere sotto la foto: «Esplicito · scena intima». */
