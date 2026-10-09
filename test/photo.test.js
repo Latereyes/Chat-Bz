@@ -244,3 +244,12 @@ test('foto singola con LoRA: ritocco del volto più grande con la stessa LoRA, e
   assert.equal(expressionOf('A photo of a kitchen. Warm light.'), '');
   assert.equal(applySingleFace(structuredClone(KREA.graph), CHARACTERS.krea, { files: FILES }), 0);   // senza LoRA niente ritocco
 });
+
+test('ritocco del volto: minimo in esplicito', async () => {
+  const { applySingleFace, applyDuoFaces } = await import('../src/photo.js');
+  const den = (level) => { const g = structuredClone(KREA.graph); applySingleFace(g, CHARACTERS.hitomi, { files: FILES, level }); return Object.values(g).find((x) => x.class_type === 'DetailerForEach').inputs.denoise; };
+  assert.ok(den('explicit') < den('neutral'));
+  assert.ok(den('explicit') <= 0.25);
+  const duo = (level) => { const g = structuredClone(KREA.graph); applyDuoFaces(g, [{ file: 'Krea220Hitomi.safetensors', text: 'x' }], { files: FILES, level }); return Object.values(g).find((x) => x.class_type === 'DetailerForEach').inputs.denoise; };
+  assert.ok(duo('explicit') < duo('neutral'));
+});

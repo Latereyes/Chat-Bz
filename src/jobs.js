@@ -8,8 +8,8 @@ import * as store from './store.js';
 import { gpu } from './gpu.js';
 import { getWorkflow, buildGraph, workflows } from './workflows.js';
 import { bodyLoras, withDerived, installedLoras, bodyFamily, lenovoLora, comfyLoras } from './body.js';
-import { applyPhotoStack, applyDuoFaces, applySingleFace } from './photo.js';
-import { DUO_BODY, SINGLE_FACE } from './krea2.js';
+import { applyPhotoStack, applyDuoFaces, applySingleFace, faceDenoise } from './photo.js';
+import { DUO_BODY } from './krea2.js';
 
 /** Sul PC c'è il rilevamento dei volti (Impact Pack + face_yolov8m)? Lo usano già i workflow che lo richiedono. */
 const faceTools = () => workflows().some((w) => w.available !== false && (w.requires || []).some((r) => r.file === 'bbox/face_yolov8m.pt'));
@@ -119,12 +119,12 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
     // Un solo personaggio con la sua LoRA: ritocco del volto con la stessa LoRA (somiglianza anche da lontano)
     const singleCard = !faces && family === 'krea2' && (media.mode === 'text2img' || media.mode === 'img2img') && media.charLora && card?.lora?.file ? card
       : !faces && family === 'krea2' && media.mode === 'text2img' && media.charLoras?.length === 1 && media.characterId ? store.get(media.characterId)?.card : null;
-    if (!noFaces && singleCard && faceTools() && (media.facesFixed = applySingleFace(graph, singleCard, { files, seed: media.seed, prompt: media.prompt }))) {
-      res.loras.push({ key: 'face', label: 'volto ritoccato', strength: SINGLE_FACE.denoise });
+    if (!noFaces && singleCard && faceTools() && (media.facesFixed = applySingleFace(graph, singleCard, { files, seed: media.seed, prompt: media.prompt, level: media.level }))) {
+      res.loras.push({ key: 'face', label: 'volto ritoccato', strength: faceDenoise(media.level) });
     }
     if (faces) {
       const persons = await hasUltralytics(DUO_BODY.model);
-      media.facesFixed = applyDuoFaces(graph, media.duoFaces, { files, seed: media.seed, persons });
+      media.facesFixed = applyDuoFaces(graph, media.duoFaces, { files, seed: media.seed, persons, level: media.level });
       res.loras.push(...media.duoFaces.map((f, i) => f && { key: 'face', label: `${persons ? 'persona e volto' : 'volto'} ${i + 1}: ${f.file.replace(/\.safetensors?$/i, '')}`, strength: f.strength }).filter(Boolean));
       if (!persons) console.warn(`[foto] foto a due: manca ultralytics/${DUO_BODY.model}, ritocco solo i volti (il fisico viene dalle parole)`);
     }

@@ -350,7 +350,8 @@ export function duoLoras(cards, family, mode = 'text2img') {
  * senza le LoRA dei volti nella catena principale. faces[i] = volto i-esimo da sinistra (null = lascialo com'è).
  * Restituisce quanti volti ritocca (0 = grafo invariato).
  */
-export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = false, single = false } = {}) {
+export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = false, single = false, level = 'neutral' } = {}) {
+  const explicit = level === 'explicit';
   if (bodyFamily(graph) !== 'krea2' || !faces?.some(Boolean)) return 0;
   const ids = Object.keys(graph);
   const save = ids.find((id) => graph[id].class_type === 'SaveImage');
@@ -386,21 +387,24 @@ export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = 
   if (persons) {
     const det = node('UltralyticsDetectorProvider', { model_name: DUO_BODY.model });
     const segs = node('SegmDetectorSEGS', { segm_detector: [det, 1], image, threshold: 0.5, dilation: 10, crop_factor: DUO_BODY.cropFactor, drop_size: DUO_BODY.dropSize, labels: 'all' });
-    faces.forEach((f, i) => { if (loras[i]) fixOne(i, segs, f.body || f.text, { denoise: DUO_BODY.denoise, label: 'Ritocco persona' }); });
+    faces.forEach((f, i) => { if (loras[i]) fixOne(i, segs, f.body || f.text, { denoise: explicit ? DUO_BODY.explicitDenoise : DUO_BODY.denoise, label: 'Ritocco persona' }); });
   }
   // 2. il volto (somiglianza), trovato sull'immagine già ritoccata
   const det = node('UltralyticsDetectorProvider', { model_name: 'bbox/face_yolov8m.pt' });
   const segs = node('BboxDetectorSEGS', { bbox_detector: [det, 0], image, threshold: 0.5, dilation: 10, crop_factor: DUO_FACES.cropFactor, drop_size: 10, labels: 'all' });
   let done = 0;
-  faces.forEach((f, i) => { if (loras[i]) { fixOne(i, segs, f.text, { denoise: single ? SINGLE_FACE.denoise : DUO_FACES.denoise, label: 'Ritocco volto' }); done++; } });
+  faces.forEach((f, i) => { if (loras[i]) { fixOne(i, segs, f.text, { denoise: single ? faceDenoise(level) : explicit ? DUO_FACES.explicitDenoise : DUO_FACES.denoise, label: 'Ritocco volto' }); done++; } });
   if (done) graph[save].inputs.images = image;
   return done;
 }
 
 /** Foto con un solo personaggio con LoRA: ritocco del suo volto con la stessa LoRA (vedi SINGLE_FACE). */
-export function applySingleFace(graph, card, { files = null, seed = 0, prompt = '' } = {}) {
+/** Quanto ridisegnare il volto in una foto singola, per filtro. */
+export const faceDenoise = (level) => SINGLE_FACE.denoise?.[level] ?? SINGLE_FACE.denoise?.neutral ?? 0.35;
+
+export function applySingleFace(graph, card, { files = null, seed = 0, prompt = '', level = 'neutral' } = {}) {
   if (!SINGLE_FACE.on || !card?.lora?.file) return 0;
-  return applyDuoFaces(graph, [{ file: card.lora.file, text: faceText(card, prompt) }], { files, seed, single: true });
+  return applyDuoFaces(graph, [{ file: card.lora.file, text: faceText(card, prompt) }], { files, seed, single: true, level });
 }
 
 /** Cosa scrivere sotto la foto: «Esplicito · scena intima». */

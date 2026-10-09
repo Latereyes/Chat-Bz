@@ -79,7 +79,9 @@ export function profileFor(level, variant) {
  * ritocca ogni volto da solo con la sua LoRA (Impact Pack: volti trovati con face_yolov8m, ordinati da sinistra).
  * denoise: quanto il ritocco ridisegna il volto (più alto = più somigliante alla LoRA, ma meno legato alla scena).
  */
-export const DUO_FACES = { denoise: 0.5, steps: 8, cfg: 1, sampler: 'euler', scheduler: 'simple', cropFactor: 2.5, guideSize: 1024, feather: 8 };
+// Foto a due: la scena nasce senza le LoRA dei volti, quindi il ritocco non può essere minimo (il volto viene solo da qui);
+// in esplicito un po' più leggero per tenere l'espressione.
+export const DUO_FACES = { denoise: 0.5, explicitDenoise: 0.42, steps: 8, cfg: 1, sampler: 'euler', scheduler: 'simple', cropFactor: 2.5, guideSize: 1024, feather: 8 };
 /**
  * Prima del volto, se sul PC c'è il rilevamento delle persone (segm/person_yolov8m-seg.pt), si ritocca tutta la persona
  * con la sua LoRA: così il fisico viene dalla LoRA e non solo dalle parole della scheda. denoise più basso del volto,
@@ -90,6 +92,7 @@ export const DUO_FACES = { denoise: 0.5, steps: 8, cfg: 1, sampler: 'euler', sch
  * La LoRA rende bene i volti grandi; nelle foto a figura intera o da lontano il volto è piccolo e la somiglianza cala.
  * Si ritocca il volto più grande della foto. on: false lo spegne per tutte le foto singole.
  */
-// denoise basso (0.35): ridisegna i tratti con la LoRA ma lascia espressione, bocca e sguardo della foto
-export const SINGLE_FACE = { on: true, denoise: 0.35 };
-export const DUO_BODY = { model: 'segm/person_yolov8m-seg.pt', denoise: 0.42, cropFactor: 1.3, dropSize: 64 };
+// denoise basso (0.35): ridisegna i tratti con la LoRA ma lascia espressione, bocca e sguardo della foto.
+// In esplicito minimo (scelta di Andrea, 2026-10-09): l'espressione del momento conta più della somiglianza fine.
+export const SINGLE_FACE = { on: true, denoise: { neutral: 0.35, sensual: 0.35, explicit: 0.2 } };
+export const DUO_BODY = { model: 'segm/person_yolov8m-seg.pt', denoise: 0.42, explicitDenoise: 0.35, cropFactor: 1.3, dropSize: 64 };
