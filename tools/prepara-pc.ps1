@@ -77,7 +77,7 @@ else { Attento "MANCA ultralytics\bbox\face_yolov8m.pt: nelle foto a due i volti
 $nodes = Join-Path $ComfyDir "custom_nodes"
 foreach ($pack in @("ComfyUI-Impact-Pack", "ComfyUI-Impact-Subpack")) {
   if (Get-ChildItem -Path $nodes -Directory -Filter "$pack*" -ErrorAction SilentlyContinue) { Bene "nodi: $pack" }
-  else { Attento "MANCA custom_nodes\$pack: senza, il ritocco dei volti non parte (le foto escono come prima)" }
+  else { Attento "MANCA custom_nodes\${pack}: senza, il ritocco dei volti non parte (le foto escono come prima)" }
 }
 $person = Join-Path $ultra "segm\person_yolov8m-seg.pt"
 if (Test-Path $person) { Bene "persone: segm\person_yolov8m-seg.pt" }
