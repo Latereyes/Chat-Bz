@@ -5,6 +5,12 @@ Contesto: `piano/piano-immagini.md` (sezioni 2-7). La fase 1, la ricostruzione, 
 
 ## 0. Preparazione (una volta)
 
+**Il modo più semplice** è lo script, che fa da solo tutti i passi di questa sezione: controlla che ChatBz sia spento, aggiorna il codice, `npm install`, `npm test`, le LoRA in ComfyUI, l'import di Hitomi e un controllo veloce.
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\prepara-pc.ps1
+```
+Gli stessi passi, a mano:
+
 ```bat
 git fetch origin
 git checkout claude/admiring-goldberg-rgvept
