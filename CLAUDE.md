@@ -37,6 +37,9 @@ Personaggi AI locali: chat con Gemma (Ollama) e foto e video con ComfyUI, sulla 
 - Le LoRA non installate su ComfyUI si saltano senza errori. Se il nome di un file cambia sul disco, si corregge in `src/krea2.js`.
 - Ogni cambio alle foto si prova con il banco di prova, non su una foto sola: una correzione a mano su un caso ne rompeva un altro.
 
+## Prove in corso: chat a due, foto a due, ritocco del volto
+Sul branch `claude/admiring-goldberg-rgvept` (non ancora in `main`): leggi **`piano/a-due-e-volti.md`** per cosa è cambiato, le prove da fare e i valori da tarare.
+
 ## Taratura in corso
 Il lavoro di adesso è in `piano/prossimi-passi.md`: segui quella lista, spunta le caselle e compila la tabella delle scelte. Il contesto è in `piano/piano-immagini.md`. Per i giri di prova c'è la skill `taratura-foto`. Nello Studio i menu «Filtro» e «LoRA Krea» permettono di provare una variante su una singola foto.
 
