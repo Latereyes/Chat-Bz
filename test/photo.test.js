@@ -12,7 +12,7 @@ const wf = (id) => ({ id, type: 'image', guide: '', graph: JSON.parse(fs.readFil
 const KREA = wf('krea2-real');
 const ZIMAGE = wf('zimage-turbo');
 // Tutte le LoRA del catalogo "installate", più Lenovo e quella di Hitomi
-const FILES = [...Object.values(LORAS).map((l) => l.file), 'lenovo_krea2.safetensors', 'Krea2 - Hitomi.safetensors'];
+const FILES = [...Object.values(LORAS).map((l) => l.file), 'lenovo_krea2.safetensors', 'Krea220Hitomi.safetensors'];
 const loraNames = (g) => Object.values(g).filter((n) => n.class_type === 'LoraLoaderModelOnly').map((n) => n.inputs.lora_name);
 const strength = (g, file) => Object.values(g).find((n) => n.class_type === 'LoraLoaderModelOnly' && n.inputs.lora_name === file)?.inputs.strength_model;
 const media = { description: 'x', width: 768, height: 1024 };
@@ -68,7 +68,7 @@ test('Z-Image resta grezzo: niente Lenovo, niente etichetta del look', async () 
   assert.doesNotMatch(r.request, /\[look:/);
   for (const level of ['neutral', 'explicit']) {
     const g = structuredClone(ZIMAGE.graph);
-    const out = applyPhotoStack(g, { level, lenovo: true, lenovoFile: 'lenovo_z.safetensors', bodyLoras: [{ part: 'breast', name: 'b.safetensors', strength: 1.5 }], charLora: { file: 'Krea2 - Hitomi.safetensors', strength: 1 }, files: FILES });
+    const out = applyPhotoStack(g, { level, lenovo: true, lenovoFile: 'lenovo_z.safetensors', bodyLoras: [{ part: 'breast', name: 'b.safetensors', strength: 1.5 }], charLora: { file: 'Krea220Hitomi.safetensors', strength: 1 }, files: FILES });
     assert.equal(out.lenovo, false);
     assert.deepEqual(loraNames(g), []);
   }
@@ -116,12 +116,12 @@ test('variante Realism V2: sostituisce la 3.1; se non è installata resta la 3.1
 test('LoRA del personaggio: agganciata e parola chiave in testa (dopo i token HMNSFW)', () => {
   const g = structuredClone(KREA.graph);
   const out = applyPhotoStack(g, { level: 'neutral', files: FILES, charLora: CHARACTERS.hitomi.lora });
-  assert.ok(loraNames(g).includes('Krea2 - Hitomi.safetensors'));
+  assert.ok(loraNames(g).includes('Krea220Hitomi.safetensors'));
   assert.ok(out.loras.some((l) => l.key === 'character'));
   assert.equal(finishPrompt('a woman at her desk', { trigger: 'H1t0m1' }), 'H1t0m1, a woman at her desk');
   assert.equal(finishPrompt('HMNSFW doggy, a woman', { hm: { position: 'cowgirl', angle: 'POV_ABOVE' }, trigger: 'H1t0m1' }), 'HMNSFW cowgirl, ANGLE_POV_ABOVE, H1t0m1, a woman');
   assert.equal(normalizeCharLora({ file: '../x.safetensors' }), null);
-  assert.deepEqual(normalizeCharLora({ file: 'Krea2 - Hitomi.safetensors', trigger: 'H1t0m1', strength: '0.8' }), { file: 'Krea2 - Hitomi.safetensors', trigger: 'H1t0m1', strength: 0.8 });
+  assert.deepEqual(normalizeCharLora({ file: 'Krea220Hitomi.safetensors', trigger: 'H1t0m1', strength: '0.8' }), { file: 'Krea220Hitomi.safetensors', trigger: 'H1t0m1', strength: 0.8 });
 });
 
 test('LoRA non installate: si saltano senza rompere il grafo', () => {

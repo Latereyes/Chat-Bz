@@ -17,8 +17,8 @@ export const LORAS = {
   refusal: { file: 'Krea2_TextFusion_Refusal_Reduction.safetensors', label: 'Anti-rifiuto', role: 'unlock' },
   // Autore: 0.5-0.9, euler, 20+ passi, CFG 3.5 (pensati per Krea 2 base: sul Turbo da provare)
   unlocked: { file: 'kera2_Unlocked_V1.safetensors', label: 'Unlocked V1', role: 'unlock' },
-  // Autore: euler/beta 12 passi sul Turbo, pelle e texture migliori
-  mystic: { file: 'MysticXXX_KREA2_v3.safetensors', label: 'MysticXXX v3', role: 'nsfw' },
+  // Autore: euler/beta 12 passi sul Turbo, pelle e texture migliori (sul PC c'è la v2, 2026-10-09)
+  mystic: { file: 'MysticXXX_KREA2_v2.safetensors', label: 'MysticXXX v2', role: 'nsfw' },
   // Prompt: «HMNSFW <posizione>, ANGLE_<angolo>, <descrizione 60-120 parole>»
   hmnsfw: { file: 'Krea2_HMNSFW_AIO.safetensors', label: 'HMNSFW AIO', role: 'pose' },
   detailer: { file: 'Detailer-KREA2.safetensors', label: 'Detailer', role: 'detail' },

@@ -23,12 +23,13 @@ npm test
 | `Krea2-realism-V2.safetensors` | realismo nuova, da confrontare |
 | `Krea2_TextFusion_Refusal_Reduction.safetensors` | anti-rifiuto |
 | `kera2_Unlocked_V1.safetensors` | sblocco |
-| `MysticXXX_KREA2_v3.safetensors` | NSFW |
+| `MysticXXX_KREA2_v2.safetensors` | NSFW |
 | `Krea2_HMNSFW_AIO.safetensors` | posizioni (token HMNSFW) |
 | `Detailer-KREA2.safetensors` | dettaglio |
-| `Krea2 - Hitomi.safetensors` | volto di Hitomi |
+| `Krea220Hitomi.safetensors` | volto di Hitomi |
 
-- [ ] Nel messaggio due file erano scritti `.safetensor` (senza "s"). Se sul disco il nome è davvero così, rinomina il file oppure correggi il nome in `src/krea2.js` / `hitomi.json`. Il nome della LoRA di Hitomi si può anche correggere dalla scheda.
+- [x] Nomi verificati da Andrea (9 ottobre): Hitomi è `Krea220Hitomi.safetensors`, MysticXXX è la **v2**. Codice e scheda di Hitomi sono già aggiornati.
+- [ ] Nell'elenco del PC mancavano `Krea2_HMNSFW_AIO.safetensors` e `Krea2_TextFusion_Refusal_Reduction.safetensors` (quest'ultima la usa già Krea 2 Turbo). Controlla che ci siano: senza, le foto escono senza quelle LoRA e il log le elenca.
 - [ ] Avvia il server (`npm start`). Nel log non deve comparire la riga «LoRA di supporto di Krea 2 non trovate su ComfyUI». Se compare, elenca i file che mancano.
 - [ ] Importa Hitomi: `node tools/importa-personaggio.js tools/personaggi/hitomi.json`
 
