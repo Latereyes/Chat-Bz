@@ -1,0 +1,160 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { photoLevel, engineerPhoto, applyPhotoStack, hmTokens, finishPrompt, recentExchanges, normalizeCharLora, studioLevel } from '../src/photo.js';
+import { LORAS, PROFILE, VARIANTS, profileFor } from '../src/krea2.js';
+import { SCENARIOS, CHARACTERS, USER, scenarioState, scenarioMessages } from '../tools/prova-foto/scenari.js';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const wf = (id) => ({ id, type: 'image', guide: '', graph: JSON.parse(fs.readFileSync(path.join(root, 'workflows', id, 'workflow.json'), 'utf8')) });
+const KREA = wf('krea2-real');
+const ZIMAGE = wf('zimage-turbo');
+// Tutte le LoRA del catalogo "installate", più Lenovo e quella di Hitomi
+const FILES = [...Object.values(LORAS).map((l) => l.file), 'lenovo_krea2.safetensors', 'Krea220Hitomi.safetensors'];
+const loraNames = (g) => Object.values(g).filter((n) => n.class_type === 'LoraLoaderModelOnly').map((n) => n.inputs.lora_name);
+const strength = (g, file) => Object.values(g).find((n) => n.class_type === 'LoraLoaderModelOnly' && n.inputs.lora_name === file)?.inputs.strength_model;
+const media = { description: 'x', width: 768, height: 1024 };
+
+for (const sc of SCENARIOS) {
+  test(`scenario ${sc.id}: filtro e token`, async () => {
+    const { card, state } = scenarioState(sc);
+    const { messages, idx, userText, reply } = scenarioMessages(sc);
+    const r = await engineerPhoto({ workflow: KREA, card, state, media: { ...media, description: sc.description }, messages, idx, userText, reply, user: USER, dryRun: true });
+    assert.equal(r.level, sc.expect.level, r.reason);
+    if ('hm' in sc.expect) assert.deepEqual(r.hm && { position: r.hm.position, angle: r.hm.angle }, sc.expect.hm);
+    assert.equal(r.charLora, !!sc.expect.trigger);
+  });
+}
+
+test('tetto chiuso: dice cosa sarebbe stata', () => {
+  const sc = SCENARIOS.find((s) => s.id === 'tetto-chiuso');
+  const { card, state } = scenarioState(sc);
+  const r = photoLevel({ card, state, userText: sc.messages[0].content });
+  assert.equal(r.level, 'neutral');
+  assert.match(r.reason, /^tetto/);
+  assert.match(r.reason, /esplicito/);
+});
+
+test('in esplicito Gemma vede gli ultimi 3 scambi, in normale solo il messaggio', async () => {
+  const sc = SCENARIOS.find((s) => s.id === 'esplicito-pov-prima');
+  const { card, state } = scenarioState(sc);
+  const { messages, idx, userText, reply } = scenarioMessages(sc);
+  const r = await engineerPhoto({ workflow: KREA, card, state, media, messages, idx, userText, reply, user: USER, dryRun: true });
+  assert.match(r.request, /cavalchi/);
+  assert.match(r.request, /PHOTO RULES \(explicit\)/);
+  assert.doesNotMatch(r.request, /PHOTO RULES \(normal\)/);
+  const n = SCENARIOS.find((s) => s.id === 'normale-bar');
+  const ns = scenarioState(n), nm = scenarioMessages(n);
+  const rn = await engineerPhoto({ workflow: KREA, ...ns, media, ...nm, user: USER, dryRun: true });
+  assert.match(rn.request, /mandami un selfie/);
+  assert.doesNotMatch(rn.request, /eccomi/);   // la risposta in normale non serve
+});
+
+test('riserva testuale: la descrizione non ripete il messaggio', async () => {
+  const sc = SCENARIOS.find((s) => s.id === 'sensuale-intimo');
+  const { card, state } = scenarioState(sc);
+  const { messages, idx, userText, reply } = scenarioMessages(sc);
+  const r = await engineerPhoto({ workflow: KREA, card, state, media: { ...media, description: `${userText}\n\n(reply: ${reply})` }, messages, idx, userText, reply, user: USER, fromText: true, dryRun: true });
+  assert.equal(r.request.split('fammi vedere').length - 1, 1);
+});
+
+test('Z-Image resta grezzo: niente Lenovo, niente etichetta del look', async () => {
+  const sc = SCENARIOS.find((s) => s.id === 'normale-bar');
+  const { card, state } = scenarioState({ ...sc, char: 'zimage' });
+  const r = await engineerPhoto({ workflow: ZIMAGE, card, state, media, ...scenarioMessages(sc), user: USER, dryRun: true });
+  assert.equal(r.lenovo, null);
+  assert.doesNotMatch(r.request, /\[look:/);
+  for (const level of ['neutral', 'explicit']) {
+    const g = structuredClone(ZIMAGE.graph);
+    const out = applyPhotoStack(g, { level, lenovo: true, lenovoFile: 'lenovo_z.safetensors', bodyLoras: [{ part: 'breast', name: 'b.safetensors', strength: 1.5 }], charLora: { file: 'Krea220Hitomi.safetensors', strength: 1 }, files: FILES });
+    assert.equal(out.lenovo, false);
+    assert.deepEqual(loraNames(g), []);
+  }
+});
+
+test('Krea: Lenovo sì/no, realismo del profilo, anti-rifiuto solo in esplicito', () => {
+  for (const level of ['neutral', 'sensual', 'explicit']) {
+    const g = structuredClone(KREA.graph);
+    const out = applyPhotoStack(g, { level, lenovo: true, files: FILES, prompt: 'a photo' });
+    assert.equal(out.lenovo, true);
+    assert.ok(loraNames(g).includes('lenovo_krea2.safetensors'));
+    assert.equal(loraNames(g).includes(LORAS.refusal.file), level === 'explicit', level);
+    assert.equal(strength(g, LORAS.realism31.file), PROFILE[level].loras.realism31);
+    assert.equal(loraNames(g).includes(LORAS.hmnsfw.file), false);   // senza token HMNSFW nel prompt
+  }
+  const off = structuredClone(KREA.graph);
+  applyPhotoStack(off, { level: 'neutral', lenovo: false, files: FILES });
+  assert.ok(!loraNames(off).includes('lenovo_krea2.safetensors'));
+});
+
+test('Krea esplicito: HMNSFW solo con i token, sampler e corpo scalato', () => {
+  const g = structuredClone(KREA.graph);
+  const out = applyPhotoStack(g, { level: 'explicit', lenovo: true, files: FILES, prompt: 'HMNSFW cowgirl, ANGLE_POV_ABOVE, a woman', bodyLoras: [{ part: 'breast', name: 'breast.safetensors', strength: 1.5 }] });
+  assert.ok(loraNames(g).includes(LORAS.hmnsfw.file));
+  assert.equal(strength(g, 'breast.safetensors'), 1.2);
+  assert.deepEqual(out.sampler, { steps: 12, scheduler: 'beta', cfg: 1 });
+  // la catena resta collegata: il KSampler usa l'ultimo nodo e ogni LoRA ha un modello esistente
+  for (const n of Object.values(g)) if (Array.isArray(n.inputs?.model)) assert.ok(g[n.inputs.model[0]], `nodo ${n.inputs.model[0]} mancante`);
+  const used = new Set(Object.values(g).map((n) => Array.isArray(n.inputs?.model) && String(n.inputs.model[0])).filter(Boolean));
+  assert.equal(Object.keys(g).filter((id) => g[id].class_type === 'LoraLoaderModelOnly' && !used.has(id)).length, 0, 'una LoRA non porta da nessuna parte');
+});
+
+test('variante Realism V2: sostituisce la 3.1; se non è installata resta la 3.1', () => {
+  const g = structuredClone(KREA.graph);
+  applyPhotoStack(g, { level: 'explicit', files: FILES, variant: 'realism-v2' });
+  assert.equal(strength(g, LORAS.realismV2.file), 1.5);
+  assert.ok(!loraNames(g).includes(LORAS.realism31.file));
+  const g2 = structuredClone(KREA.graph);
+  const out = applyPhotoStack(g2, { level: 'neutral', files: FILES.filter((f) => f !== LORAS.realismV2.file), variant: 'realism-v2' });
+  assert.ok(loraNames(g2).includes(LORAS.realism31.file));
+  assert.ok(out.missing.includes(LORAS.realismV2.file));
+  assert.deepEqual(out.loras.map((l) => l.key), ['realism31']);
+});
+
+test('LoRA del personaggio: agganciata e parola chiave in testa (dopo i token HMNSFW)', () => {
+  const g = structuredClone(KREA.graph);
+  const out = applyPhotoStack(g, { level: 'neutral', files: FILES, charLora: CHARACTERS.hitomi.lora });
+  assert.ok(loraNames(g).includes('Krea220Hitomi.safetensors'));
+  assert.ok(out.loras.some((l) => l.key === 'character'));
+  assert.equal(finishPrompt('a woman at her desk', { trigger: 'H1t0m1' }), 'H1t0m1, a woman at her desk');
+  assert.equal(finishPrompt('HMNSFW doggy, a woman', { hm: { position: 'cowgirl', angle: 'POV_ABOVE' }, trigger: 'H1t0m1' }), 'HMNSFW cowgirl, ANGLE_POV_ABOVE, H1t0m1, a woman');
+  assert.equal(normalizeCharLora({ file: '../x.safetensors' }), null);
+  assert.deepEqual(normalizeCharLora({ file: 'Krea220Hitomi.safetensors', trigger: 'H1t0m1', strength: '0.8' }), { file: 'Krea220Hitomi.safetensors', trigger: 'H1t0m1', strength: 0.8 });
+});
+
+test('LoRA non installate: si saltano senza rompere il grafo', () => {
+  const g = structuredClone(KREA.graph);
+  const out = applyPhotoStack(g, { level: 'explicit', lenovo: true, files: ['lenovo_krea2.safetensors'], prompt: 'HMNSFW cowgirl, a woman' });
+  assert.ok(out.missing.includes(LORAS.mystic.file));
+  assert.ok(loraNames(g).includes(LORAS.realism31.file));   // quella del workflow resta
+});
+
+test('HMNSFW: posizione, anal, angolo, terza persona', () => {
+  assert.deepEqual(hmTokens(['girati, ti voglio a pecorina nel culo']), { position: 'doggy_anal', angle: 'BEHIND', cum: false });
+  assert.deepEqual(hmTokens(['cavalcami di lato']), { position: 'cowgirl', angle: 'SIDE_PROFILE', cum: false });
+  assert.deepEqual(hmTokens(['missionario'], { together: false }), { position: 'missionary', angle: null, cum: false });
+  assert.equal(hmTokens(['una foto in terza persona, missionario']).angle, null);
+  assert.equal(hmTokens(['ciao come stai']), null);
+});
+
+test('Studio: filtro dalla richiesta, senza tetto', () => {
+  assert.equal(studioLevel('donna nuda sul letto').level, 'explicit');
+  assert.equal(studioLevel('ragazza in bikini in spiaggia').level, 'sensual');
+  assert.equal(studioLevel('un gatto su un divano').level, 'neutral');
+});
+
+test('scambi recenti: in ordine, con le risposte unite', () => {
+  const ms = [{ role: 'assistant', content: 'ciao' }, { role: 'user', content: 'a' }, { role: 'assistant', content: 'b' }, { role: 'assistant', content: 'c' }, { role: 'user', content: 'd' }, { role: 'assistant', content: 'e' }];
+  assert.deepEqual(recentExchanges(ms, 5, 2), [{ user: 'a', reply: 'b\nc' }, { user: 'd', reply: 'e' }]);
+});
+
+test('varianti: tutte valide sul catalogo', () => {
+  for (const [id, v] of Object.entries(VARIANTS)) {
+    for (const level of ['neutral', 'sensual', 'explicit']) {
+      for (const key of Object.keys(profileFor(level, id).loras)) assert.ok(LORAS[key], `${id}/${level}: ${key}`);
+    }
+    assert.ok(v.label);
+  }
+});

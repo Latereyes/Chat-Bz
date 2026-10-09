@@ -6,7 +6,9 @@
   "description": "ChatBz 2: personaggi locali (Ollama + ComfyUI) in un'unica relazione continua, con foto e video",
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning server.js",
-    "dev": "node --disable-warning=ExperimentalWarning --watch server.js"
+    "dev": "node --disable-warning=ExperimentalWarning --watch server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test",
+    "prova-foto": "node --disable-warning=ExperimentalWarning tools/prova-foto.js"
   },
   "engines": {
     "node": ">=22.13"

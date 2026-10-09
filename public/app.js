@@ -783,6 +783,10 @@ function fillCard(card) {
   cf.social.checked = card.social !== false;
   cardBody = card.body ? { look: card.look, body: card.body } : null;
   cardManual = card.bodyManual ? { ...card.bodyManual } : null;
+  cf.loraFile.value = card.lora?.file || '';
+  cf.loraTrigger.value = card.lora?.trigger || '';
+  cf.loraStrength.value = card.lora?.strength ?? 1;
+  $('#cm-lora-list').innerHTML = (state.config?.loras || []).map((f) => `<option value="${esc(f)}">`).join('');
   showBody();
 }
 function readCard() {
@@ -793,6 +797,7 @@ function readCard() {
   out.social = cf.social.checked;
   if (cardBody && cardBody.look === out.look) out.body = cardBody.body;
   out.bodyManual = cardManual;
+  out.lora = cf.loraFile.value.trim() ? { file: cf.loraFile.value.trim(), trigger: cf.loraTrigger.value.trim(), strength: Number(cf.loraStrength.value) || 1 } : null;
   return out;
 }
 cf.look.addEventListener('input', showBody);
@@ -1014,7 +1019,7 @@ function renderMedia(msg, md) {
   const grid = $('.media-grid', node);
   let card = grid.querySelector(`[data-id="${md.id}"]`);
   const ratio = (md.width || 1) / (md.height || 1);
-  const sig = `${md.status}|${md.url || ''}`;
+  const sig = `${md.status}|${md.url || ''}|${md.level || ''}|${(md.stack || []).length}`;
 
   if (!card) {
     card = document.createElement('div');
@@ -1044,6 +1049,7 @@ function renderMedia(msg, md) {
       <div class="media-head">${md.sourceUrl ? `<img class="src-thumb" src="${esc(md.sourceUrl)}" alt="" title="Immagine di partenza">` : icon(md.type, 15)}<span class="name">${esc(md.workflowName || '')}</span><span class="sep">·</span><span class="meta">${esc(meta)}</span><span class="grow"></span><span class="st">${statusText(md)}</span></div>
       ${frame ? `<div class="media-frame" style="aspect-ratio:${md.width}/${md.height}">${frame}</div>` : ''}
       ${md.status === 'error' ? `<div class="media-error">${esc(md.error || 'Errore sconosciuto')}</div>` : ''}
+      ${mediaInfo(md)}
       <div class="media-prompt" ${showPrompt ? '' : 'hidden'}><pre>${esc(md.prompt || md._draft || '')}</pre></div>
       ${mediaActions(md)}`;
   } else {
@@ -1052,6 +1058,16 @@ function renderMedia(msg, md) {
   // l'etichetta [look: …] con cui Gemma sceglie Lenovo non fa parte del prompt
   if (md.status === 'engineering') $('.media-prompt pre', card).textContent = (md._draft || md.prompt || '').replace(/\[\s*look\s*:[^\]]*\]?\s*$/i, '').trimEnd();
   if (md.status === 'running') patchProgress(card, md);
+}
+
+// Filtro della foto e perché, LoRA e Lenovo: si capisce subito perché è uscita così
+const LEVEL_LABEL = { neutral: 'Normale', sensual: 'Sensuale', explicit: 'Esplicito' };
+function mediaInfo(md) {
+  if (md.type !== 'image' || !md.level) return '';
+  const loras = [...(md.stack || []).map((l) => `${l.label} ${l.strength}`), md.lenovoUsed && 'Lenovo', ...(md.loras?.length ? ['corpo'] : [])].filter(Boolean);
+  const hm = md.hm ? ` · HMNSFW ${md.hm.position}${md.hm.angle ? ` ${md.hm.angle}` : ''}` : '';
+  const variant = md.variant ? ` · variante ${md.variant}` : '';
+  return `<div class="media-level" title="${esc(loras.join(', '))}"><b>${LEVEL_LABEL[md.level] || md.level}</b>${md.levelReason ? ` · ${esc(md.levelReason)}` : ''}${esc(variant)}${esc(hm)}${loras.length ? ` · ${esc(loras.join(', '))}` : ''}</div>`;
 }
 
 function mediaActions(md) {
@@ -1194,7 +1210,7 @@ async function prepareImage(file) {
 
 // ---------- Studio immagini (l'assistente immagini, separato dai personaggi) ----------
 const convPath = () => (state.conv?.studio ? '/api/studio' : `/api/characters/${state.conv.id}`);
-const so = { box: $('#studio-opts'), lenovo: $('#so-lenovo'), engine: $('#so-engine'), aspect: $('#so-aspect'), char: $('#so-char'), raw: $('#so-raw'), video: $('#so-video'), seed: $('#so-seed'), body: $('#so-body'), bodyBox: $('#so-body-box') };
+const so = { box: $('#studio-opts'), lenovo: $('#so-lenovo'), level: $('#so-level'), variant: $('#so-variant'), engine: $('#so-engine'), aspect: $('#so-aspect'), char: $('#so-char'), raw: $('#so-raw'), video: $('#so-video'), seed: $('#so-seed'), body: $('#so-body'), bodyBox: $('#so-body-box') };
 const SO_ASPECTS = { '3:4': '3:4 verticale', '9:16': '9:16 storia', '1:1': '1:1 quadrato', '4:3': '4:3 orizzontale', '16:9': '16:9 panoramico', '2:3': '2:3 ritratto', '3:2': '3:2 foto' };
 
 function fillStudioOpts() {
@@ -1208,6 +1224,10 @@ function fillStudioOpts() {
   so.char.value = state.convs.some((c) => c.id === p.characterId) ? p.characterId : '';
   so.raw.checked = !!p.raw;
   so.lenovo.value = ['on', 'off'].includes(p.lenovo) ? p.lenovo : '';
+  so.level.value = ['neutral', 'sensual', 'explicit'].includes(p.level) ? p.level : '';
+  const variants = state.config?.options?.kreaVariants || {};
+  so.variant.innerHTML = Object.entries(variants).map(([v, l]) => `<option value="${esc(v)}">${v === 'base' ? 'LoRA: profilo' : esc(l)}</option>`).join('');
+  so.variant.value = variants[p.variant] ? p.variant : 'base';
   so.video.checked = !!p.video;
   so.body.checked = !!p.bodyOn;
   // Cursori delle LoRA del corpo: limiti dalle taglie (stesse forze delle schede), 0 = LoRA spenta
@@ -1229,7 +1249,7 @@ function syncVideoOpt() {
 const bodyValues = () => Object.fromEntries($$('input[data-part]', so.bodyBox).map((i) => [i.dataset.part, Number(i.value)]));
 so.bodyBox.addEventListener('input', (e) => { const i = e.target.closest('input[data-part]'); if (i) i.nextElementSibling.textContent = i.value; });
 function readStudioOpts() {
-  return { engine: so.engine.value, aspect: so.aspect.value, characterId: so.char.value, lenovo: so.lenovo.value, raw: so.raw.checked, video: so.video.checked, seed: so.seed.value.trim(), body: so.body.checked ? bodyValues() : null };
+  return { engine: so.engine.value, aspect: so.aspect.value, characterId: so.char.value, lenovo: so.lenovo.value, level: so.level.value, variant: so.variant.value, raw: so.raw.checked, video: so.video.checked, seed: so.seed.value.trim(), body: so.body.checked ? bodyValues() : null };
 }
 so.box.addEventListener('change', () => {
   const { seed, body, ...p } = readStudioOpts();
@@ -1250,7 +1270,7 @@ function bodyTag(b) {
 }
 function studioTag(o) {
   const names = Object.fromEntries((state.config?.workflows || []).map((w) => [w.id, w.name]));
-  const bits = [o.engineUsed ? names[o.engineUsed] || o.engineUsed : o.engine ? names[o.engine] || o.engine : 'Automatico', o.aspect, o.characterName, o.lenovo === true && 'con Lenovo', o.lenovo === false && 'senza Lenovo', o.raw && 'prompt diretto', o.video && '+ video', o.seed != null && `seed ${o.seed}`, o.body && `fisico: ${bodyTag(o.body)}`].filter(Boolean);
+  const bits = [o.engineUsed ? names[o.engineUsed] || o.engineUsed : o.engine ? names[o.engine] || o.engine : 'Automatico', o.aspect, o.characterName, o.lenovo === true && 'con Lenovo', o.lenovo === false && 'senza Lenovo', o.level && `filtro ${LEVEL_LABEL[o.level].toLowerCase()}`, o.variant && `LoRA: ${state.config?.options?.kreaVariants?.[o.variant] || o.variant}`, o.raw && 'prompt diretto', o.video && '+ video', o.seed != null && `seed ${o.seed}`, o.body && `fisico: ${bodyTag(o.body)}`].filter(Boolean);
   return `<div class="tag">${icon('spark', 13)}${esc(bits.join(' · '))}</div>`;
 }
 
