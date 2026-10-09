@@ -124,6 +124,5 @@ Una conversazione con Hitomi (o con un personaggio Krea in confidenza) che sale 
 
 ## 5. Unione in `main`
 
-Quando la matrice è tutta a posto e la chat vera convince:
-- [ ] `npm test` verde, profilo definitivo in `src/krea2.js`, tabella sopra compilata.
-- [ ] Togli la bozza dalla PR (Ready for review) e unisci.
+- [x] Unito in `main` il 9 ottobre (PR Latereyes/Chat-Bz#14), su richiesta di Andrea: il filtro automatico e il profilo di partenza funzionano bene nell'uso vero.
+- [ ] La taratura (giri A-D) continua da `main`: ogni scelta nuova del profilo è un piccolo branch con il suo commit (`src/krea2.js` e la tabella sopra).

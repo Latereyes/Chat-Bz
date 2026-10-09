@@ -40,6 +40,6 @@ Personaggi AI locali: chat con Gemma (Ollama) e foto e video con ComfyUI, sulla 
 Il lavoro di adesso è in `piano/prossimi-passi.md`: segui quella lista, spunta le caselle e compila la tabella delle scelte. Il contesto è in `piano/piano-immagini.md`. Per i giri di prova c'è la skill `taratura-foto`. Nello Studio i menu «Filtro» e «LoRA Krea» permettono di provare una variante su una singola foto.
 
 ## Git
-- Lavora su un branch, non su `main`. La PR delle foto è Latereyes/Chat-Bz#14 (branch `claude/admiring-goldberg-rgvept`).
+- Lavora su un branch, non su `main`. Il lavoro sulle foto (PR Latereyes/Chat-Bz#14) è già in `main`: la taratura continua con piccoli branch nuovi partendo da `main`.
 - Commit piccoli, con un titolo in italiano che dice cosa cambia per chi usa l'app.
 - Non fare push né aprire o unire PR senza che Andrea lo chieda.
