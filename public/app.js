@@ -118,7 +118,9 @@ const el = {
 };
 
 const initial = (name) => esc((name || '?').trim().slice(0, 1).toUpperCase());
-const avatarHtml = (c, cls = '') => (c?.studio ? `<span class="ava ava-letter ${cls}">${icon('spark', 16)}</span>` : c?.avatarUrl
+// Chat a due: le due foto profilo una sopra l'altra
+const duoAva = (c, cls) => `<span class="ava ava-duo ${cls}">${(c.members || []).slice(0, 2).map((m) => (m.avatarUrl ? `<img src="${esc(m.avatarUrl)}" alt="">` : `<i>${initial(m.name)}</i>`)).join('')}</span>`;
+const avatarHtml = (c, cls = '') => (c?.group ? duoAva(c, cls) : c?.studio ? `<span class="ava ava-letter ${cls}">${icon('spark', 16)}</span>` : c?.avatarUrl
   ? `<img class="ava ${cls}" src="${esc(c.avatarUrl)}" alt="">`
   : `<span class="ava ava-letter ${cls}">${initial(c?.name)}</span>`);
 
@@ -133,6 +135,7 @@ $('#btn-collapse').onclick = () => setSidebar(false);
 $('#btn-open').onclick = () => setSidebar(true);
 $('#scrim').onclick = () => setSidebar(false);
 $('#btn-new').onclick = () => { openCharModal(null); if (isMobile()) setSidebar(false); };
+$('#btn-new-group').onclick = () => { openGroupModal(null); if (isMobile()) setSidebar(false); };
 $('#btn-home').onclick = () => { showHome(); if (isMobile()) setSidebar(false); };
 $('#btn-gallery').onclick = () => { openGallery(); if (isMobile()) setSidebar(false); };
 $('#btn-studio').onclick = () => { openStudio(); if (isMobile()) setSidebar(false); };
@@ -149,7 +152,9 @@ const sceneLabel = (s) => (s ? `${s.presence === 'together' ? 'Insieme' : 'A dis
 
 // Nella lista dei messaggi compaiono solo le chat iniziate dall'utente (oltre al saluto), dalla più recente.
 // Le altre restano raggiungibili da Personaggi e dal profilo; la chat aperta resta visibile finché ci sei dentro.
-const sortedConvs = () => [...state.convs].sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
+// personaggi e chat a due (state.groups) nella stessa lista
+const allConvs = () => [...state.convs, ...(state.groups || [])];
+const sortedConvs = () => allConvs().sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
 function renderConvList() {
   const shown = sortedConvs().filter((c) => c.started || state.conv?.id === c.id);
   el.convList.innerHTML = shown.map((c) => `
@@ -168,7 +173,9 @@ el.convList.addEventListener('click', (e) => {
 });
 
 async function loadConvs() {
-  state.convs = await api('/api/characters').catch(() => []);
+  const all = await api('/api/characters').catch(() => []);
+  state.convs = all.filter((c) => !c.group);
+  state.groups = all.filter((c) => c.group);
   renderConvList();
   if (state.view === 'home') renderHome();
   if (state.view === 'social') renderSide();
@@ -210,11 +217,15 @@ function renderHome() {
     : 'Crea il tuo primo personaggio';
   $('#char-grid').innerHTML = state.convs.map((c) => `
     <button class="char-tile" data-id="${c.id}">${avatarHtml(c, 'big')}<b>${esc(c.name)}</b><small>${esc(sceneLabel(c.scene))}</small></button>`).join('')
-    + `<button class="char-tile new" data-new>${icon('plus', 28)}<b>Nuovo personaggio</b><small>da un'idea in una frase</small></button>`;
+    + (state.groups || []).map((g) => `
+    <button class="char-tile" data-id="${g.id}">${avatarHtml(g, 'big')}<b>${esc(g.name)}</b><small>Chat a due · ${esc(sceneLabel(g.scene))}</small></button>`).join('')
+    + `<button class="char-tile new" data-new>${icon('plus', 28)}<b>Nuovo personaggio</b><small>da un'idea in una frase</small></button>`
+    + (state.convs.length >= 2 ? `<button class="char-tile new" data-new-group>${icon('users', 28)}<b>Nuova chat a due</b><small>tu e due personaggi insieme</small></button>` : '');
 }
 $('#char-grid').onclick = (e) => {
   const t = e.target.closest('.char-tile'); if (!t) return;
-  if (t.dataset.new !== undefined) openCharModal(null); else openConv(t.dataset.id);
+  if (t.dataset.newGroup !== undefined) openGroupModal(null);
+  else if (t.dataset.new !== undefined) openCharModal(null); else openConv(t.dataset.id);
 };
 
 async function openConv(id, push = true) {
@@ -259,7 +270,9 @@ $('#tabbar').onclick = (e) => {
 function renderHead() {
   const c = state.conv;
   el.head.hidden = !c;
-  $('#btn-char-social').hidden = !c || !!c.studio;
+  $('#btn-char-social').hidden = !c || !!c.studio || !!c.group;
+  // nelle chat a due per ora niente video
+  $('[data-tool="video"]').hidden = !!c?.group;
   if (!c) { $('#btn-studio-clear').hidden = true; return; }
   $('#char-ava').innerHTML = avatarHtml(c);
   $('#char-name').textContent = c.name;
@@ -270,7 +283,7 @@ function renderHead() {
   el.sceneChip.innerHTML = `${icon(s?.presence === 'together' ? 'heart' : 'pin', 13)}<span>${esc(sceneLabel(s))}</span>`;
   el.sceneChip.classList.toggle('together', s?.presence === 'together');
 }
-$('#char-who').onclick = () => state.conv && !state.conv.studio && openCharModal(state.conv);
+$('#char-who').onclick = () => state.conv && !state.conv.studio && (state.conv.group ? openGroupModal(state.conv) : openCharModal(state.conv));
 el.sceneChip.onclick = (e) => {
   e.stopPropagation();
   const s = state.conv?.scene || {};
@@ -710,7 +723,7 @@ async function sendMessage(text, tool) {
     for (const m of [out.userMessage, out.message]) if (!findMsg(m.id)) renderMessage(upsertMsg(m));
     refreshTools();
     scrollToBottom(true);
-    const mine = state.convs.find((c) => c.id === state.conv?.id);
+    const mine = allConvs().find((c) => c.id === state.conv?.id);
     if (mine) { mine.started = true; mine.lastMessageAt = Date.now(); renderConvList(); }
   } catch (err) {
     if (state.conv) state.conv.running = false;
@@ -733,7 +746,7 @@ function fillOptions() {
   }
 }
 
-const CARD_FIELDS = ['name', 'age', 'gender', 'style', 'personality', 'life', 'speech', 'boundaries', 'look', 'relation', 'pace', 'intimacy', 'startPresence', 'startPlace', 'greeting'];
+const CARD_FIELDS = ['name', 'age', 'gender', 'style', 'personality', 'life', 'speech', 'boundaries', 'look', 'relation', 'pace', 'intimacy', 'startPresence', 'startPlace', 'greeting', 'socialHot'];
 // Taglie del corpo (→ LoRA delle foto): automatiche, valgono solo per l'aspetto da cui sono state ricavate
 let cardBody = null;
 function bodySummary(card) {
@@ -992,6 +1005,54 @@ $('#rel-body').onclick = async (e) => {
 };
 cm.addEventListener('click', (e) => { if (e.target === cm || e.target.closest('[data-close]')) cm.hidden = true; });
 
+// ---------- Chat a due: tu e due personaggi ----------
+const gm = $('#group-modal'), gf = $('#group-form');
+let gmGroup = null;
+function openGroupModal(g) {
+  gmGroup = g;
+  if (!g && state.convs.length < 2) { alert('Per una chat a due servono almeno due personaggi.'); return; }
+  const opts = (sel) => state.convs.map((c) => `<option value="${esc(c.id)}"${c.id === sel ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
+  const [a, b] = g ? g.members.map((m) => m.id) : [state.convs[0].id, state.convs[1].id];
+  gf.a.innerHTML = opts(a);
+  gf.b.innerHTML = opts(b);
+  gf.a.disabled = gf.b.disabled = !!g;   // i due personaggi di una chat esistente non cambiano
+  gf.name.value = g?.name || '';
+  gf.presence.value = 'apart';
+  gf.place.value = '';
+  $('#gm-title').textContent = g ? g.name : 'Nuova chat a due';
+  $('#gm-start').hidden = !!g;
+  $('#gm-manage').hidden = !g;
+  $('#gm-save').textContent = g ? 'Salva' : 'Crea e inizia';
+  gm.hidden = false;
+}
+gm.addEventListener('click', (e) => { if (e.target === gm || e.target.closest('[data-close]')) gm.hidden = true; });
+gf.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    if (gmGroup) {
+      const g = await api(`/api/characters/${gmGroup.id}`, { method: 'PATCH', body: { name: gf.name.value } });
+      if (state.conv?.id === g.id) { state.conv.name = g.name; renderHead(); setTitle(g.name); }
+      gm.hidden = true;
+      return loadConvs();
+    }
+    if (gf.a.value === gf.b.value) return alert('Scegli due personaggi diversi.');
+    const g = await api('/api/groups', { body: { members: [gf.a.value, gf.b.value], name: gf.name.value, presence: gf.presence.value, place: gf.place.value } });
+    gm.hidden = true;
+    await loadConvs();
+    openConv(g.id);
+  } catch (err) { alert(err.message); }
+});
+$('#gm-reset').onclick = async () => {
+  if (!gmGroup || !confirm('Cancellare tutti i messaggi di questa chat a due? I personaggi e le loro chat restano.')) return;
+  try { await api(`/api/characters/${gmGroup.id}/reset`, { method: 'POST' }); gm.hidden = true; openConv(gmGroup.id, false); }
+  catch (err) { alert(err.message); }
+};
+$('#gm-delete').onclick = async () => {
+  if (!gmGroup || !confirm(`Eliminare la chat «${gmGroup.name}»? I due personaggi e le loro chat restano.`)) return;
+  try { await api(`/api/characters/${gmGroup.id}`, { method: 'DELETE' }); gm.hidden = true; await loadConvs(); showHome(); }
+  catch (err) { alert(err.message); }
+};
+
 // ---------- Media ----------
 const PHASES = {
   'Modello': 'Carico il modello', 'Text encoder': 'Carico il text encoder', 'Video VAE': 'Carico il VAE', 'Audio VAE': 'Carico il VAE audio',
@@ -1080,8 +1141,8 @@ function mediaActions(md) {
     ${b('regenerate', 'refresh', md.status === 'done' ? 'Rigenera' : 'Riprova')}
     ${md.prompt ? b('prompt', 'text', 'Prompt') : ''}
     <span class="grow"></span>
-    ${md.status === 'done' && md.type === 'image' && !state.conv?.studio ? b('avatar', 'user', 'Profilo') : ''}
-    ${md.status === 'done' && md.type === 'image' ? b('animate', 'video', 'Anima') : ''}
+    ${md.status === 'done' && md.type === 'image' && !state.conv?.studio && !state.conv?.group ? b('avatar', 'user', 'Profilo') : ''}
+    ${md.status === 'done' && md.type === 'image' && !state.conv?.group ? b('animate', 'video', 'Anima') : ''}
     ${md.status === 'done' && md.type === 'image' && state.conv?.studio ? b('newchar', 'user', 'Crea personaggio') : ''}
     ${md.status === 'done' && md.type === 'image' && state.conv?.studio && md.characterId && state.convs.some((c) => c.id === md.characterId) ? b('avatar', 'user', 'Foto profilo') : ''}
     ${md.status === 'done' && md.type === 'image' ? b('zoom', 'open', '') : ''}
@@ -1210,7 +1271,7 @@ async function prepareImage(file) {
 
 // ---------- Studio immagini (l'assistente immagini, separato dai personaggi) ----------
 const convPath = () => (state.conv?.studio ? '/api/studio' : `/api/characters/${state.conv.id}`);
-const so = { box: $('#studio-opts'), lenovo: $('#so-lenovo'), level: $('#so-level'), variant: $('#so-variant'), engine: $('#so-engine'), aspect: $('#so-aspect'), char: $('#so-char'), raw: $('#so-raw'), video: $('#so-video'), seed: $('#so-seed'), body: $('#so-body'), bodyBox: $('#so-body-box') };
+const so = { char2: $('#so-char2'), char2Wrap: $('#so-char2-wrap'), box: $('#studio-opts'), lenovo: $('#so-lenovo'), level: $('#so-level'), variant: $('#so-variant'), engine: $('#so-engine'), aspect: $('#so-aspect'), char: $('#so-char'), raw: $('#so-raw'), video: $('#so-video'), seed: $('#so-seed'), body: $('#so-body'), bodyBox: $('#so-body-box') };
 const SO_ASPECTS = { '3:4': '3:4 verticale', '9:16': '9:16 storia', '1:1': '1:1 quadrato', '4:3': '4:3 orizzontale', '16:9': '16:9 panoramico', '2:3': '2:3 ritratto', '3:2': '3:2 foto' };
 
 function fillStudioOpts() {
@@ -1222,6 +1283,7 @@ function fillStudioOpts() {
   so.engine.value = engines.some((w) => w.id === p.engine) ? p.engine : '';
   so.aspect.value = SO_ASPECTS[p.aspect] ? p.aspect : '3:4';
   so.char.value = state.convs.some((c) => c.id === p.characterId) ? p.characterId : '';
+  fillChar2(p.characterId2);
   so.raw.checked = !!p.raw;
   so.lenovo.value = ['on', 'off'].includes(p.lenovo) ? p.lenovo : '';
   so.level.value = ['neutral', 'sensual', 'explicit'].includes(p.level) ? p.level : '';
@@ -1239,6 +1301,14 @@ function fillStudioOpts() {
   }).join('') + '<small class="hint">LoRA del corpo con Krea 2; con Z-Image le proporzioni vanno nel prompt a parole (le LoRA rompono la foto). Con altri motori si passa a quello del personaggio. Sostituiscono il fisico del personaggio.</small>';
   syncVideoOpt();
 }
+/** Secondo personaggio nella foto: solo dopo aver scelto il primo, e diverso da lui. */
+function fillChar2(value = so.char2.value) {
+  const others = state.convs.filter((c) => c.id !== so.char.value);
+  so.char2.innerHTML = '<option value="">Con: nessuno</option>' + others.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  so.char2.value = others.some((c) => c.id === value) ? value : '';
+  so.char2Wrap.hidden = !so.char.value;
+}
+so.char.addEventListener('change', () => fillChar2());
 /** Con un motore video la richiesta è già un video: «Anche video» non serve. */
 function syncVideoOpt() {
   const video = (state.config?.workflows || []).some((w) => w.id === so.engine.value && w.type === 'video');
@@ -1249,7 +1319,7 @@ function syncVideoOpt() {
 const bodyValues = () => Object.fromEntries($$('input[data-part]', so.bodyBox).map((i) => [i.dataset.part, Number(i.value)]));
 so.bodyBox.addEventListener('input', (e) => { const i = e.target.closest('input[data-part]'); if (i) i.nextElementSibling.textContent = i.value; });
 function readStudioOpts() {
-  return { engine: so.engine.value, aspect: so.aspect.value, characterId: so.char.value, lenovo: so.lenovo.value, level: so.level.value, variant: so.variant.value, raw: so.raw.checked, video: so.video.checked, seed: so.seed.value.trim(), body: so.body.checked ? bodyValues() : null };
+  return { engine: so.engine.value, aspect: so.aspect.value, characterId: so.char.value, characterId2: so.char.value ? so.char2.value : '', lenovo: so.lenovo.value, level: so.level.value, variant: so.variant.value, raw: so.raw.checked, video: so.video.checked, seed: so.seed.value.trim(), body: so.body.checked ? bodyValues() : null };
 }
 so.box.addEventListener('change', () => {
   const { seed, body, ...p } = readStudioOpts();
@@ -1270,7 +1340,7 @@ function bodyTag(b) {
 }
 function studioTag(o) {
   const names = Object.fromEntries((state.config?.workflows || []).map((w) => [w.id, w.name]));
-  const bits = [o.engineUsed ? names[o.engineUsed] || o.engineUsed : o.engine ? names[o.engine] || o.engine : 'Automatico', o.aspect, o.characterName, o.lenovo === true && 'con Lenovo', o.lenovo === false && 'senza Lenovo', o.level && `filtro ${LEVEL_LABEL[o.level].toLowerCase()}`, o.variant && `LoRA: ${state.config?.options?.kreaVariants?.[o.variant] || o.variant}`, o.raw && 'prompt diretto', o.video && '+ video', o.seed != null && `seed ${o.seed}`, o.body && `fisico: ${bodyTag(o.body)}`].filter(Boolean);
+  const bits = [o.engineUsed ? names[o.engineUsed] || o.engineUsed : o.engine ? names[o.engine] || o.engine : 'Automatico', o.aspect, o.characterName2 ? `${o.characterName} e ${o.characterName2}` : o.characterName, o.lenovo === true && 'con Lenovo', o.lenovo === false && 'senza Lenovo', o.level && `filtro ${LEVEL_LABEL[o.level].toLowerCase()}`, o.variant && `LoRA: ${state.config?.options?.kreaVariants?.[o.variant] || o.variant}`, o.raw && 'prompt diretto', o.video && '+ video', o.seed != null && `seed ${o.seed}`, o.body && `fisico: ${bodyTag(o.body)}`].filter(Boolean);
   return `<div class="tag">${icon('spark', 13)}${esc(bits.join(' · '))}</div>`;
 }
 

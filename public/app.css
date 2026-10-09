@@ -803,3 +803,9 @@ body:not(.is-admin) .admin-only { display: none; }
 .cm-avatar .hint { flex-basis: 100%; margin: 0; }
 .cm-manual { margin: -4px 0 12px; }
 .cm-manual .check { margin-bottom: 6px; }
+
+/* Chat a due: le due foto profilo una sopra l'altra, nello spazio di un avatar */
+.ava-duo { position: relative; display: block; background: none; overflow: visible; }
+.ava-duo > img, .ava-duo > i { position: absolute; width: 68%; height: 68%; border-radius: 50%; object-fit: cover; border: 2px solid var(--bg-elev); background: var(--accent-soft); color: var(--accent-text); font-style: normal; font-weight: 600; font-size: .7em; display: grid; place-items: center; }
+.ava-duo > :first-child { left: 0; top: 0; }
+.ava-duo > :nth-child(2) { right: 0; bottom: 0; }

@@ -138,8 +138,14 @@ export const CONTENT = {
 
 const REAL = 'A real phone photo of a real moment: relaxed real body language, ordinary surroundings and available light, slightly imperfect framing. Plain words for light and framing (close-up, from slightly above, soft window light); never name cameras, lenses or f-stops; never artistic, cinematic or editorial.';
 
-function framing({ together, man, level }) {
+function framing({ together, man, level, two }) {
   const she = man ? 'He' : 'She', self = man ? 'himself' : 'herself';
+  if (two) {
+    if (together && level === 'explicit') return "Point of view: unless the user asks otherwise, the viewer's own eyes or phone (POV): the viewer is with both of them, so only the parts of the viewer's body that would really be in frame appear, never the viewer's face. A third-person view only if the user asks for it.";
+    return together
+      ? 'Framing: both of them in the frame, taken a moment ago with a phone by the person they are with (the viewer), or a selfie of the two of them if the conversation says so.'
+      : 'Framing: the two of them are together and take a selfie of both for the person they are texting (arm\'s length or a mirror selfie), unless the user asks for another framing.';
+  }
   if (together) {
     return level === 'explicit'
       ? "Point of view: unless the user asks otherwise, the viewer's own eyes or phone (POV): the viewer is the partner, so only the parts of the viewer's body that would really be in frame from their eyes appear (hands, arms, legs, torso, genitals when the position puts them in view), never the viewer's face. A third-person view of both only if the user asks for it."
@@ -149,15 +155,17 @@ function framing({ together, man, level }) {
 }
 
 /** Il blocco di regole del filtro, scritto per intero (niente regole impilate da più parti). */
-function rules({ level, together, man, family, hm }) {
+function rules({ level, together, man, family, hm, two = false }) {
+  const body = two ? 'their bodies' : man ? 'his body' : 'her body';
   if (level === 'explicit') {
     return [
       'PHOTO RULES (explicit):',
       `- ${CONTENT.explicit}`,
       "- The USER's directions lead: the position, point of view, framing and what is visible, as said in the conversation above, even if said a few messages ago. Translate them literally; never replace a requested position or point of view with a different or softer one. The character's description only fills the gaps.",
       '- Position names are fine and help (cowgirl, reverse cowgirl, missionary, doggystyle, blowjob, handjob...).',
-      `- Structure, overriding the guide: shot type and point of view first, then the position and the sexual action, then ${man ? 'his' : 'her'} body and what is exposed, then the place in one short sentence, then the light. Every sentence describes something visible: no mood words, no metaphors, no poetic adjectives.`,
-      `- ${framing({ together, man, level })}`,
+      `- Structure, overriding the guide: shot type and point of view first, then the position and the sexual action${two ? ' (who does what with whom)' : ''}, then ${body} and what is exposed, then the place in one short sentence, then the light. Every sentence describes something visible: no mood words, no metaphors, no poetic adjectives.`,
+      two ? '- Keep the two people clearly distinct: say for each one where they are in the frame and what they look like, so their faces and bodies do not blend.' : null,
+      `- ${framing({ together, man, level, two })}`,
       hm?.cum ? '- Finish: describe it plainly as cum, thick white liquid, exactly where it is on the face or body.' : null,
       `- ${REAL}`,
       `- Length: ${hm ? '60-120' : '60-160'} words.`,
@@ -169,10 +177,11 @@ function rules({ level, together, man, family, hm }) {
     level === 'sensual'
       ? "- The character's description leads, together with the user's directions (pose, outfit, framing): if the user asks for something specific, show it."
       : "- The character's description leads; the user's message only adds details (pose, framing) if it asks for them.",
-    `- ${framing({ together, man, level })}`,
+    two ? '- Keep the two people clearly distinct: say for each one where they are in the frame and what they look like, so their faces do not blend.' : null,
+    `- ${framing({ together, man, level, two })}`,
     `- ${REAL} Not posing like a model unless the request asks for a posed photo.`,
-    family === 'zimage' ? '- Length and order: as in the guide.' : '- Length: 60-140 words, as in the guide.',
-  ].join('\n');
+    family === 'zimage' ? '- Length and order: as in the guide.' : `- Length: ${two ? '80-170' : '60-140'} words, as in the guide.`,
+  ].filter(Boolean).join('\n');
 }
 
 // Lenovo (look amatoriale) scelto da Gemma con un'etichetta finale; se non la scrive resta acceso
@@ -237,6 +246,79 @@ export async function engineerPhoto({ workflow, card, state, media, messages, id
   return result;
 }
 
+// ---------- Foto con due personaggi (chat a due e Studio) ----------
+
+const ORDER = { neutral: 0, sensual: 1, explicit: 2 };
+
+/**
+ * Filtro di una foto con due personaggi: vale il più basso dei due (ognuno ha il suo tetto e il suo rapporto con te).
+ * states: lo stato di ciascuno; scene: la scena condivisa.
+ */
+export function duoLevel({ cards, states, scene, userText = '', reply = '' }) {
+  const all = cards.map((card, i) => ({ card, ...photoLevel({ card, state: { ...states[i], scene }, userText, reply }) }));
+  const low = all.reduce((a, b) => (ORDER[b.level] < ORDER[a.level] ? b : a));
+  const capped = all.some((x) => x.level !== low.level);
+  return { level: low.level, reason: capped ? `${low.card.name}: ${low.reason}` : low.reason };
+}
+
+/** Richiesta al prompt engineer per una foto dei due personaggi insieme. fromImage: grafo «due foto profilo» (Qwen). */
+export function duoPhotoRequest({ cards, scene = {}, media, level, exchanges = [], user, family, hm, fromText = false, fromImage = false, now = new Date() }) {
+  const together = scene.presence === 'together';
+  const when = now.toLocaleString('en-GB', { weekday: 'long', hour: '2-digit', minute: '2-digit' });
+  const name = user?.name || 'User';
+  const people = cards.map((card, i) => {
+    const fig = figureText(card);
+    return `Person ${i + 1}${fromImage ? ` (input image ${i + 1})` : ''}: ${WHO(card)}. Appearance (keep it exactly): ${visualSignature(card.look, level) || '(not specified)'}${fig ? ` Figure: ${fig}${level === 'neutral' ? ', visible through the clothes' : ''}.` : ''}`;
+  });
+  const convo = exchanges.map((e) => [
+    e.user ? `${name}: «${clip(e.user, 700)}»` : null,
+    e.reply && level !== 'neutral' ? `«${clip(e.reply, 700)}»` : null,
+  ].filter(Boolean).join('\n')).filter(Boolean).join('\n');
+  return [
+    'Subjects: two adults in the same photo.',
+    ...people,
+    fromImage ? 'The input images are only for identity (faces, hair, bodies): describe outfits and a scene that fit this moment, not the clothes or background of the input images.' : null,
+    `Situation: ${together ? 'in person with the viewer' : 'the two of them together, texting the viewer'}${scene.place ? `, at ${scene.place}` : ''}${scene.activity ? `, ${scene.activity}` : ''}. Local time: ${when}.${scene.outfit ? ` Currently wearing: ${scene.outfit}.` : ''}`,
+    convo ? `Conversation (most recent last; it may be in Italian; their replies are labelled with their names):\n${convo}` : null,
+    fromText ? 'What the photo should show: what the latest message asks for, in this situation.' : `What the photo should show: ${media.description}`,
+    rules({ level, together, family, hm, two: true }),
+    `Output format: ${media.width}x${media.height}.`,
+    family && hasLenovo(family) ? LOOK_TAG : null,
+    'Write the final prompt now.',
+  ].filter(Boolean).join('\n');
+}
+
+/**
+ * Filtro, richiesta e prompt per una foto dei due personaggi. Con Krea 2 le LoRA dei due personaggi vanno insieme
+ * nel grafo (charLoras) e le loro parole chiave in testa al prompt.
+ */
+export async function engineerDuoPhoto({ workflow, cards, states, scene, media, messages, idx, userText = '', reply = '', user, model, signal, onChunk, fromText = false, level: forced = null, dryRun = false }) {
+  const family = bodyFamily(workflow.graph);
+  const lv = forced ? { level: forced.level, reason: forced.reason } : duoLevel({ cards, states, scene, userText, reply });
+  const level = lv.level;
+  const exchanges = messages ? recentExchanges(messages, idx, EXCHANGES[level]) : [{ user: userText, reply }].filter((e) => e.user || e.reply);
+  const useHm = level === 'explicit' && family === 'krea2' && 'hmnsfw' in profileFor('explicit').loras && workflow.mode === 'text2img';
+  const hm = useHm ? hmTokens([...exchanges].reverse().flatMap((e) => [e.user, e.reply]).concat(fromText ? [] : [media.description]), { together: scene?.presence === 'together' }) : null;
+  const request = duoPhotoRequest({ cards, scene, media, level, exchanges, user, family, hm, fromText, fromImage: workflow.mode === 'duo' });
+  const loras = family === 'krea2' ? cards.map((c) => c.lora).filter((l) => l?.file) : [];
+  // due volti dalle LoRA nello stesso grafo si mescolano: un po' più leggere (da tarare)
+  const charLoras = loras.map((l) => ({ ...l, strength: loras.length > 1 ? Math.round((l.strength ?? 1) * 0.8 * 100) / 100 : l.strength }));
+  const trigger = loras.map((l) => l.trigger).filter(Boolean).join(', ');
+  const result = { level, reason: lv.reason, hm, request, charLoras, lenovo: hasLenovo(family) ? true : null, prompt: '' };
+  if (dryRun) return { ...result, prompt: finishPrompt('(prompt di Gemma)', { hm, trigger }) };
+  let text = '';
+  const out = await ollama.chat({
+    model, signal, think: false,
+    options: { temperature: TEMPERATURE[level] },
+    messages: [{ role: 'system', content: promptEngineerSystem(workflow) }, { role: 'user', content: request }],
+    onChunk: (c) => { if (c.content) { text += c.content; onChunk?.(c.content); } },
+  });
+  const { prompt, lenovo } = splitLook(out.content || text);
+  if (hasLenovo(family) && lenovo !== null) result.lenovo = lenovo;
+  result.prompt = finishPrompt(cleanPrompt(prompt) || media.description, { hm, trigger });
+  return result;
+}
+
 /** Cosa scrivere sotto la foto: «Esplicito · scena intima». */
 export const levelText = (media) => (media?.level ? `${LEVEL_LABEL[media.level]}${media.levelReason ? ` · ${media.levelReason}` : ''}` : '');
 
@@ -260,7 +342,7 @@ const REALISM_FILES = Object.values(LORAS).filter((l) => l.role === 'realism').m
  * stack: applica il profilo di krea2.js (solo testo → immagine e image to image, non i ritocchi dei grafi Qwen).
  * Restituisce cosa è stato messo, per la foto e il banco di prova.
  */
-export function applyPhotoStack(graph, { level = 'neutral', lenovo = null, lenovoFile = null, bodyLoras = [], charLora = null, prompt = '', files = null, variant = null, stack = true, sampler = true } = {}) {
+export function applyPhotoStack(graph, { level = 'neutral', lenovo = null, lenovoFile = null, bodyLoras = [], charLora = null, charLoras = [], prompt = '', files = null, variant = null, stack = true, sampler = true } = {}) {
   const family = bodyFamily(graph);
   const out = { family, lenovo: null, loras: [], missing: [], sampler: null };
   if (!family) return out;
@@ -302,11 +384,11 @@ export function applyPhotoStack(graph, { level = 'neutral', lenovo = null, lenov
     if (sampler && profile.sampler) out.sampler = setSampler(graph, family, profile.sampler);
   }
 
-  // Volto del personaggio
-  if (charLora?.file) {
-    const file = findFile(files, charLora.file);
-    if (file) { add(file, charLora.strength ?? 1, 'Personaggio'); out.loras.push({ key: 'character', label: base(charLora.file).replace(/\.safetensors?$/i, ''), strength: charLora.strength ?? 1 }); }
-    else out.missing.push(charLora.file);
+  // Volto dei personaggi (uno, o due nelle foto insieme)
+  for (const cl of [charLora, ...(charLoras || [])].filter((l) => l?.file)) {
+    const file = findFile(files, cl.file);
+    if (file) { add(file, cl.strength ?? 1, 'Personaggio'); out.loras.push({ key: 'character', label: base(cl.file).replace(/\.safetensors?$/i, ''), strength: cl.strength ?? 1 }); }
+    else out.missing.push(cl.file);
   }
 
   // Corpo (scalato per filtro)

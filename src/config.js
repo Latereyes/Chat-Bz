@@ -66,9 +66,10 @@ export default {
     catchupHours: Number(env.LIFE_CATCHUP_HOURS || 2),        // server spento più di così: alla riaccensione raccontano cosa hanno fatto
   },
 
-  // Livello delle foto del feed: neutral (presentabile) o sensual (mai esplicito)
+  // Tetto delle foto del feed: neutral, sensual o explicit. I post osé (sensuali o espliciti) escono ogni tanto,
+  // secondo il personaggio (scheda: «Post osé sul social»); qui si può abbassare il tetto per tutti.
   social: {
-    level: env.SOCIAL_LEVEL === 'sensual' ? 'sensual' : 'neutral',
+    level: ['neutral', 'sensual'].includes(env.SOCIAL_LEVEL) ? env.SOCIAL_LEVEL : 'explicit',
     // Caroselli con lo stesso volto della foto profilo (Qwen "stessa persona, nuova scena"), solo stile Krea
     identity: (env.SOCIAL_IDENTITY ?? '1') !== '0',
   },

@@ -23,6 +23,8 @@ export const PACES = { lenta: 'Lenta', media: 'Media', rapida: 'Rapida' };
 export const INTIMACY = { mai: 'Mai', confidenza: 'Con la confidenza', aperta: 'Aperta' };
 // Motore delle foto in chat: Krea 2 per il realismo spontaneo, Z-Image per un look più curato o stilizzato
 export const STYLES = { krea: 'Realistico spontaneo (Krea 2)', zimage: 'Curato / stilizzato (Z-Image)' };
+// Post e storie osé sul social (sensuali, ed espliciti se l'intimità è aperta): quanto spesso
+export const SOCIAL_HOT = { mai: 'Mai', ognitanto: 'Ogni tanto', spesso: 'Spesso' };
 
 const pick = (v, allowed, def) => (Object.hasOwn(allowed, v) ? v : def);
 const str = (v, max = 4000) => String(v ?? '').trim().slice(0, max);
@@ -50,6 +52,7 @@ export function normalizeCard(c = {}) {
     greeting: str(c.greeting, 1500),
     initiative: c.initiative !== false,
     social: c.social !== false,                       // pubblica post e storie sul social (coda a goccia)
+    socialHot: pick(c.socialHot, SOCIAL_HOT, c.intimacy === 'mai' ? 'mai' : 'ognitanto'),
   };
 }
 

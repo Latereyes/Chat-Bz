@@ -158,3 +158,27 @@ test('varianti: tutte valide sul catalogo', () => {
     assert.ok(v.label);
   }
 });
+
+test('foto con due personaggi: vale il tetto più basso, LoRA di tutti e due più leggere', async () => {
+  const open = CHARACTERS.hitomi, closed = CHARACTERS.chiusa;
+  const sc = SCENARIOS.find((s) => s.id === 'esplicito-pov-prima');
+  const sOpen = scenarioState({ ...sc, char: 'hitomi' }).state, sClosed = scenarioState({ ...sc, char: 'chiusa' }).state;
+  const { duoLevel, engineerDuoPhoto } = await import('../src/photo.js');
+  const lv = duoLevel({ cards: [open, closed], states: [sOpen, sClosed], scene: sOpen.scene, userText: 'una foto nuda di voi due' });
+  assert.equal(lv.level, 'neutral');
+  assert.match(lv.reason, /^Elena: tetto/);
+  const two = { ...CHARACTERS.krea, lora: { file: 'Sara.safetensors', trigger: 'S4r4', strength: 1 } };
+  const r = await engineerDuoPhoto({ workflow: KREA, cards: [open, two], states: [sOpen, sOpen], scene: sOpen.scene, media, userText: 'cavalcami, una foto di voi due', user: USER, dryRun: true });
+  assert.equal(r.level, 'explicit');
+  assert.deepEqual(r.charLoras.map((l) => l.strength), [0.8, 0.8]);
+  assert.match(r.prompt, /H1t0m1, S4r4/);
+  assert.match(r.request, /Person 1.*\n.*Person 2|Person 2/s);
+  assert.match(r.request, /two of them|both of them|viewer is with both/);
+});
+
+test('due LoRA del personaggio nello stesso grafo', () => {
+  const g = structuredClone(KREA.graph);
+  applyPhotoStack(g, { level: 'neutral', files: [...FILES, 'Sara.safetensors'], charLoras: [{ file: 'Krea220Hitomi.safetensors', strength: 0.8 }, { file: 'Sara.safetensors', strength: 0.8 }] });
+  assert.equal(strength(g, 'Krea220Hitomi.safetensors'), 0.8);
+  assert.equal(strength(g, 'Sara.safetensors'), 0.8);
+});

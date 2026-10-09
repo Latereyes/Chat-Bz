@@ -15,6 +15,7 @@
       <div class="sidebar-top">
         <button class="icon-btn" id="btn-collapse" title="Chiudi barra laterale" data-icon="panel"></button>
         <button class="new-chat" id="btn-new"><span data-icon="plus"></span>Nuovo personaggio</button>
+        <button class="new-chat" id="btn-new-group"><span data-icon="users"></span>Nuova chat a due</button>
       </div>
       <nav class="sidebar-nav">
         <button class="nav-item" id="btn-social"><span data-icon="home"></span>Home</button>
@@ -95,6 +96,7 @@
               <label title="Modello che genera l'immagine"><span>Motore</span><select id="so-engine"></select></label>
               <label title="Formato dell'immagine"><span>Formato</span><select id="so-aspect"></select></label>
               <label title="Usa l'aspetto di un tuo personaggio"><span>Chi</span><select id="so-char"></select></label>
+              <label title="Un secondo personaggio nella stessa foto (le loro LoRA vanno insieme)" id="so-char2-wrap" hidden><span>Con</span><select id="so-char2"></select></label>
               <label class="so-check" title="Usa il testo così com'è, senza farlo riscrivere a Gemma"><input type="checkbox" id="so-raw"><span>Prompt diretto</span></label>
               <label class="so-check" title="Dopo la foto genera anche un breve video che parte da lì"><input type="checkbox" id="so-video"><span>Anche video</span></label>
               <label title="Seed fisso (vuoto = casuale)"><span>Seed</span><input id="so-seed" inputmode="numeric" placeholder="seed casuale" size="10"></label>
@@ -233,6 +235,7 @@
         <label class="fld">Primo messaggio<small>facoltativo</small><textarea name="greeting" rows="2"></textarea></label>
         <label class="check"><input type="checkbox" name="initiative" checked> Può scriverti per prima quando riaccendi il server</label>
         <label class="check"><input type="checkbox" name="social" checked> Pubblica post e storie sul social da sola, un po' alla volta</label>
+        <label class="fld">Post osé sul social<small>ogni tanto un post o una storia sensuale (intimo, bikini, pose provocanti) o, con l'intimità aperta, esplicito (nudo, sex selfie)</small><select name="socialHot" data-opts="socialHot"></select></label>
 
         <p class="auth-error" hidden></p>
         <div class="row-end">
@@ -328,6 +331,26 @@
   </div>
 
   <!-- Post aperto da un profilo -->
+  <div class="modal" id="group-modal" hidden>
+    <div class="modal-card">
+      <div class="modal-head"><h2 id="gm-title">Nuova chat a due</h2><button class="icon-btn" data-close data-icon="close" title="Chiudi"></button></div>
+      <form id="group-form">
+        <div class="grid2">
+          <label class="fld">Primo personaggio<select name="a"></select></label>
+          <label class="fld">Secondo personaggio<select name="b"></select></label>
+        </div>
+        <label class="fld">Nome della chat<small>facoltativo</small><input name="name" maxlength="60" placeholder="es. Hitomi e Giorgia"></label>
+        <div class="grid2" id="gm-start">
+          <label class="fld">Si parte<select name="presence"><option value="apart">A distanza (chat di gruppo)</option><option value="together">Insieme, tutti e tre</option></select></label>
+          <label class="fld">Dove<input name="place" maxlength="200" placeholder="es. a casa di Hitomi"></label>
+        </div>
+        <p class="hint" id="gm-hint">Rispondono tutti e due, ognuno con il suo carattere e il suo rapporto con te. Con «Foto» chiedi una foto di uno dei due o di tutti e due: con Krea 2 si usano le loro LoRA.</p>
+        <div class="row-end" id="gm-manage" hidden><button class="btn" type="button" id="gm-reset">Ricomincia</button><button class="btn" type="button" id="gm-delete">Elimina chat</button></div>
+        <div class="row-end"><span class="spacer"></span><button class="btn" type="button" data-close>Annulla</button><button class="btn primary" type="submit" id="gm-save">Crea e inizia</button></div>
+      </form>
+    </div>
+  </div>
+
   <div class="modal" id="post-modal" hidden>
     <div class="modal-card post-modal-card">
       <div class="modal-head"><h2 id="pm-title">Post</h2><button class="icon-btn" data-close data-icon="close" title="Chiudi"></button></div>

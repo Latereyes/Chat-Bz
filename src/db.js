@@ -60,6 +60,26 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_studio_owner ON studio_messages(owner_id, seq);
 
+  -- Chat a due: tu e due personaggi nella stessa conversazione (members = id dei due personaggi, JSON)
+  CREATE TABLE IF NOT EXISTS groups (
+    id           TEXT PRIMARY KEY,
+    owner_id     TEXT NOT NULL,
+    name         TEXT NOT NULL,
+    members      TEXT NOT NULL,
+    state        TEXT NOT NULL,           -- scena condivisa (JSON)
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_groups_owner ON groups(owner_id, updated_at);
+  CREATE TABLE IF NOT EXISTS group_messages (
+    id           TEXT PRIMARY KEY,
+    group_id     TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    seq          INTEGER NOT NULL,
+    data         TEXT NOT NULL,
+    created_at   INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_group_msgs ON group_messages(group_id, seq);
+
   -- Coda persistente "a goccia": contenuti generati un po' alla volta quando la GPU è libera.
   -- Sopravvive ai riavvii: un lavoro rimasto a metà torna in attesa e riparte.
   CREATE TABLE IF NOT EXISTS queue_jobs (

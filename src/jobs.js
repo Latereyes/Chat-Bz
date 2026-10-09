@@ -46,11 +46,11 @@ export function enqueue(conv, msg, media) {
       media.sourceFile = src.file;
       media.sourceUrl = mediaUrl(src.file);
     }
-    // LoRA del corpo: nello Studio immagini quelle del personaggio scelto come soggetto, se c'è
-    const card = conv.studio ? store.get(media.characterId || '')?.card : conv.card;
+    // LoRA del corpo: nello Studio e nelle chat a due quelle del personaggio nella foto, se è uno solo
+    const card = conv.studio || conv.group ? store.get(media.characterId || '')?.card : conv.card;
     await renderMedia(media, { ownerId: conv.ownerId, card, signal: ac.signal, onEvent: (e) => emit(conv.id, e) });
     // La prima foto diventa l'immagine del profilo, se il personaggio non ne ha ancora una
-    if (media.type === 'image' && !conv.avatar && !conv.studio) {
+    if (media.type === 'image' && !conv.avatar && !conv.studio && !conv.group) {
       conv.avatar = media.file;
       emit(conv.id, { type: 'character', avatarUrl: mediaUrl(media.file) });
     }
@@ -100,7 +100,7 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
     const body = await installedLoras(withDerived(media.manualBody ? media.manualBody : bodyLoras(card, family)), family);
     const res = applyPhotoStack(graph, {
       level: media.level || 'neutral', lenovo, lenovoFile: lenovo ? await lenovoLora(family) : null,
-      bodyLoras: body, charLora: media.charLora ? card?.lora : null, prompt: media.prompt, files: await comfyLoras(), variant: media.variant || null,
+      bodyLoras: body, charLoras: media.charLoras || (media.charLora && card?.lora ? [card.lora] : []), prompt: media.prompt, files: await comfyLoras(), variant: media.variant || null,
       stack: media.mode === 'text2img' || media.mode === 'img2img', sampler: media.mode === 'text2img',
     });
     media.lenovoUsed = res.lenovo;
@@ -144,7 +144,7 @@ export function cancel(mediaId) {
 
 /** All'avvio: i lavori rimasti a metà (server riavviato) vengono marcati come interrotti. */
 export function recoverInterrupted() {
-  for (const c of [...store.list(), ...store.listStudios()]) {
+  for (const c of [...store.list(), ...store.listGroups(), ...store.listStudios()]) {
     let dirty = false;
     for (const m of c.messages) {
       if (m.status === 'streaming' || m.status === 'pending') { m.status = 'stopped'; dirty = true; }

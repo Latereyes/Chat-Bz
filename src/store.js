@@ -38,6 +38,16 @@ const q = {
   upsertStudioMsg: db.prepare(`INSERT INTO studio_messages (id, owner_id, seq, data, created_at) VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET seq = excluded.seq, data = excluded.data`),
   deleteStudioMsg: db.prepare('DELETE FROM studio_messages WHERE id = ?'),
+  group: db.prepare('SELECT * FROM groups WHERE id = ?'),
+  groupsOwner: db.prepare('SELECT id FROM groups WHERE owner_id = ? ORDER BY updated_at DESC'),
+  groupsAll: db.prepare('SELECT id, members FROM groups'),
+  groupMessages: db.prepare('SELECT data, seq FROM group_messages WHERE group_id = ? ORDER BY seq'),
+  insertGroup: db.prepare('INSERT INTO groups (id, owner_id, name, members, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'),
+  updateGroup: db.prepare('UPDATE groups SET name = ?, members = ?, state = ?, updated_at = ? WHERE id = ?'),
+  upsertGroupMsg: db.prepare(`INSERT INTO group_messages (id, group_id, seq, data, created_at) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET seq = excluded.seq, data = excluded.data`),
+  deleteGroupMsg: db.prepare('DELETE FROM group_messages WHERE id = ?'),
+  deleteGroup: db.prepare('DELETE FROM groups WHERE id = ?'),
 };
 
 function load(id) {
@@ -68,7 +78,7 @@ function load(id) {
 export function get(id) {
   if (!validId(id)) return null;
   if (cache.has(id)) return cache.get(id);
-  const c = load(id);
+  const c = isGroupId(id) ? loadGroup(id) : load(id);
   if (c) cache.set(id, c);
   return c;
 }
@@ -99,12 +109,13 @@ export function save(c, { touch = true } = {}) {
   if (touch) c.updatedAt = Date.now();
   try {
     tx(() => {
-      if (!c.studio) {
+      if (c.group) q.updateGroup.run(c.card.name, JSON.stringify(c.members), JSON.stringify(c.state), c.updatedAt, c.id);
+      else if (!c.studio) {
         q.updateChar.run(JSON.stringify(c.card), c.avatar, c.updatedAt, c.id);
         const st = JSON.stringify(c.state);
         if (writtenState.get(c.id) !== st) { q.upsertState.run(c.id, st, Date.now()); writtenState.set(c.id, st); }
       }
-      const upsert = c.studio ? q.upsertStudioMsg : q.upsertMsg;
+      const upsert = c.studio ? q.upsertStudioMsg : c.group ? q.upsertGroupMsg : q.upsertMsg;
       const owner = c.studio ? c.ownerId : c.id;
       let last = -1;
       for (const m of c.messages) {
@@ -128,7 +139,7 @@ export async function removeMessages(c, ids) {
   const set = new Set(ids);
   const gone = c.messages.filter((m) => set.has(m.id));
   c.messages = c.messages.filter((m) => !set.has(m.id));
-  const del = c.studio ? q.deleteStudioMsg : q.deleteMsg;
+  const del = c.studio ? q.deleteStudioMsg : c.group ? q.deleteGroupMsg : q.deleteMsg;
   tx(() => { for (const id of set) { del.run(id); written.delete(id); seqs.delete(id); } });
   await removeFiles(gone);
   save(c);
@@ -144,12 +155,52 @@ async function removeFiles(messages) {
 export async function remove(id) {
   const c = get(id);
   if (!c) return;
+  // eliminando un personaggio spariscono anche le chat a due in cui c'era
+  if (!c.group) for (const g of q.groupsAll.all()) if (JSON.parse(g.members).includes(id)) await remove(g.id);
   cache.delete(id);
-  q.deleteChar.run(id);   // a cascata: stato, messaggi, memorie
+  if (c.group) q.deleteGroup.run(id);   // a cascata: messaggi
+  else q.deleteChar.run(id);   // a cascata: stato, messaggi, memorie
   for (const m of c.messages) { written.delete(m.id); seqs.delete(m.id); }
   writtenState.delete(id);
   await removeFiles(c.messages);
   if (c.avatar) await fs.rm(path.join(config.paths.media, c.avatar), { force: true });
+}
+
+/**
+ * Chat a due: tu e due personaggi nella stessa conversazione. Ha la forma di una conversazione (così coda GPU,
+ * eventi, salvataggio e interfaccia sono quelli dei personaggi): card.name è il nome della chat, members gli id
+ * dei due personaggi, state.scene la scena condivisa. Il rapporto e l'intimità restano quelli di ciascuno.
+ */
+export const isGroupId = (id) => String(id || '').startsWith('g-');
+
+function loadGroup(id) {
+  const row = q.group.get(id);
+  if (!row) return null;
+  const c = { id: row.id, ownerId: row.owner_id, group: true, members: JSON.parse(row.members), card: { name: row.name }, avatar: null,
+    state: JSON.parse(row.state), createdAt: row.created_at, updatedAt: row.updated_at, messages: [] };
+  for (const r of q.groupMessages.all(id)) {
+    const m = JSON.parse(r.data);
+    c.messages.push(m);
+    written.set(m.id, r.data);
+    seqs.set(m.id, r.seq);
+  }
+  return c;
+}
+
+export function listGroups(ownerId) {
+  const rows = ownerId ? q.groupsOwner.all(ownerId) : q.groupsAll.all();
+  return rows.map((r) => get(r.id)).filter(Boolean);
+}
+
+/** Nuova chat a due con due personaggi dell'utente. */
+export function createGroup(ownerId, members, { name, scene } = {}) {
+  const now = Date.now();
+  const c = { id: `g-${newId()}`, ownerId, group: true, members, card: { name: String(name || '').trim().slice(0, 60) || 'Chat a due' }, avatar: null,
+    state: { scene: { presence: 'apart', place: '', activity: '', outfit: '', mood: '', intimacy: 'none', since: now, ...(scene || {}) } },
+    createdAt: now, updatedAt: now, messages: [] };
+  q.insertGroup.run(c.id, ownerId, c.card.name, JSON.stringify(members), JSON.stringify(c.state), now, now);
+  cache.set(c.id, c);
+  return c;
 }
 
 /**
@@ -179,7 +230,7 @@ export const listStudios = () => q.studioOwners.all().map((r) => getStudio(r.own
 /** Tutti i media generati per un utente, dal più recente. */
 export function allMedia(ownerId) {
   const out = [];
-  for (const c of ownerId ? [...list(ownerId), getStudio(ownerId)] : list()) {
+  for (const c of ownerId ? [...list(ownerId), ...listGroups(ownerId), getStudio(ownerId)] : list()) {
     for (const m of c.messages) for (const md of m.media || []) {
       if (md.status === 'done' && md.file) out.push({ ...md, conversationId: c.id, conversationTitle: c.card.name });
     }

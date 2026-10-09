@@ -38,7 +38,7 @@ Variabili d'ambiente (i default sono in `src/config.js`):
 | `DRIP_NIGHT` | `1-7` | ore in cui i personaggi dormono (niente contenuti nuovi); vuoto = sempre svegli |
 | `DRIP_MEET_DAYS` | `3` | foto insieme tra due amici: al massimo una ogni N giorni |
 | `LIFE_CATCHUP_HOURS` | `2` | server spento più di così: alla riaccensione raccontano cosa hanno fatto |
-| `SOCIAL_LEVEL` | `neutral` | foto del feed: `neutral` o `sensual` (mai esplicite) |
+| `SOCIAL_LEVEL` | `explicit` | tetto delle foto del feed per tutti: `neutral`, `sensual` o `explicit` (i post osé dipendono comunque dal personaggio) |
 | `SOCIAL_IDENTITY` | `1` | `0` = i caroselli non partono dalla foto profilo |
 
 ## Come funziona
@@ -77,10 +77,16 @@ Il prompt è diviso in un **blocco stabile** (regole + scheda, nel messaggio di 
 ### Modello di chat
 Il pulsante con il chip in alto sceglie il modello di Ollama per i messaggi successivi (chat, studio, risposte alle storie). La riflessione a riposo e il social restano su `OLLAMA_MODEL`. Ci sono anche i modelli senza tool, per provarli, ad esempio il Qwen installato per LocalAI: con loro la chat non passa i tool, e foto e scena le ricava il server dal testo (`[PHOTO: ...]` e controllo della scena). Come in LocalAI, il `num_ctx` del Modelfile vale al posto di `OLLAMA_CTX` (Qwen Coder: 16k), e i nomi del menu sono in `config.ollama.labels`. Ogni cambio tra Gemma e Qwen scarica un modello per caricare l'altro.
 
+### Chat a due
+Tu e due dei tuoi personaggi nella stessa conversazione: «Nuova chat a due» nella barra laterale o tra i Personaggi. A distanza è una chat di gruppo, insieme siete in tre nello stesso posto.
+- Gemma scrive per entrambi, ognuno con il suo nome in grassetto, il suo carattere, il suo modo di parlare e il suo rapporto con te (fiducia, intimità e tetto restano quelli della sua chat). Tra loro si conoscono come dice il social, altrimenti lo decidono.
+- **Foto**: di uno dei due (come nella sua chat, con la sua LoRA) o di tutti e due. Con Krea 2 le LoRA dei due personaggi vanno insieme nel grafo, un po' più leggere (0.8) perché i volti tendono a mescolarsi, con entrambe le parole chiave; senza LoRA e con le foto profilo si usa «due persone insieme» (Qwen). Il filtro di una foto di tutti e due è il più basso dei due tetti.
+- Toccando il nome in alto: rinomina, ricomincia o elimina la chat (i personaggi restano). Video, foto profilo e memorie per ora solo nelle chat singole.
+
 ### Studio immagini
 L'"Image Assistant" di ChatBz 1, non più come personaggio ma come sezione a parte (**Studio immagini** nella barra laterale), con una sua cronologia per utente.
 - Descrivi cosa vuoi vedere, anche in due parole: Gemma scrive il prompt con la guida del motore scelto, poi ComfyUI genera. Contenuto esplicito permesso quando la richiesta lo chiede.
-- Opzioni sopra il campo di testo: **motore** (i workflow testo → immagine e 🎬 testo → video disponibili, oppure automatico), **formato**, **chi** (uno dei tuoi personaggi: il suo aspetto va nel prompt e le sue LoRA del corpo nella foto), **prompt diretto** (il testo va al modello così com'è, senza Gemma), **anche video** (dopo la foto, MiniMax H3 la anima), **seed** fisso, **filtro** (automatico dalla richiesta, oppure Normale / Sensuale / Esplicito: decide le LoRA di Krea 2 e il contenuto del prompt) e **LoRA Krea** (il profilo o una variante del banco di prova, per confrontarle una foto alla volta con lo stesso seed).
+- Opzioni sopra il campo di testo: **motore** (i workflow testo → immagine e 🎬 testo → video disponibili, oppure automatico), **formato**, **chi** (uno dei tuoi personaggi: il suo aspetto va nel prompt e le sue LoRA del corpo nella foto; con **con** se ne aggiunge un secondo nella stessa immagine, con le LoRA di tutti e due), **prompt diretto** (il testo va al modello così com'è, senza Gemma), **anche video** (dopo la foto, MiniMax H3 la anima), **seed** fisso, **filtro** (automatico dalla richiesta, oppure Normale / Sensuale / Esplicito: decide le LoRA di Krea 2 e il contenuto del prompt) e **LoRA Krea** (il profilo o una variante del banco di prova, per confrontarle una foto alla volta con lo stesso seed).
 - Allegando una foto la si modifica con Qwen-Image-Edit, oppure la si anima se il motore scelto è un video. Sotto ogni immagine: **Anima** (video che parte da quella foto), **Rigenera**, **Prompt** (modifica e rigenera).
 - Le immagini dello studio finiscono anche in Galleria; il cestino in alto svuota lo studio.
 
@@ -110,7 +116,7 @@ Ogni personaggio ha un profilo (nome utente, bio e il suo "mondo" ricorrente: ca
 - **Corporatura nelle foto**: anche con il feed presentabile le proporzioni del corpo (seno, fianchi, corporatura) restano nel prompt, dette a parole e con vestiti normali, così nei post è la stessa persona della scheda.
 - **In chat lo sa**: il personaggio sa cosa ha pubblicato, chi ha messo mi piace e cosa gli hai scritto sotto, e può parlarne se viene naturale.
 - Dal profilo puoi chiedere un **nuovo post**, una **nuova storia** o una **foto con** un altro personaggio (con un'idea facoltativa) e spegnere la pubblicazione automatica per quel personaggio.
-- Il feed resta presentabile (`SOCIAL_LEVEL=neutral`; con `sensual` al massimo sensuale, mai esplicito).
+- **Post osé**: ogni tanto un post o una storia è sensuale (intimo, bikini, asciugamano, pose provocanti) o, se il personaggio ha l'intimità aperta, esplicito (nudo allo specchio, a letto, sex selfie con un partner senza volto). Quanto spesso lo decide la scheda, «Post osé sul social»: Mai / Ogni tanto / Spesso (con l'intimità «mai» resta Mai). Le foto con un amico restano al massimo sensuali, e un'idea chiesta da te («un post sexy») decide lei, sempre entro i limiti del personaggio. `SOCIAL_LEVEL` abbassa il tetto per tutti.
 
 ### Coda a goccia
 I contenuti del social non partono tutti insieme: ogni lavoro (pensare il post, ogni foto, ogni commento) è una riga nel database (`src/queue.js`) e si fa **un pezzo alla volta**, solo quando la GPU è libera e non stai chattando da `DRIP_IDLE_SEC` secondi. Se spegni il server, alla riaccensione si riprende da dove si era rimasti. Tra i lavori pronti si preferisce quello che usa il modello già in VRAM (prima i testi, poi le foto). Il ritmo è continuo, non una raffica all'accensione: ogni personaggio pubblica in media un post ogni `SOCIAL_POST_HOURS` ore e una storia ogni `SOCIAL_STORY_HOURS` (ognuno con il suo ritmo, un po' variabile), tra due contenuti automatici passano almeno `DRIP_GAP_MIN` minuti, e nelle ultime 24 ore al massimo `DRIP_POSTS_DAY` post e `DRIP_STORIES_DAY` storie. Di notte (`DRIP_NIGHT`) dormono. Quelli che chiedi tu non contano. Il pulsante **Coda** nel Social mostra cosa c'è in lista e mette in pausa.
@@ -125,7 +131,8 @@ src/
   store.js           personaggio + conversazione in memoria, salvataggio incrementale
   characters.js      scheda del personaggio, bozza da un'idea
   relationship.js    stato: scena, rapporto, intimità
-  photo.js           foto dei personaggi: filtro, richiesta al prompt engineer, token HMNSFW, LoRA nel grafo
+  photo.js           foto dei personaggi: filtro, richiesta al prompt engineer, token HMNSFW, LoRA nel grafo (anche per due persone)
+  group.js           chat a due: prompt con due personaggi, foto di uno o di entrambi
   krea2.js           LoRA di supporto di Krea 2: catalogo, profilo per filtro, varianti da provare
   body.js            LoRA del corpo e Lenovo
   prompts.js         prompt stabile + blocco <now>, tool, prompt engineer, riflessione

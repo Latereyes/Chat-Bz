@@ -36,10 +36,13 @@ const STUDIO_RULES = `## Studio rules
 
 const LEVEL = 'CONTENT LEVEL: explicit adult content is allowed when the request asks for it: be direct and anatomically precise, no euphemisms. Otherwise keep the content exactly as requested.';
 
-function subjectLine(card) {
-  if (!card) return null;
-  const who = `${card.gender === 'uomo' ? 'adult man' : card.gender === 'altro' ? 'adult person' : 'adult woman'}, ${card.age} years old`;
-  return `Main subject: ${who}. Appearance (keep it exactly, it defines who this is): ${visualSignature(card.look, 'explicit') || '(not specified)'}`;
+const whoOf = (card) => `${card.gender === 'uomo' ? 'adult man' : card.gender === 'altro' ? 'adult person' : 'adult woman'}, ${card.age} years old`;
+/** Soggetto: un personaggio, oppure due (con le proporzioni a parole: le LoRA del corpo varrebbero per entrambi). */
+function subjectLine(cards = []) {
+  if (!cards.length) return null;
+  if (cards.length === 1) return `Main subject: ${whoOf(cards[0])}. Appearance (keep it exactly, it defines who this is): ${visualSignature(cards[0].look, 'explicit') || '(not specified)'}`;
+  return ['Two main subjects in the same image: keep them clearly distinct (say for each one where they are in the frame and what they look like) so faces and bodies do not blend.',
+    ...cards.map((c, i) => { const fig = figureText(c); return `Person ${i + 1}: ${whoOf(c)}. Appearance (keep it exactly): ${visualSignature(c.look, 'explicit') || '(not specified)'}${fig ? ` Figure: ${fig}.` : ''}`; })].join('\n');
 }
 
 /** Fisico a mano: le LoRA da sole non bastano se il prompt parla di vestiti larghi (e su Z-Image non ci sono), quindi lo si dice anche a parole. */
@@ -49,11 +52,11 @@ function figureLine(card, manualBody) {
   return fig ? `Figure (set by the user, it must be clearly visible): ${fig}. Describe exactly this figure for the woman, and choose clothes and a pose that show it (fitted, not loose or baggy) unless the request says otherwise.` : null;
 }
 
-function request({ text, card, media, sourceDescription, sources }) {
+function request({ text, cards = [], media, sourceDescription, sources }) {
   return [
     `Request: ${text}`,
-    subjectLine(card),
-    figureLine(card, media.manualBody),
+    subjectLine(cards),
+    cards.length < 2 ? figureLine(cards[0], media.manualBody) : null,
     sources ? `The user attached ${sources} image${sources > 1 ? 's' : ''} to edit: write an editing instruction that changes only what the request asks and keeps everything else (identity, composition, light) unchanged.` : null,
     sourceDescription !== undefined ? `Starting image (the video starts exactly from it): ${sourceDescription || '(no description)'}` : null,
     // filtro scelto a mano nello Studio: vale anche per il prompt, non solo per le LoRA
@@ -113,6 +116,9 @@ export function send(conv, opts = {}) {
   if (!text) throw new Error('Descrivi cosa vuoi vedere');
   queue.touch();
   const owner = characterCard(conv.ownerId, opts.characterId);
+  // secondo personaggio (foto di due persone): diverso dal primo
+  const second = characterCard(conv.ownerId, opts.characterId2);
+  const owner2 = owner && second && second.id !== owner.id ? second : null;
   const raw = !!opts.raw;
   const aspect = pickAspect(opts.aspect);
 
@@ -135,7 +141,7 @@ export function send(conv, opts = {}) {
   const lv = w.type !== 'image' ? null : level ? { level, reason: 'scelto nello Studio' } : studioLevel(text);
   // Variante delle LoRA di Krea 2 (quelle del banco di prova): per tarare una foto alla volta
   const variant = opts.variant && Object.hasOwn(VARIANTS, opts.variant) && opts.variant !== 'base' ? opts.variant : null;
-  const settings = { engine: opts.engine || '', aspect, raw, video: !!opts.video && w.type === 'image', seconds: opts.seconds || 5, characterId: owner?.id || null, characterName: owner?.card.name || null, seed: opts.seed ? seed : null, body: manualBody ? Object.fromEntries(manualBody.map((l) => [l.part, l.strength])) : null, lenovo, level, variant, engineUsed: w.id !== (opts.engine || '') && manualBody ? w.id : null };
+  const settings = { engine: opts.engine || '', aspect, raw, video: !!opts.video && w.type === 'image', seconds: opts.seconds || 5, characterId: owner?.id || null, characterName: owner?.card.name || null, characterName2: owner2?.card.name || null, seed: opts.seed ? seed : null, body: manualBody ? Object.fromEntries(manualBody.map((l) => [l.part, l.strength])) : null, lenovo, level, variant, engineUsed: w.id !== (opts.engine || '') && manualBody ? w.id : null };
   const userMsg = { id: store.newId(), role: 'user', content: text, attachments: attachments.length ? attachments : undefined, studio: settings, createdAt: Date.now() };
   conv.messages.push(userMsg);
   emit(conv.id, { type: 'message', message: userMsg });
@@ -143,7 +149,7 @@ export function send(conv, opts = {}) {
   const base = { toolName: 'studio', description: text, prompt: raw ? text : '', seed, status: 'engineering', createdAt: Date.now(), characterId: owner?.id || null };
   // Ritratto chiesto dalla scheda: appena pronto diventa la foto profilo del personaggio
   const avatarFor = opts.avatarFor && owner?.id === opts.avatarFor ? owner.id : null;
-  const first = { ...base, id: store.newId(), type: w.type, mode: w.mode, workflow: w.id, workflowName: w.name, ...(lv ? { level: lv.level, levelReason: lv.reason } : {}), ...(variant && lv ? { variant } : {}), ...(manualBody && w.type === 'image' ? { manualBody } : {}), ...(lenovo !== null && w.type === 'image' ? { lenovo } : {}), ...(avatarFor && w.type === 'image' ? { avatarFor } : {}) };
+  const first = { ...base, id: store.newId(), type: w.type, mode: w.mode, workflow: w.id, workflowName: w.name, ...(lv ? { level: lv.level, levelReason: lv.reason } : {}), ...(variant && lv ? { variant } : {}), ...(manualBody && w.type === 'image' ? { manualBody } : owner2 && w.type === 'image' ? { manualBody: [] } : {}), ...(lenovo !== null && w.type === 'image' ? { lenovo } : {}), ...(avatarFor && w.type === 'image' ? { avatarFor } : {}) };
   if (!attachments.length) Object.assign(first, { aspect, ...dimensions(w, aspect) });
   else {
     // Foto allegata: modifica (Qwen-Image-Edit), rielaborazione, oppure video che parte da lì
@@ -161,11 +167,11 @@ export function send(conv, opts = {}) {
   conv.messages.push(msg);
   store.save(conv);
   emit(conv.id, { type: 'message', message: msg });
-  run(conv, msg, { text, card: owner?.card, raw, model: opts.model, sources: attachments.length });
+  run(conv, msg, { text, cards: [owner, owner2].filter(Boolean).map((c) => c.card), raw, model: opts.model, sources: attachments.length });
   return { userMessage: userMsg, message: msg };
 }
 
-async function engineer(conv, msg, md, { text, card, model, signal, sources }) {
+async function engineer(conv, msg, md, { text, cards = [], model, signal, sources }) {
   const w = getWorkflow(md.workflow, md.type, md.mode);
   const family = md.type === 'image' ? bodyFamily(w.graph) : null;
   const look = typeof md.lenovo !== 'boolean' && hasLenovo(family);   // Lenovo non forzato: lo sceglie Gemma (solo Krea 2)
@@ -175,7 +181,7 @@ async function engineer(conv, msg, md, { text, card, model, signal, sources }) {
     options: { temperature: 0.7 },
     messages: [
       { role: 'system', content: `${promptEngineerSystem(w)}\n\n${STUDIO_RULES}` },
-      { role: 'user', content: request({ text, card, media: md, sources, sourceDescription: md.mode === 'img2video' ? md.sourceDescription : undefined }) + (look ? `\n${LOOK_CHOICE}` : '') },
+      { role: 'user', content: request({ text, cards, media: md, sources, sourceDescription: md.mode === 'img2video' ? md.sourceDescription : undefined }) + (look ? `\n${LOOK_CHOICE}` : '') },
     ],
     onChunk: (c) => {
       if (!c.content) return;
@@ -185,24 +191,26 @@ async function engineer(conv, msg, md, { text, card, model, signal, sources }) {
   });
   const { prompt, lenovo } = splitLook(res.content || out);
   if (look && lenovo !== null) md.lenovo = lenovo;
-  return studioPrompt(cleanPrompt(prompt) || text, md, family, { text, card });
+  return studioPrompt(cleanPrompt(prompt) || text, md, family, { text, cards });
 }
 
 /**
- * Krea 2: token di HMNSFW in esplicito (posizione riconosciuta nella richiesta) e parola chiave della LoRA
- * del personaggio scelto; md.charLora dice al grafo di agganciarla.
+ * Krea 2: token di HMNSFW in esplicito (posizione riconosciuta nella richiesta) e parole chiave delle LoRA
+ * dei personaggi scelti; md.charLoras dice al grafo quali agganciare (con due, un po' più leggere: i volti si mescolano).
  */
-function studioPrompt(prompt, md, family, { text, card, raw = false }) {
+function studioPrompt(prompt, md, family, { text, cards = [], raw = false }) {
   if (family !== 'krea2' || md.mode !== 'text2img' && md.mode !== 'img2img') return prompt;
   const hm = !raw && md.level === 'explicit' && 'hmnsfw' in profileFor('explicit', md.variant).loras ? hmTokens([text], { together: false }) : null;
   if (hm) md.hm = hm;
-  if (card?.lora?.file) md.charLora = true;
-  // prompt diretto: resta com'è (anche con i token HMNSFW scritti a mano), si aggiunge solo la parola chiave
-  if (raw) return card?.lora?.trigger && !prompt.toLowerCase().includes(card.lora.trigger.toLowerCase()) ? `${card.lora.trigger}, ${prompt}` : prompt;
-  return finishPrompt(prompt, { hm, trigger: card?.lora?.file ? card.lora.trigger : '' }) || prompt;
+  const loras = cards.map((c) => c?.lora).filter((l) => l?.file);
+  if (loras.length) md.charLoras = loras.map((l) => ({ ...l, strength: loras.length > 1 ? Math.round((l.strength ?? 1) * 0.8 * 100) / 100 : l.strength ?? 1 }));
+  const trigger = loras.map((l) => l.trigger).filter(Boolean).filter((t) => !prompt.toLowerCase().includes(t.toLowerCase())).join(', ');
+  // prompt diretto: resta com'è (anche con i token HMNSFW scritti a mano), si aggiungono solo le parole chiave
+  if (raw) return trigger ? `${trigger}, ${prompt}` : prompt;
+  return finishPrompt(prompt, { hm, trigger }) || prompt;
 }
 
-async function run(conv, msg, { text, card, raw, model, sources }) {
+async function run(conv, msg, { text, cards, raw, model, sources }) {
   model = model || config.ollama.model;
   const ac = new AbortController();
   running.set(conv.ownerId, ac);
@@ -214,13 +222,13 @@ async function run(conv, msg, { text, card, raw, model, sources }) {
         for (const md of msg.media) {
           const src = md.sourceMediaId && msg.media.find((x) => x.id === md.sourceMediaId);
           if (src) md.sourceDescription = src.prompt || src.description;
-          md.prompt = await engineer(conv, msg, md, { text, card, model, signal: ac.signal, sources: md.type === 'image' && md.sourceFile ? sources : 0 });
+          md.prompt = await engineer(conv, msg, md, { text, cards, model, signal: ac.signal, sources: md.type === 'image' && md.sourceFile ? sources : 0 });
           emitMedia(conv, msg, md);
         }
       }, { onWait: (active) => emit(conv.id, { type: 'status', messageId: msg.id, status: 'waiting', reason: active.label }) });
     } else {
       // Prompt diretto: il video parte dalla stessa descrizione (con la parola chiave della LoRA del personaggio)
-      for (const md of msg.media) md.prompt = md.type === 'image' ? studioPrompt(text, md, bodyFamily(getWorkflow(md.workflow, md.type, md.mode).graph), { text, card, raw: true }) : text;
+      for (const md of msg.media) md.prompt = md.type === 'image' ? studioPrompt(text, md, bodyFamily(getWorkflow(md.workflow, md.type, md.mode).graph), { text, cards, raw: true }) : text;
     }
     msg.status = 'done';
   } catch (e) {
@@ -250,7 +258,7 @@ export async function animate(conv, messageId, mediaId, { text, seconds, model }
   running.set(conv.ownerId, ac);
   const card = characterCard(conv.ownerId, src.characterId)?.card;
   gpu.run('ollama', 'Scrivo il prompt del video', async () => {
-    md.prompt = await engineer(conv, msg, md, { text: md.description, card, model: model || config.ollama.model, signal: ac.signal });
+    md.prompt = await engineer(conv, msg, md, { text: md.description, cards: card ? [card] : [], model: model || config.ollama.model, signal: ac.signal });
     emitMedia(conv, msg, md);
   }).then(() => enqueue(conv, msg, md)).catch((e) => {
     md.status = ac.signal.aborted ? 'cancelled' : 'error';

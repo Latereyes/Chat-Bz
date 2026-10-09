@@ -50,7 +50,14 @@ const worldText = (world) => (world?.home ? `Their recurring world (reuse natura
  * together: l'amico con cui si sono visti (foto insieme, raro) → { name, username, gender, note } (note vuota = da decidere).
  * lately: cosa hanno fatto di recente mentre il server era spento (scritto alla riaccensione).
  */
-export function composePrompt({ card, state, profile, kind, recent, bonds, hint, memories, together, lately, evolution }) {
+// Post osé: ogni tanto, secondo il personaggio (vedi hotLevel in social.js). Il resto del feed resta presentabile.
+const HOT_RULE = {
+  neutral: 'The feed is public: clothed and presentable, no nudity.',
+  sensual: 'This one is a SEXY post (they do it now and then, in their own style): they show off in a teasing way, for example a mirror selfie in lingerie, a bikini shot, a towel after the shower, a suggestive pose in bed or on the sofa, with a flirty caption in their voice. No nudity: nipples and genitals stay covered.',
+  explicit: 'This one is an EXPLICIT post for their adults-only followers (they do it now and then, in their own style): for example a nude mirror selfie, topless in bed, a naughty selfie touching themselves, or a sex selfie with a partner whose face is never shown. A daring caption in their voice. Every photo of this post is part of the same hot moment.',
+};
+
+export function composePrompt({ card, state, profile, kind, recent, bonds, hint, memories, together, lately, evolution, hot = 'neutral' }) {
   const story = kind === 'story';
   const photoShape = together
     ? '{"description": "ENGLISH, 30-70 words", "who": "both|me|friend|none"}'
@@ -66,7 +73,7 @@ Rules:
 - photo description: ONLY the scene: framing, what is happening, outfits of who appears, the place with concrete everyday details, light matching the time of day and season. Do NOT describe faces, hair or bodies (added automatically) and never use names.
 - ${together ? 'who: who appears in the photo.' : `shows_me: true if ${card.name} appears in the photo (selfie, mirror selfie, someone else took it); false for a detail, a place, food, an object, a view (no face; a hand or arm at most).`}
 - ${story ? '' : 'All photos of a post are from the same occasion and the same place (the location), not from home if the post is about going out. '}It must fit their real life and this moment of the day, and be different from their recent posts in topic AND mood: real people post about many things (food, friends, work, a funny detail, something they bought, a place), not their inner feelings every time. Coffee and breakfast are overused.
-- The feed is public: clothed and presentable, no nudity.`;
+- ${HOT_RULE[hot] || HOT_RULE.neutral}`;
   const user = [
     who(card),
     profile?.bio ? `Bio: ${profile.bio}` : '',

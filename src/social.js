@@ -10,7 +10,8 @@ import { emit, mediaUrl, renderMedia } from './jobs.js';
 import { getWorkflow, dimensions, dimensionsForRatio, randomSeed } from './workflows.js';
 import { promptEngineerSystem, cleanPrompt, LOOK_CHOICE, splitLook, ARTSY_POST_CHANCE } from './prompts.js';
 import { bodyFamily, hasLenovo } from './body.js';
-import { finishPrompt } from './photo.js';
+import { finishPrompt, hmTokens, studioLevel } from './photo.js';
+import { profileFor } from './krea2.js';
 import { profilePrompt, composePrompt, socialPhotoRequest, commentPrompt, catchupPrompt } from './social-prompts.js';
 import * as notify from './notify.js';
 import * as memory from './memory.js';
@@ -137,7 +138,7 @@ export function updateProfile(characterId, { username, bio }) {
 }
 
 const pair = (x, y) => (x < y ? [x, y] : [y, x]);
-function bondNote(x, y) { return q.bond.get(...pair(x, y))?.note || null; }
+export function bondNote(x, y) { return q.bond.get(...pair(x, y))?.note || null; }
 
 /** Persone dell'app che il personaggio conosce (con chi ha già interagito). */
 function bondsOf(characterId) {
@@ -240,10 +241,11 @@ const sameFace = (c) => config.social.identity && c?.card.style === 'krea' && !!
  * a partire dalla foto profilo (il volto resta quello); i due amici insieme partono dalle due foto profilo.
  * Altrimenti il motore del suo stile, con l'aspetto descritto a parole. Storie: istantanee.
  */
-function mediaFor(conv, kind, photo, friend) {
+function mediaFor(conv, kind, photo, friend, level = 'neutral') {
   const subject = friend ? photo.subject : photo.showsMe ? 'me' : 'none';
-  const base = { id: store.newId(), type: 'image', description: photo.description, showsMe: subject !== 'none', subject, prompt: '', seed: randomSeed(), status: 'engineering', createdAt: Date.now() };
-  if (kind === 'post') {
+  const base = { id: store.newId(), type: 'image', description: photo.description, showsMe: subject !== 'none', subject, prompt: '', seed: randomSeed(), status: 'engineering', createdAt: Date.now(), level };
+  // in esplicito niente «stessa persona» da Qwen-Edit (non regge il nudo): Krea 2 da testo
+  if (kind === 'post' && level !== 'explicit') {
     if (subject === 'both' && sameFace(conv) && sameFace(friend)) {
       const w = getWorkflow('qwen-duo-real', 'image', 'duo');
       if (w?.id === 'qwen-duo-real') return { ...base, mode: 'duo', workflow: w.id, workflowName: w.name, aspect: null, ...dimensionsForRatio(w, avatarRatio(conv)), sourceFile: conv.avatar, extraSources: [friend.avatar] };
@@ -260,14 +262,33 @@ function mediaFor(conv, kind, photo, friend) {
   return { ...base, mode: 'text2img', workflow: w.id, workflowName: w.name, aspect, ...dimensions(w, aspect) };
 }
 
-const levelFor = (card) => (config.social.level === 'sensual' && card.intimacy !== 'mai' ? 'sensual' : 'neutral');
+/**
+ * Post osé: ogni tanto un post o una storia è sensuale (intimo, bikini, asciugamano, pose provocanti) o, se il
+ * personaggio ha l'intimità aperta, esplicito (nudo allo specchio, a letto, sex selfie). Quanto spesso lo dice la
+ * scheda («Post osé sul social»); SOCIAL_LEVEL è il tetto per tutti. Le foto con un amico restano al massimo sensuali.
+ * Un'idea chiesta da te («un post sexy») decide lei, sempre entro i limiti del personaggio.
+ */
+const HOT_ODDS = { ognitanto: { sensual: 0.18, explicit: 0.07 }, spesso: { sensual: 0.3, explicit: 0.2 } };
+const RANK = { neutral: 0, sensual: 1, explicit: 2 };
+export function hotLevel(card, { together = false, hint = '', random = Math.random() } = {}) {
+  if (card.intimacy === 'mai' || card.socialHot === 'mai') return 'neutral';
+  const max = Math.min(RANK[config.social.level], together ? 1 : card.intimacy === 'aperta' ? 2 : 1);
+  const asked = hint ? studioLevel(hint).level : null;
+  let want = 'neutral';
+  if (asked && asked !== 'neutral') want = asked;
+  else {
+    const odds = HOT_ODDS[card.socialHot] || HOT_ODDS.ognitanto;
+    want = random < odds.explicit ? 'explicit' : random < odds.explicit + odds.sensual ? 'sensual' : 'neutral';
+  }
+  return Object.keys(RANK).find((k) => RANK[k] === Math.min(RANK[want], max));
+}
 
 async function engineer(conv, friend, prof, md, kind, model) {
   const w = getWorkflow(md.workflow, md.type, md.mode);
   const family = md.type === 'image' ? bodyFamily(w.graph) : null;
   const look = hasLenovo(family);   // Lenovo sì/no lo sceglie Gemma (solo Krea 2: Z-Image resta grezzo)
-  md.level = levelFor(conv.card);
-  md.levelReason = 'social';
+  md.level = md.level || 'neutral';
+  md.levelReason = md.level === 'neutral' ? 'social' : 'social: post osé';
   const out = await ollama.complete({
     model, timeout: 120000, options: { temperature: 0.7, num_predict: 450 },
     messages: [
@@ -280,7 +301,10 @@ async function engineer(conv, friend, prof, md, kind, model) {
   // Volto del personaggio dalla sua LoRA (Krea 2 da testo, solo lui nella foto)
   const charLora = family === 'krea2' && md.mode === 'text2img' && md.subject === 'me' && conv.card.lora?.file ? conv.card.lora : null;
   if (charLora) md.charLora = true;
-  return finishPrompt(cleanPrompt(prompt) || md.description, { trigger: charLora?.trigger });
+  // post esplicito con una posizione nella descrizione: token di HMNSFW, come in chat
+  const hm = md.level === 'explicit' && family === 'krea2' && md.mode === 'text2img' && 'hmnsfw' in profileFor('explicit').loras ? hmTokens([md.description], { together: false }) : null;
+  if (hm) md.hm = hm;
+  return finishPrompt(cleanPrompt(prompt) || md.description, { hm, trigger: charLora?.trigger });
 }
 
 queue.register('post.plan', async (job, payload) => {
@@ -306,10 +330,12 @@ async function plan({ postId, hint }) {
   const prof = await ensureProfile(conv, model);
   const friendProf = friend ? await ensureProfile(friend, model) : null;
   const note = friend ? bondNote(conv.id, friend.id) : null;
+  // ogni tanto un post osé, secondo il personaggio (deciso qui, una volta per tutto il carosello)
+  const hot = hotLevel(conv.card, { together: !!friend, hint });
   const out = await ollama.complete({
     model, format: 'json', timeout: 150000, options: { temperature: 0.95, num_predict: 1000 },
     messages: composePrompt({
-      card: conv.card, state: conv.state, profile: prof, kind: post.kind, hint,
+      card: conv.card, state: conv.state, profile: prof, kind: post.kind, hint, hot,
       evolution: memory.forPrompt(conv.id).filter((m) => m.kind === 'evolution').map((m) => m.content),
       recent: q.recentCaptions.all(conv.id).map((r) => r.caption),
       bonds: bondsOf(conv.id), memories: conv.state.hooks || [],
@@ -327,7 +353,7 @@ async function plan({ postId, hint }) {
   post.caption = short(j.caption, post.kind === 'story' ? 120 : 1200).replace(/^"|"$/g, '');
   if (friend && !post.caption.includes(`@${friendProf.username}`)) post.caption = `${post.caption} @${friendProf.username}`.trim();
   post.location = short(j.location, 80);
-  post.media = photos.map((p) => mediaFor(conv, post.kind, p, friend));
+  post.media = photos.map((p) => mediaFor(conv, post.kind, p, friend, hot));
   // ogni tanto un post (tutto il carosello) può essere più artistico; le storie restano spontanee
   if (post.kind === 'post' && Math.random() < ARTSY_POST_CHANCE) for (const md of post.media) md.artsy = true;
   // Prompt delle foto adesso, finché Gemma è in VRAM; le foto vanno in coda una per una

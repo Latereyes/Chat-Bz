@@ -23,6 +23,7 @@ Personaggi AI locali: chat con Gemma (Ollama) e foto e video con ComfyUI, sulla 
   - grafo (`applyPhotoStack`): Lenovo, corpo, LoRA di supporto, LoRA del personaggio.
 
   Chat e social lo usano; lo Studio (`src/studio.js`) ne prende solo LoRA e Lenovo. Non rimettere regole delle foto sparse in `prompts.js` o `social-prompts.js`.
+- `src/group.js`: chat a due (tu e due personaggi). La conversazione ha id `g-…` e passa dalle stesse rotte `/api/characters/:id` e dallo stesso turno di `chat.js`, che prende da qui prompt, strumenti e foto.
 - `src/krea2.js`: catalogo delle LoRA di supporto di Krea 2, `PROFILE` per filtro (Normale/Sensuale/Esplicito) e `VARIANTS` per il banco di prova. La taratura cambia **solo questo file**.
 - `src/body.js`: LoRA del corpo (solo Krea 2) e Lenovo (solo Krea 2: **Z-Image per ora resta grezzo**, niente Lenovo né LoRA).
 - `src/gpu.js`: arbitro della VRAM. Ogni chiamata a Ollama o ComfyUI passa da `gpu.run('ollama'|'comfy', …)`: i due non stanno in memoria insieme. Con l'agent del PC acceso l'arbitro è condiviso con LocalAI.

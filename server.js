@@ -15,10 +15,11 @@ import { workflows, loadWorkflows, publicInfo, checkAvailability } from './src/w
 import * as memory from './src/memory.js';
 import * as life from './src/life.js';
 import * as studio from './src/studio.js';
+import { publicGroup } from './src/group.js';
 import * as social from './src/social.js';
 import * as queue from './src/queue.js';
 import * as notify from './src/notify.js';
-import { publicCharacter, draftFromIdea, draftFromPhoto, PHOTO_QUESTION, normalizeCard, RELATIONS, PACES, INTIMACY, STYLES } from './src/characters.js';
+import { publicCharacter, draftFromIdea, draftFromPhoto, PHOTO_QUESTION, normalizeCard, RELATIONS, PACES, INTIMACY, STYLES, SOCIAL_HOT } from './src/characters.js';
 import { analyzeBody, BODY, DERIVED, FAMILIES, bodyRange, figureText, installedLoras, normalizeManual, comfyLoras } from './src/body.js';
 import { LORAS, VARIANTS } from './src/krea2.js';
 import { updateScene, initialState, DIM_LABEL, intimacyOpen, closeness } from './src/relationship.js';
@@ -44,7 +45,7 @@ function ownConv(req) {
 }
 
 const withUrls = (c) => ({
-  ...publicCharacter(c, mediaUrl),
+  ...(c.group ? publicGroup(c, mediaUrl) : publicCharacter(c, mediaUrl)),
   state: c.state,
   running: chat.isRunning(c.id),
   messages: c.messages.map(({ sceneBefore, ...m }) => ({
@@ -117,7 +118,7 @@ app.get('/api/config', wrap(async (req, res) => {
   res.json({
     defaultModel: config.ollama.model,
     options: {
-      relations: RELATIONS, paces: PACES, intimacy: INTIMACY, styles: STYLES, dims: DIM_LABEL,
+      relations: RELATIONS, paces: PACES, intimacy: INTIMACY, styles: STYLES, socialHot: SOCIAL_HOT, dims: DIM_LABEL,
       // varianti delle LoRA di Krea 2 (banco di prova), scelte anche nello Studio
       kreaVariants: Object.fromEntries(Object.entries(VARIANTS).map(([id, v]) => [id, v.label])),
       body: Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, { label: b.label, short: b.short, hint: b.hint, range: bodyRange(k), sizes: Object.fromEntries(Object.entries(b.sizes).map(([s, [l]]) => [s, l])), strengths: Object.fromEntries(Object.entries(b.sizes).map(([s, [, v]]) => [s, v])) }])),
@@ -150,7 +151,7 @@ app.get('/api/events', (req, res) => {
 });
 
 // ---- Personaggi ----
-app.get('/api/characters', (req, res) => res.json(store.list(req.user.id).map((c) => publicCharacter(c, mediaUrl))
+app.get('/api/characters', (req, res) => res.json([...store.list(req.user.id).map((c) => publicCharacter(c, mediaUrl)), ...store.listGroups(req.user.id).map((g) => publicGroup(g, mediaUrl))]
   .sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0) || (b.updatedAt || 0) - (a.updatedAt || 0))));
 
 app.post('/api/characters/draft', wrap(async (req, res) => {
@@ -222,8 +223,29 @@ app.post('/api/characters', wrap(async (req, res) => {
 
 app.get('/api/characters/:id', wrap(async (req, res) => res.json(withUrls(ownConv(req)))));
 
+/** Nuova chat a due: tu e due dei tuoi personaggi. */
+app.post('/api/groups', wrap(async (req, res) => {
+  const { members, name, presence, place } = req.body || {};
+  const ids = [...new Set(Array.isArray(members) ? members.map(String) : [])];
+  const chars = ids.map((id) => store.get(id)).filter((c) => c && !c.group && c.ownerId === req.user.id);
+  if (chars.length !== 2) throw httpError(400, 'Scegli due personaggi diversi');
+  const g = store.createGroup(req.user.id, chars.map((c) => c.id), {
+    name: String(name || '').trim() || `${chars[0].card.name} e ${chars[1].card.name}`,
+    scene: { presence: presence === 'together' ? 'together' : 'apart', place: String(place || '').trim().slice(0, 200) },
+  });
+  await store.save(g);
+  res.json(withUrls(g));
+}));
+
 app.patch('/api/characters/:id', wrap(async (req, res) => {
   const c = ownConv(req);
+  // chat a due: si cambia solo il nome
+  if (c.group) {
+    const name = String(req.body?.name || '').trim().slice(0, 60);
+    if (name) c.card.name = name;
+    await store.save(c, { touch: false });
+    return res.json(withUrls(c));
+  }
   const prev = c.card;
   const { model, ...body } = req.body || {};
   // la bozza manda body solo per l'aspetto da cui è nata: senza, si ricalcola se l'aspetto è cambiato
@@ -239,7 +261,7 @@ app.delete('/api/characters/:id', wrap(async (req, res) => {
   const c = ownConv(req);
   chat.stop(c.id);
   for (const m of c.messages) for (const md of m.media || []) cancel(md.id);
-  await social.purgeCharacter(c.id);
+  if (!c.group) await social.purgeCharacter(c.id);
   await store.remove(c.id);
   res.json({ ok: true });
 }));
@@ -255,6 +277,7 @@ app.patch('/api/characters/:id/scene', wrap(async (req, res) => {
 /** Rapporto e memorie (pannello "Rapporto" della scheda). */
 app.get('/api/characters/:id/relationship', wrap(async (req, res) => {
   const c = ownConv(req);
+  if (c.group) throw httpError(400, 'Nelle chat a due il rapporto è quello di ciascun personaggio');
   res.json({ state: c.state, closeness: closeness(c.state.rel), intimacyOpen: intimacyOpen(c.card, c.state.rel), memories: memory.list(c.id) });
 }));
 app.delete('/api/characters/:id/memories/:memId', wrap(async (req, res) => { memory.remove(ownConv(req).id, req.params.memId); res.json({ ok: true }); }));
@@ -265,6 +288,11 @@ app.post('/api/characters/:id/reset', wrap(async (req, res) => {
   chat.stop(c.id);
   for (const m of c.messages) for (const md of m.media || []) cancel(md.id);
   await store.removeMessages(c, c.messages.map((m) => m.id));
+  if (c.group) {   // chat a due: si riparte con la stessa scena di base (il rapporto di ognuno resta il suo)
+    c.state.scene = { ...c.state.scene, activity: '', outfit: '', mood: '', intimacy: 'none', since: Date.now() };
+    await store.save(c);
+    return res.json(withUrls(c));
+  }
   memory.clear(c.id);
   c.state = initialState(c.card);
   if (c.card.greeting) c.messages.push({ id: store.newId(), role: 'assistant', content: c.card.greeting, media: [], status: 'done', presence: c.state.scene.presence, createdAt: Date.now() });
@@ -275,6 +303,7 @@ app.post('/api/characters/:id/reset', wrap(async (req, res) => {
 /** Immagine del profilo: una foto della chat, dello studio o caricata da te. */
 app.post('/api/characters/:id/avatar', wrap(async (req, res) => {
   const c = ownConv(req);
+  if (c.group) throw httpError(400, 'La foto profilo si sceglie dalla chat di ciascun personaggio');
   const file = String(req.body?.file || '');
   // Foto della chat: si usa così com'è; altrimenti (studio, foto caricata) se ne fa una copia sua
   const inChat = c.messages.some((m) => (m.media || []).some((md) => md.file === file && md.type === 'image'));

@@ -10,6 +10,7 @@ import { workflows, getWorkflow, dimensions, dimensionsForRatio, frameCount, ran
 import { promptProfile } from './auth.js';
 import { systemPrompt, nowBlock, tools, promptEngineerSystem, characterMediaRequest, cleanPrompt, sceneCheckPrompt } from './prompts.js';
 import { engineerPhoto, photoLevel } from './photo.js';
+import { groupTurn } from './group.js';
 import { updateScene } from './relationship.js';
 import * as queue from './queue.js';
 import * as social from './social.js';
@@ -342,6 +343,8 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
   const toolModel = caps.includes('tools');
   const numCtx = await ollama.contextSize(model);
   try {
+    // Chat a due: prompt, strumenti e foto per due personaggi (group.js); il resto del turno è lo stesso
+    const G = conv.group ? groupTurn(conv) : null;
     // Foto inviate dall'utente: descritte dal modello visivo di ComfyUI (Gemma uncensored non vede le immagini)
     const unread = (userMsg?.attachments || []).filter((a) => !a.description && !a.visionError);
     if (unread.length && !visionModel) {
@@ -364,11 +367,13 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
 
       const { msgs, trimmed } = history(conv, idx, numCtx);
       const prevAt = initiative ? conv.messages[idx - 1]?.createdAt : conv.messages.slice(0, Math.max(0, idx - 1)).findLast((m) => m.status !== 'pending')?.createdAt;
-      const memories = memory.forPrompt(conv.id, 14, userMsg?.content);
-      const style = styleNotes(conv, idx, initiative ? '' : userMsg?.content, promptProfile(conv.ownerId));
+      const user = promptProfile(conv.ownerId);
+      const style = styleNotes(conv, idx, initiative ? '' : userMsg?.content, user);
       if (!toolModel) style.push(NO_TOOLS_NOTE);
-      const block = nowBlock({ card: conv.card, state: conv.state, memories, lastGapMs: prevAt ? Date.now() - prevAt : null, trimmed, initiative, social: social.chatContext(conv), user: promptProfile(conv.ownerId), style });
-      const convo = [{ role: 'system', content: systemPrompt(conv.card, { user: promptProfile(conv.ownerId) }) }, ...msgs.map(({ role, content }) => ({ role, content }))];
+      const lastGapMs = prevAt ? Date.now() - prevAt : null;
+      const block = G ? G.nowBlock({ lastGapMs, user, style, initiative })
+        : nowBlock({ card: conv.card, state: conv.state, memories: memory.forPrompt(conv.id, 14, userMsg?.content), lastGapMs, trimmed, initiative, social: social.chatContext(conv), user, style });
+      const convo = [{ role: 'system', content: G ? G.system(user) : systemPrompt(conv.card, { user }) }, ...msgs.map(({ role, content }) => ({ role, content }))];
       if (initiative || convo.at(-1).role !== 'user') convo.push({ role: 'user', content: block });
       else convo.at(-1).content = `${block}\n\n${convo.at(-1).content}${FORCE_NOTE[tool] || ''}`;
       // Le immagini dell'utente vanno al modello solo se le vede davvero
@@ -376,7 +381,7 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
         convo.at(-1).images = userMsg.attachments.map((a) => { try { return fs.readFileSync(path.join(config.paths.media, a.file)).toString('base64'); } catch { return null; } }).filter(Boolean);
       }
 
-      const allTools = toolModel ? tools({ canAnimate: !!lastCharacterPhoto(conv) }) : [];
+      const allTools = !toolModel ? [] : G ? G.tools() : tools({ canAnimate: !!lastCharacterPhoto(conv) });
       let sceneChanged = false;
       for (let round = 0; round < 3; round++) {
         const result = await ollama.chat({
@@ -422,14 +427,16 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       if (!calls.length && (tool === 'photo' || tool === 'video')) {
         calls.push({ function: { name: tool === 'photo' ? 'send_photo' : 'send_video', arguments: { description: userMsg?.content || 'a casual selfie', fromText: !!userMsg?.content } } });
       }
-      calls.slice(0, 2).forEach((c, i) => { const md = mediaFromCall(conv, c, i); if (md) msg.media.push(...[md].flat()); });
+      calls.slice(0, 2).forEach((c, i) => { const md = G ? G.mediaFromCall(c, i, { userText: userMsg?.content }) : mediaFromCall(conv, c, i); if (md) msg.media.push(...[md].flat()); });
       for (const md of msg.media) emitMedia(conv, msg, md);
 
       // Prompt per il modello immagine/video (Gemma è ancora in VRAM: si fa subito)
       for (const md of msg.media) {
         const src = md.sourceMediaId && msg.media.find((x) => x.id === md.sourceMediaId);
         if (src) md.sourceDescription = src.prompt || src.description;
-        md.prompt = await engineerPrompt(conv, msg, md, model, signal, { userText: userMsg?.content, reply: msg.content });
+        md.prompt = G
+          ? await G.engineer(msg, md, { model, signal, user, userText: userMsg?.content, reply: msg.content, onChunk: (delta) => emit(conv.id, { type: 'prompt_delta', messageId: msg.id, mediaId: md.id, delta }) })
+          : await engineerPrompt(conv, msg, md, model, signal, { userText: userMsg?.content, reply: msg.content });
         emitMedia(conv, msg, md);
       }
     }, { onWait });
@@ -456,6 +463,7 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
 /** Anima una foto della chat (immagine → video), con un'indicazione facoltativa sul movimento. */
 export function animateMedia(conv, messageId, mediaId, { text, seconds, model } = {}) {
   if (running.has(conv.id)) throw new Error('Sta già rispondendo');
+  if (conv.group) throw new Error('Nelle chat a due i video per ora non ci sono');
   const msg = conv.messages.find((m) => m.id === messageId);
   const src = msg?.media?.find((m) => m.id === mediaId && m.type === 'image' && m.status === 'done' && m.file);
   if (!src) throw new Error('Foto non trovata');
