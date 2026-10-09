@@ -99,6 +99,8 @@
               <label class="so-check" title="Dopo la foto genera anche un breve video che parte da lì"><input type="checkbox" id="so-video"><span>Anche video</span></label>
               <label title="Seed fisso (vuoto = casuale)"><span>Seed</span><input id="so-seed" inputmode="numeric" placeholder="seed casuale" size="10"></label>
               <label title="LoRA Lenovo, il look foto amatoriale (solo Krea 2: Z-Image per ora resta grezzo): di solito lo sceglie Gemma in base alla scena"><span>Lenovo</span><select id="so-lenovo"><option value="">Lenovo: decide Gemma</option><option value="on">Con Lenovo</option><option value="off">Senza Lenovo</option></select></label>
+              <label title="Filtro della foto: decide le LoRA di supporto di Krea 2. Automatico = dalla richiesta"><span>Filtro</span><select id="so-level"><option value="">Filtro: automatico</option><option value="neutral">Normale</option><option value="sensual">Sensuale</option><option value="explicit">Esplicito</option></select></label>
+              <label title="LoRA di supporto di Krea 2: il profilo attuale o una variante del banco di prova (src/krea2.js), per confrontarle con lo stesso seed"><span>LoRA Krea</span><select id="so-variant"></select></label>
               <label class="so-check" title="Regola a mano le LoRA del corpo (Krea 2 o Z-Image)"><input type="checkbox" id="so-body"><span>Fisico a mano</span></label>
               <div class="so-body" id="so-body-box" hidden></div>
             </div>

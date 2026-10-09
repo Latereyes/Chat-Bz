@@ -37,7 +37,7 @@ Personaggi AI locali: chat con Gemma (Ollama) e foto e video con ComfyUI, sulla 
 - Ogni cambio alle foto si prova con il banco di prova, non su una foto sola: una correzione a mano su un caso ne rompeva un altro.
 
 ## Taratura in corso
-Il lavoro di adesso è in `piano/prossimi-passi.md`: segui quella lista, spunta le caselle e compila la tabella delle scelte. Il contesto è in `piano/piano-immagini.md`. Per i giri di prova c'è la skill `taratura-foto`.
+Il lavoro di adesso è in `piano/prossimi-passi.md`: segui quella lista, spunta le caselle e compila la tabella delle scelte. Il contesto è in `piano/piano-immagini.md`. Per i giri di prova c'è la skill `taratura-foto`. Nello Studio i menu «Filtro» e «LoRA Krea» permettono di provare una variante su una singola foto.
 
 ## Git
 - Lavora su un branch, non su `main`. La PR delle foto è Latereyes/Chat-Bz#14 (branch `claude/admiring-goldberg-rgvept`).

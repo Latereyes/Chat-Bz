@@ -7,8 +7,8 @@ import { emit, emitMedia, enqueue, mediaUrl } from './jobs.js';
 import { workflows, getWorkflow, dimensions, dimensionsForRatio, frameCount, randomSeed, ASPECTS } from './workflows.js';
 import { promptEngineerSystem, visualSignature, cleanPrompt, LOOK_CHOICE, splitLook } from './prompts.js';
 import { figureText, manualBodyLoras, bodyFamily, hasLenovo } from './body.js';
-import { studioLevel, hmTokens, finishPrompt } from './photo.js';
-import { profileFor } from './krea2.js';
+import { studioLevel, hmTokens, finishPrompt, LEVELS, CONTENT } from './photo.js';
+import { profileFor, VARIANTS } from './krea2.js';
 
 /**
  * Studio immagini: l'"Image Assistant" di ChatBz 1, non più come personaggio ma come strumento a parte.
@@ -56,7 +56,8 @@ function request({ text, card, media, sourceDescription, sources }) {
     figureLine(card, media.manualBody),
     sources ? `The user attached ${sources} image${sources > 1 ? 's' : ''} to edit: write an editing instruction that changes only what the request asks and keeps everything else (identity, composition, light) unchanged.` : null,
     sourceDescription !== undefined ? `Starting image (the video starts exactly from it): ${sourceDescription || '(no description)'}` : null,
-    LEVEL,
+    // filtro scelto a mano nello Studio: vale anche per il prompt, non solo per le LoRA
+    media.levelReason === 'scelto nello Studio' ? `CONTENT LEVEL: ${CONTENT[media.level]}` : LEVEL,
     `Output format: ${media.width}x${media.height}${media.seconds ? `, duration ${media.seconds} seconds` : ''}.`,
     'Write the final prompt now.',
   ].filter(Boolean).join('\n');
@@ -129,7 +130,12 @@ export function send(conv, opts = {}) {
   if (!w) throw new Error('Nessun workflow adatto disponibile su ComfyUI');
 
   const seed = /^\d{1,15}$/.test(String(opts.seed ?? '').trim()) ? Number(opts.seed) : randomSeed();
-  const settings = { engine: opts.engine || '', aspect, raw, video: !!opts.video && w.type === 'image', seconds: opts.seconds || 5, characterId: owner?.id || null, characterName: owner?.card.name || null, seed: opts.seed ? seed : null, body: manualBody ? Object.fromEntries(manualBody.map((l) => [l.part, l.strength])) : null, lenovo, engineUsed: w.id !== (opts.engine || '') && manualBody ? w.id : null };
+  // Filtro: scelto a mano, altrimenti dalla richiesta (lo Studio non ha tetto); decide le LoRA di supporto di Krea 2
+  const level = LEVELS.includes(opts.level) ? opts.level : null;
+  const lv = w.type !== 'image' ? null : level ? { level, reason: 'scelto nello Studio' } : studioLevel(text);
+  // Variante delle LoRA di Krea 2 (quelle del banco di prova): per tarare una foto alla volta
+  const variant = opts.variant && Object.hasOwn(VARIANTS, opts.variant) && opts.variant !== 'base' ? opts.variant : null;
+  const settings = { engine: opts.engine || '', aspect, raw, video: !!opts.video && w.type === 'image', seconds: opts.seconds || 5, characterId: owner?.id || null, characterName: owner?.card.name || null, seed: opts.seed ? seed : null, body: manualBody ? Object.fromEntries(manualBody.map((l) => [l.part, l.strength])) : null, lenovo, level, variant, engineUsed: w.id !== (opts.engine || '') && manualBody ? w.id : null };
   const userMsg = { id: store.newId(), role: 'user', content: text, attachments: attachments.length ? attachments : undefined, studio: settings, createdAt: Date.now() };
   conv.messages.push(userMsg);
   emit(conv.id, { type: 'message', message: userMsg });
@@ -137,9 +143,7 @@ export function send(conv, opts = {}) {
   const base = { toolName: 'studio', description: text, prompt: raw ? text : '', seed, status: 'engineering', createdAt: Date.now(), characterId: owner?.id || null };
   // Ritratto chiesto dalla scheda: appena pronto diventa la foto profilo del personaggio
   const avatarFor = opts.avatarFor && owner?.id === opts.avatarFor ? owner.id : null;
-  // Filtro dalla richiesta (lo Studio non ha tetto): decide le LoRA di supporto di Krea 2
-  const lv = w.type === 'image' ? studioLevel(text) : null;
-  const first = { ...base, id: store.newId(), type: w.type, mode: w.mode, workflow: w.id, workflowName: w.name, ...(lv ? { level: lv.level, levelReason: lv.reason } : {}), ...(manualBody && w.type === 'image' ? { manualBody } : {}), ...(lenovo !== null && w.type === 'image' ? { lenovo } : {}), ...(avatarFor && w.type === 'image' ? { avatarFor } : {}) };
+  const first = { ...base, id: store.newId(), type: w.type, mode: w.mode, workflow: w.id, workflowName: w.name, ...(lv ? { level: lv.level, levelReason: lv.reason } : {}), ...(variant && lv ? { variant } : {}), ...(manualBody && w.type === 'image' ? { manualBody } : {}), ...(lenovo !== null && w.type === 'image' ? { lenovo } : {}), ...(avatarFor && w.type === 'image' ? { avatarFor } : {}) };
   if (!attachments.length) Object.assign(first, { aspect, ...dimensions(w, aspect) });
   else {
     // Foto allegata: modifica (Qwen-Image-Edit), rielaborazione, oppure video che parte da lì
@@ -190,7 +194,7 @@ async function engineer(conv, msg, md, { text, card, model, signal, sources }) {
  */
 function studioPrompt(prompt, md, family, { text, card, raw = false }) {
   if (family !== 'krea2' || md.mode !== 'text2img' && md.mode !== 'img2img') return prompt;
-  const hm = !raw && md.level === 'explicit' && 'hmnsfw' in profileFor('explicit').loras && !/^\s*HMNSFW\b/.test(prompt) ? hmTokens([text], { together: false }) : null;
+  const hm = !raw && md.level === 'explicit' && 'hmnsfw' in profileFor('explicit', md.variant).loras ? hmTokens([text], { together: false }) : null;
   if (hm) md.hm = hm;
   if (card?.lora?.file) md.charLora = true;
   // prompt diretto: resta com'è (anche con i token HMNSFW scritti a mano), si aggiunge solo la parola chiave

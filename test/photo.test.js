@@ -110,6 +110,7 @@ test('variante Realism V2: sostituisce la 3.1; se non è installata resta la 3.1
   const out = applyPhotoStack(g2, { level: 'neutral', files: FILES.filter((f) => f !== LORAS.realismV2.file), variant: 'realism-v2' });
   assert.ok(loraNames(g2).includes(LORAS.realism31.file));
   assert.ok(out.missing.includes(LORAS.realismV2.file));
+  assert.deepEqual(out.loras.map((l) => l.key), ['realism31']);
 });
 
 test('LoRA del personaggio: agganciata e parola chiave in testa (dopo i token HMNSFW)', () => {

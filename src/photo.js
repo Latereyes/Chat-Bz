@@ -292,6 +292,13 @@ export function applyPhotoStack(graph, { level = 'neutral', lenovo = null, lenov
       add(file, strength, def.label);
       out.loras.push({ key, label: def.label, strength });
     }
+    // realismo del profilo non installato: resta quello del workflow, e si dice
+    if (realism && !realismHere) {
+      for (const id of realismNodes) {
+        const key = Object.keys(LORAS).find((k) => LORAS[k].file === base(graph[id].inputs.lora_name));
+        out.loras.unshift({ key, label: LORAS[key].label, strength: graph[id].inputs.strength_model });
+      }
+    }
     if (sampler && profile.sampler) out.sampler = setSampler(graph, family, profile.sampler);
   }
 

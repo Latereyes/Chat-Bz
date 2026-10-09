@@ -100,7 +100,7 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
     const body = await installedLoras(withDerived(media.manualBody ? media.manualBody : bodyLoras(card, family)), family);
     const res = applyPhotoStack(graph, {
       level: media.level || 'neutral', lenovo, lenovoFile: lenovo ? await lenovoLora(family) : null,
-      bodyLoras: body, charLora: media.charLora ? card?.lora : null, prompt: media.prompt, files: await comfyLoras(),
+      bodyLoras: body, charLora: media.charLora ? card?.lora : null, prompt: media.prompt, files: await comfyLoras(), variant: media.variant || null,
       stack: media.mode === 'text2img' || media.mode === 'img2img', sampler: media.mode === 'text2img',
     });
     media.lenovoUsed = res.lenovo;

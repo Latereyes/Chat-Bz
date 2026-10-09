@@ -91,6 +91,9 @@ node tools/prova-foto.js --foto --seed 12345 --scenari 13,14 --varianti base,rea
 - [ ] Le LoRA del corpo contrastano la LoRA? Ora seno e corporatura sono a −2, ricavati dall'aspetto. Se sì, correggi l'aspetto nella scheda o regola il fisico a mano.
 - [ ] Correggi l'aspetto di Hitomi nella scheda perché combaci con la LoRA: l'aspetto attuale è una bozza.
 
+### In più: dallo Studio, una foto alla volta
+Nello Studio immagini ci sono i menu **Filtro** e **LoRA Krea** (le stesse varianti del banco di prova). Per confrontare due varianti su una tua richiesta: motore Krea 2 Real, stesso **Seed**, cambi solo «LoRA Krea». La riga sotto la foto dice filtro, variante e LoRA usate.
+
 ### Dopo ogni giro
 1. Copia la variante vincente in `PROFILE` in `src/krea2.js` (forze, `sampler`, `bodyScale`).
 2. `npm test`. Il test «anti-rifiuto solo in esplicito» fallisce apposta se lo metti anche in sensuale: in quel caso aggiorna il test (`test/photo.test.js`).
