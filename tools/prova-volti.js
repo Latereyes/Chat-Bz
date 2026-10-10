@@ -36,6 +36,7 @@ const VARIANTI = {
   'pulita-leggera': { label: 'Catena pulita, denoise -0.1', set: plus(-0.1) },
   'guida-768': { label: 'Catena pulita, ritaglio a 768', set: () => { DUO_FACES.guideSize = 768; } },
   'senza-lenovo': { label: 'Catena pulita senza Lenovo nel ritocco', set: () => { FACE_CHAIN.lenovo = false; } },
+  'solo-piccoli': { label: 'Catena pulita, volti alti più di 350 px lasciati com\'erano', set: () => { SINGLE_FACE.maxFace = 350; } },
   'contesto-largo': { label: 'Catena pulita, più contesto (crop 3.5)', set: () => { DUO_FACES.cropFactor = 3.5; } },
 };
 

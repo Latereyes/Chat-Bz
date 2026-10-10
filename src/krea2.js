@@ -94,7 +94,10 @@ export const DUO_FACES = { denoise: 0.5, explicitDenoise: 0.42, steps: 8, cfg: 1
  */
 // denoise basso (0.35): ridisegna i tratti con la LoRA ma lascia espressione, bocca e sguardo della foto.
 // In esplicito minimo (scelta di Andrea, 2026-10-09): l'espressione del momento conta più della somiglianza fine.
-export const SINGLE_FACE = { on: true, denoise: { neutral: 0.35, sensual: 0.35, explicit: 0.2 } };
+// maxFace: altezza in pixel oltre la quale il volto non si ritocca (0 = sempre). Prova sul PC 2026-10-10: un volto già
+// grande (Elena Valli, 390x563) veniva ritoccato con un ritaglio grande quanto tutta la foto e la pelle si crepava;
+// da vicino la LoRA il volto lo fa già bene da sola.
+export const SINGLE_FACE = { on: true, denoise: { neutral: 0.35, sensual: 0.35, explicit: 0.2 }, maxFace: 0 };
 /**
  * Modello del ritocco (volto e persona): parte dal modello di Krea 2 e tiene solo le LoRA che non deformano un primo piano.
  * Prima il ritocco usava tutta la catena della foto: LoRA del corpo (seno, fianchi), MysticXXX e HMNSFW lavoravano anche

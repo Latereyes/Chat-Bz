@@ -377,8 +377,11 @@ export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = 
     const one = node('ImpactSEGSOrderedFilter', single
       ? { segs: [segs, 0], target: 'area(=w*h)', order: true, take_start: 0, take_count: 1 }
       : { segs: [segs, 0], target: 'x1', order: false, take_start: i, take_count: 1 });
+    // foto singola: un volto già grande si lascia com'è (vedi SINGLE_FACE.maxFace)
+    const only = single && SINGLE_FACE.maxFace && label === 'Ritocco volto'
+      ? node('ImpactSEGSRangeFilter', { segs: [one, 0], target: 'height', mode: true, min_value: 0, max_value: SINGLE_FACE.maxFace }) : one;
     const fix = node('DetailerForEach', {
-      image, segs: [one, 0], model: [loras[i], 0], clip: [clipId, 0], vae: [vaeId, 0], positive: [pos, 0], negative: [neg, 0],
+      image, segs: [only, 0], model: [loras[i], 0], clip: [clipId, 0], vae: [vaeId, 0], positive: [pos, 0], negative: [neg, 0],
       guide_size: DUO_FACES.guideSize, guide_size_for: true, max_size: DUO_FACES.guideSize, seed: seed + i, steps: DUO_FACES.steps, cfg: DUO_FACES.cfg,
       sampler_name: DUO_FACES.sampler, scheduler: DUO_FACES.scheduler, denoise, feather: DUO_FACES.feather,
       noise_mask: true, force_inpaint: true, wildcard: '', cycle: 1,

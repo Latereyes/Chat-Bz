@@ -289,3 +289,17 @@ test('ritocco del volto: senza LoRA del corpo, NSFW e pose (deformano il primo p
     assert.equal(Object.values(h).find((x) => x.class_type === 'DetailerForEach').inputs.model[0], s.inputs.model[0]);
   } finally { FACE_CHAIN.full = false; }
 });
+
+test('foto singola: con maxFace un volto già grande non si ritocca', async () => {
+  const { applySingleFace } = await import('../src/photo.js');
+  const { SINGLE_FACE } = await import('../src/krea2.js');
+  const g = structuredClone(KREA.graph);
+  applyPhotoStack(g, { level: 'neutral', files: FILES, charLoras: [CHARACTERS.hitomi.lora] });
+  SINGLE_FACE.maxFace = 350;
+  try { applySingleFace(g, CHARACTERS.hitomi, { files: FILES }); } finally { SINGLE_FACE.maxFace = 0; }
+  const fix = Object.values(g).find((x) => x.class_type === 'DetailerForEach');
+  const range = g[fix.inputs.segs[0]];
+  assert.equal(range.class_type, 'ImpactSEGSRangeFilter');
+  assert.equal(range.inputs.max_value, 350);
+  assert.equal(g[range.inputs.segs[0]].class_type, 'ImpactSEGSOrderedFilter');   // prima il più grande, poi il limite
+});
