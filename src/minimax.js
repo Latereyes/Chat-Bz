@@ -45,6 +45,10 @@ export const VARIANTS = {
   'hmnsfw-12': { label: 'HMNSFW come dice l\'autore (turbo 0.5, 12 passi)', explicitSteps: 12 },
   'senza-genitali': { label: 'Senza Vagina, hmpussy e Penis V2', explicit: { vagina: null, hmpussy: null, penis: null } },
   'senza-seno': { label: 'Senza la LoRA del seno', sensual: { breast: null }, explicit: { breast: null } },
+  // ghosting nei movimenti (Andrea, 2026-10-10): le LoRA addestrate su foto (Vagina, seno) a forza piena rovinano il movimento;
+  // con il turbo a metà 6 passi sono pochi per il ritmo veloce dell'esplicito
+  'esplicito-leggero': { label: 'Esplicito leggero (seno 0.8, Vagina 0.5, Penis 0.6)', explicit: { breast: 0.8, vagina: 0.5, penis: 0.6 } },
+  'esplicito-leggero-12': { label: 'Esplicito leggero con 12 passi', explicit: { breast: 0.8, vagina: 0.5, penis: 0.6 }, explicitSteps: 12 },
   'senza-hmnsfw': { label: 'Senza HMNSFW (turbo 1)', explicit: { hmnsfw: null }, explicitTurbo: 1 },
   'hmnsfw-forte': { label: 'HMNSFW 1.0', explicit: { hmnsfw: 1 } },
   'hmnsfw-shift6': { label: 'HMNSFW con shift 6 (come consiglia l\'autore)', explicitShift: 6 },

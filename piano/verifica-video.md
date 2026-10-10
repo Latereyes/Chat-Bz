@@ -141,15 +141,17 @@ Cosa c'è oggi in un video esplicito con un uomo (cowgirl POV), oltre al modello
 | profilo | **0.5** | **6** | seno 1.3, Vagina 1, hmpussy 0.35, Penis V2 1, HMNSFW 0.8 |
 | «Senza HMNSFW» | 1 | 6 | seno 1.3, Vagina 1, hmpussy 0.35, Penis V2 1 |
 
+**Il sintomo (Andrea):** video pieni di artefatti, con **ghosting nei movimenti**: scie e corpi doppi nel ritmo (fianchi, seno), sia con HMNSFW sia senza. Il ghosting viene dal movimento, non dai colori. Sui video normali era migliorato con 0,7 MP, ma i movimenti dell'esplicito sono più veloci e ripetuti.
+
 Sospetti, in ordine:
-1. **Troppe LoRA insieme.** Seno, Vagina e Penis V2 sono comuni ai due casi rotti: in tutto 8-9 LoRA, quasi tutte a forza piena.
+1. **LoRA addestrate su foto a forza piena.** Vagina (1.0, addestrata su foto) e seno (1.3) sono comuni ai due casi rotti. Una LoRA imparata su immagini ferme «tira» ogni fotogramma verso una foto e rompe la continuità del movimento: ne vengono scie e corpi doppi. Penis V2 a 1.0 forse fa lo stesso. In tutto sono 8-9 LoRA.
 2. **Turbo 0.5 con 6 passi** (solo con HMNSFW). L'autore di HMNSFW consiglia turbo 0.5 con 12 passi. Con metà turbo, 6 passi sono probabilmente pochi e il video resta «sporco». I 6 passi sono stati scelti sui video normali, dove il turbo è a 1.
 3. **La LoRA del seno a 1.3.**
 
 ### Prova (una causa alla volta, stessa foto e stesso seed)
 **Usa Hitomi**: è un personaggio inventato (LoRA `Krea220Hitomi`, parola chiave H1t0m1), non una persona reale. Le prove esplicite si fanno solo con lei. Con ChatBz fermo:
 ```powershell
-node tools/prova-video.js --personaggio Hitomi --filtro explicit --nome hitomi --varianti base,senza-hmnsfw,hmnsfw-12,senza-genitali,senza-seno,senza-nuove
+node tools/prova-video.js --personaggio Hitomi --filtro explicit --nome hitomi --varianti base,senza-nuove,senza-genitali,senza-seno,hmnsfw-12,esplicito-leggero,esplicito-leggero-12
 ```
 `--personaggio Hitomi` prende l'ultima sua foto esplicita finita in chat (se non c'è, l'ultima sensuale). Se non ne ha, chiedile prima una foto esplicita in chat, oppure passa una sua foto con `--foto data\media\<id>\<foto>.png`.
 Senza `--prompt` usa una scena di prova (cowgirl POV) che aggancia tutte le LoRA, come in chat (anche `HMPenis, front view` in testa). Per ogni variante stampa passi e LoRA usate. I video vanno in `data\prova-video\banco\hitomi-<variante>-explicit-5s.mp4`.
@@ -161,10 +163,12 @@ Le stesse varianti sono anche nello Studio (menu «LoRA e passi video», «Chi»
 | solo `senza-nuove` | sono le LoRA nuove insieme | prova `senza-genitali` e `senza-seno` per sapere quale; abbassa quella (es. 0.6) o toglila |
 | `senza-genitali` | Vagina / Penis V2 | forze più basse (0.5-0.7) o solo una delle due |
 | `senza-seno` | seno a 1.3 | seno 0.8-1.0 |
+| `esplicito-leggero` o `esplicito-leggero-12` | forze troppo alte (e passi) | metti in `PROFILE.explicit` le forze della variante buona, e `steps: 12` se serve la seconda |
 | `hmnsfw-12` ma non `base` | pochi passi per turbo 0.5 | `steps: 12` (più lento: ~160 s per 5 s), oppure turbo 1 con HMNSFW |
 | nessuno, nemmeno `senza-nuove` | non sono le LoRA nuove: risoluzione 0,7 MP o prompt | prova `--varianti vecchio` (0,4 MP e 8 passi) e guarda il prompt |
 
 Annota anche *come* sono rotti, perché aiuta a capire la causa:
+- scie e corpi doppi nel movimento (ghosting): LoRA addestrate su foto troppo forti, oppure pochi passi;
 - rumore o macchie, immagine «non finita»: pochi passi;
 - colori bruciati o pelle di plastica: troppe LoRA o forze alte;
 - corpi deformati o anatomia sbagliata: una LoRA dei genitali;

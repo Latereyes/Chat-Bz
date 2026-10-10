@@ -101,6 +101,9 @@ test('video espliciti: varianti per trovare la causa (12 passi, senza genitali, 
   const gg = run('senza-genitali');
   assert.ok(!has(gg, LORAS.vagina.file) && !has(gg, LORAS.hmpussy.file) && !has(gg, LORAS.penis.file));
   assert.ok(has(gg, LORAS.hmnsfw.file) && has(gg, LORAS.breast.file));
+  const gl = run('esplicito-leggero-12');
+  assert.equal(steps(gl), 12);
+  assert.equal(loras(gl).find(([f]) => f === LORAS.vagina.file)[1], 0.5);
   const gs = run('senza-seno');
   assert.ok(!has(gs, LORAS.breast.file) && has(gs, LORAS.vagina.file));
 });
