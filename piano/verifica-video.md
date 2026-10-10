@@ -196,3 +196,13 @@ Annota anche *come* sono rotti, perché aiuta a capire la causa:
 - video fermo o che cambia scena: prompt.
 
 Mostra i video ad Andrea, poi cambia `PROFILE.explicit` e lancia `npm test` (il test «esplicito con un uomo» fissa forze e passi: aggiornalo).
+
+### Terzo giro (banco, Hitomi, seed 42, 2026-10-10)
+
+| Variante | tempo | errore moto (picchi) | nitidezza moto | Esito a occhio |
+|---|---|---|---|---|
+| `base` (HMNSFW + Mystic e Unlocked 0.6) | 161 s | 5,0 (7,3) | 55 | pelle slavata e «di plastica», volto impastato, scie nel ritmo |
+| `senza-mystic-unlocked` | 146 s | 3,9 (5,3) | 129 | corpo nitido e pulito, volto stabile. Nel primo secondo cambia scena (la foto di partenza era vestita alla scrivania: prompt e foto non coincidono) |
+| `hmnsfw-shift6` | 151 s | 4,8 (7,5) | 35 | il peggiore: più slavato, volto che si scioglie |
+
+Applicato: in esplicito MysticXXX e Unlocked a 0 (`PROFILE.explicit`), HMNSFW unica LoRA NSFW. Per riprovarle c'è la variante `con-mystic-unlocked`. Da controllare: il sensuale ha ancora Mystic e Unlocked a 0.6.

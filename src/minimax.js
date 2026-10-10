@@ -37,7 +37,9 @@ export const PROFILE = {
   // molto meglio; seno e pene più leggeri cambiano poco ma non peggiorano. Più lento: 5 s in ~160 s invece di ~87
   // secondo giro (2026-10-10): solo HMNSFW molto meglio, deforma poco. Seno, Vagina, hmpussy e Penis V2 deformavano i corpi
   // nel movimento: restano nel catalogo per le varianti, non nel profilo
-  explicit: { loras: { kiss: 0.8, hmnsfw: 0.8 }, turbo: 0.5, steps: 12 },
+  // terzo giro (banco, stesso seed): senza MysticXXX e Unlocked il corpo resta nitido e pulito; con loro pelle slavata, volto
+  // impastato e scie nel ritmo. Lo shift 6 peggiora. HMNSFW resta l'unica LoRA NSFW
+  explicit: { loras: { kiss: 0.8, hmnsfw: 0.8, mystic: 0, unlocked: 0 }, turbo: 0.5, steps: 12 },
 };
 
 /** Varianti da confrontare (Studio: menu «LoRA video»). null toglie una LoRA del profilo. */
@@ -51,6 +53,7 @@ export const VARIANTS = {
   'con-genitali': { label: 'Con Vagina 0.5, hmpussy e Penis V2 0.6 (com\'era)', explicit: { breast: 0.8, vagina: 0.5, hmpussy: 0.35, penis: 0.6 } },
   'con-seno': { label: 'Con la LoRA del seno 0.8 anche in esplicito', explicit: { breast: 0.8 } },
   'senza-seno': { label: 'Senza la LoRA del seno (sensuale)', sensual: { breast: null } },
+  'con-mystic-unlocked': { label: 'Con MysticXXX e Unlocked 0.6 anche in esplicito (com\'era)', explicit: { mystic: 0.6, unlocked: 0.6 } },
   'senza-mystic-unlocked': { label: 'Senza MysticXXX e Unlocked (solo HMNSFW come LoRA NSFW)', sensual: { mystic: 0, unlocked: 0 }, explicit: { mystic: 0, unlocked: 0 } },
   'senza-hmnsfw': { label: 'Senza HMNSFW (turbo 1, 12 passi)', explicit: { hmnsfw: null }, explicitTurbo: 1 },
   'hmnsfw-forte': { label: 'HMNSFW 1.0', explicit: { hmnsfw: 1 } },
@@ -59,7 +62,7 @@ export const VARIANTS = {
   'seno-sempre': { label: 'Seno anche nei video normali (1.0, più realismo)', neutral: { breast: 1 } },
   'senza-mystic': { label: 'Senza MysticXXX', sensual: { mystic: 0 }, explicit: { mystic: 0 } },
   'senza-unlocked': { label: 'Senza Unlocked V2', sensual: { unlocked: 0 }, explicit: { unlocked: 0 } },
-  'senza-nuove': { label: 'Solo le LoRA di prima (turbo 1, 12 passi in esplicito)', neutral: { kiss: null }, sensual: { breast: null, kiss: null }, explicit: { kiss: null, hmnsfw: null }, explicitTurbo: 1 },
+  'senza-nuove': { label: 'Solo le LoRA di prima (turbo 1, 12 passi in esplicito)', neutral: { kiss: null }, sensual: { breast: null, kiss: null }, explicit: { kiss: null, hmnsfw: null, mystic: 0.6, unlocked: 0.6 }, explicitTurbo: 1 },
 };
 
 export function profileFor(level, variant) {
