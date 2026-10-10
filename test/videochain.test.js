@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { planSegments, secondsFrom, continueGraph, continueFrames, addParts, OVERLAP } from '../src/videochain.js';
+import { planSegments, secondsFrom, continueGraph, continueFrames, addParts, continuePrompt, OVERLAP } from '../src/videochain.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const load = (id) => ({ id, ...JSON.parse(fs.readFileSync(path.join(root, 'workflows', id, 'manifest.json'), 'utf8')), graph: JSON.parse(fs.readFileSync(path.join(root, 'workflows', id, 'workflow.json'), 'utf8')) });
@@ -55,4 +55,12 @@ test('video lungo: pezzi in catena, ognuno continua il precedente', () => {
   assert.deepEqual(parts.map((p) => [p.id, p.mode, p.continueOfId, p.part.index, p.totalSeconds]), [['a', 'img2video', undefined, 1, undefined], ['p1', 'continue', 'a', 2, 20], ['p2', 'continue', 'p1', 3, 30]]);
   assert.equal(parts[1].sourceFile, undefined);
   assert.deepEqual(addParts({ id: 'a' }, [5], null, { newId: () => 'x', seed: () => 1 }).length, 1);
+});
+
+test('pezzo che continua: niente rimandi alla foto di partenza nel prompt', () => {
+  const p = continuePrompt('For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\nintegrated_multimodal_description: [Shot 1] Cinematic live-action, the shot begins exactly from <Picture 1>: boats at sunset. The boats rock.\n\nnon_diegetic_music: N/A');
+  assert.ok(!p.includes('<Picture 1>'));
+  assert.match(p, /^For the target video, the shot continues exactly from the last moments of the previous video\.$/m);
+  assert.match(p, /the shot continues with no cut: boats at sunset/);
+  assert.match(p, /non_diegetic_music: N\/A/);
 });

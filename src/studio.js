@@ -10,7 +10,7 @@ import { figureText, manualBodyLoras, bodyFamily, hasLenovo } from './body.js';
 import { studioLevel, hmTokens, finishPrompt, duoLoras, LEVELS, CONTENT } from './photo.js';
 import { profileFor, VARIANTS } from './krea2.js';
 import { VARIANTS as VIDEO_VARIANTS, videoNeeds, videoRules, leadPrompt } from './minimax.js';
-import { planSegments, addParts, partLine, PART } from './videochain.js';
+import { planSegments, addParts, partLine, continuePrompt, PART } from './videochain.js';
 
 /**
  * Studio immagini: l'"Image Assistant" di ChatBz 1, non più come personaggio ma come strumento a parte.
@@ -204,7 +204,7 @@ async function engineer(conv, msg, md, { text, cards = [], model, signal, source
   });
   const { prompt, lenovo } = splitLook(res.content || out);
   if (look && lenovo !== null) md.lenovo = lenovo;
-  if (md.type === 'video') return videoPrompt(cleanPrompt(prompt) || text, md, { text, cards });
+  if (md.type === 'video') return videoPrompt((md.mode === 'continue' ? continuePrompt(cleanPrompt(prompt)) : cleanPrompt(prompt)) || text, md, { text, cards });
   return studioPrompt(cleanPrompt(prompt) || text, md, family, { text, cards });
 }
 
