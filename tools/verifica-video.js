@@ -39,7 +39,27 @@ const UPLOADED = { LoadImage: ['image'], LoadVideo: ['file'] };
 function inputSpec(spec) {
   const [type, extra = {}] = Array.isArray(spec) ? spec : [spec];
   if (Array.isArray(type)) return { type: 'COMBO', extra, options: type };
+  if (type === 'COMFY_DYNAMICCOMBO_V3') return { type, extra, options: (extra.options || []).map((o) => o.key) };
   return { type, extra, options: type === 'COMBO' ? extra.options || [] : null };
+}
+
+/** Input obbligatori e facoltativi del nodo, con quelli dei menu annidati (V3) per la scelta fatta nel grafo,
+ * chiamati «menu.sotto» come li scrive l'«Export (API)». Prova sul PC 2026-10-10: SaveVideo usa format.codec.encoding.crf. */
+function nodeInputs(cls, values) {
+  const req = {}, opt = {};
+  const add = (group, into, prefix) => {
+    for (const [key, spec] of Object.entries(group || {})) {
+      const name = prefix + key;
+      into[name] = spec;
+      const [type, extra = {}] = Array.isArray(spec) ? spec : [spec];
+      if (type !== 'COMFY_DYNAMICCOMBO_V3') continue;
+      const chosen = (extra.options || []).find((o) => o.key === values[name]);
+      if (chosen) { add(chosen.inputs?.required, req, `${name}.`); add(chosen.inputs?.optional, opt, `${name}.`); }
+    }
+  };
+  add(cls.input?.required, req, '');
+  add(cls.input?.optional, opt, '');
+  return { req, opt };
 }
 
 /** Controlla un grafo (formato API) come fa ComfyUI prima di partire. Restituisce l'elenco dei problemi. */
@@ -49,7 +69,7 @@ function checkGraph(graph, info) {
     const name = `${id} ${node.class_type}${node._meta?.title ? ` («${node._meta.title}»)` : ''}`;
     const cls = info[node.class_type];
     if (!cls) { problems.push(`${name}: nodo non installato su ComfyUI`); continue; }
-    const req = cls.input?.required || {}, opt = cls.input?.optional || {};
+    const { req, opt } = nodeInputs(cls, node.inputs);
     for (const key of Object.keys(req)) if (!(key in node.inputs)) problems.push(`${name}: manca l'input obbligatorio «${key}»`);
     for (const [key, val] of Object.entries(node.inputs)) {
       const raw = req[key] ?? opt[key];
