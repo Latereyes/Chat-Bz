@@ -1093,7 +1093,9 @@ function renderMedia(msg, md) {
   if (card.dataset.sig !== sig) {
     card.dataset.sig = sig;
     card.style.maxWidth = `${Math.min(560, Math.round(460 * ratio))}px`;
-    const meta = [md.seconds ? `${md.seconds} s` : '', md.width && md.height ? `${md.width}×${md.height}` : ''].filter(Boolean).join(' · ');
+    // video lunghi: «parte 2/3 · 20 s» (ogni pezzo contiene il video intero fin lì)
+    const meta = [md.part?.total > 1 ? `parte ${md.part.index}/${md.part.total}` : md.mode === 'continue' ? 'continuazione' : '',
+      md.seconds ? `${md.totalSeconds || md.seconds} s` : '', md.width && md.height ? `${md.width}×${md.height}` : ''].filter(Boolean).join(' · ');
     let frame = '';
     if (md.status === 'done' && md.url) {
       frame = md.type === 'video'
@@ -1144,6 +1146,7 @@ function mediaActions(md) {
     <span class="grow"></span>
     ${md.status === 'done' && md.type === 'image' && !state.conv?.studio && !state.conv?.group ? b('avatar', 'user', 'Profilo') : ''}
     ${md.status === 'done' && md.type === 'image' && !state.conv?.group ? b('animate', 'video', 'Anima') : ''}
+    ${md.status === 'done' && md.type === 'video' && !state.conv?.group ? b('continue', 'video', 'Continua') : ''}
     ${md.status === 'done' && md.type === 'image' && state.conv?.studio ? b('newchar', 'user', 'Crea personaggio') : ''}
     ${md.status === 'done' && md.type === 'image' && state.conv?.studio && md.characterId && state.convs.some((c) => c.id === md.characterId) ? b('avatar', 'user', 'Foto profilo') : ''}
     ${md.status === 'done' && md.type === 'image' ? b('zoom', 'open', '') : ''}
@@ -1182,6 +1185,13 @@ async function mediaAction(btn) {
     const text = prompt('Come si muove la scena? (facoltativo: lascia vuoto e decide Gemma)', '');
     if (text === null) return;
     return api(`${base}/messages/${msg.id}/media/${md.id}/animate`, { body: { text, model: currentModel() } }).catch((e) => alert(e.message));
+  }
+  if (act === 'continue') {
+    const text = prompt('Cosa succede dopo? (facoltativo: lascia vuoto e decide Gemma)', '');
+    if (text === null) return;
+    const secs = prompt('Quanti secondi in più? (da 2 a 10)', '5');
+    if (secs === null) return;
+    return api(`${base}/messages/${msg.id}/media/${md.id}/continue`, { body: { text, seconds: Number(secs) || 5, model: currentModel() } }).catch((e) => alert(e.message));
   }
   if (act === 'zoom') return openLightbox(md);
   // con il fisico a mano (anche tutto a 0) il personaggio eredita quelle forze
@@ -1272,7 +1282,7 @@ async function prepareImage(file) {
 
 // ---------- Studio immagini (l'assistente immagini, separato dai personaggi) ----------
 const convPath = () => (state.conv?.studio ? '/api/studio' : `/api/characters/${state.conv.id}`);
-const so = { variantVideo: $('#so-variant-video'), char2: $('#so-char2'), char2Wrap: $('#so-char2-wrap'), box: $('#studio-opts'), lenovo: $('#so-lenovo'), level: $('#so-level'), variant: $('#so-variant'), engine: $('#so-engine'), aspect: $('#so-aspect'), char: $('#so-char'), raw: $('#so-raw'), video: $('#so-video'), seed: $('#so-seed'), body: $('#so-body'), bodyBox: $('#so-body-box') };
+const so = { seconds: $('#so-seconds'), variantVideo: $('#so-variant-video'), char2: $('#so-char2'), char2Wrap: $('#so-char2-wrap'), box: $('#studio-opts'), lenovo: $('#so-lenovo'), level: $('#so-level'), variant: $('#so-variant'), engine: $('#so-engine'), aspect: $('#so-aspect'), char: $('#so-char'), raw: $('#so-raw'), video: $('#so-video'), seed: $('#so-seed'), body: $('#so-body'), bodyBox: $('#so-body-box') };
 const SO_ASPECTS = { '3:4': '3:4 verticale', '9:16': '9:16 storia', '1:1': '1:1 quadrato', '4:3': '4:3 orizzontale', '16:9': '16:9 panoramico', '2:3': '2:3 ritratto', '3:2': '3:2 foto' };
 
 function fillStudioOpts() {
@@ -1294,6 +1304,7 @@ function fillStudioOpts() {
   const vv = state.config?.options?.videoVariants || {};
   so.variantVideo.innerHTML = Object.entries(vv).map(([v, l]) => `<option value="${esc(v)}">${v === 'base' ? 'LoRA video: profilo' : esc(l)}</option>`).join('');
   so.variantVideo.value = vv[p.videoVariant] ? p.videoVariant : 'base';
+  so.seconds.value = ['5', '10', '15', '20', '30'].includes(String(p.seconds)) ? String(p.seconds) : '5';
   so.video.checked = !!p.video;
   so.body.checked = !!p.bodyOn;
   // Cursori delle LoRA del corpo: limiti dalle taglie (stesse forze delle schede), 0 = LoRA spenta
@@ -1323,7 +1334,7 @@ function syncVideoOpt() {
 const bodyValues = () => Object.fromEntries($$('input[data-part]', so.bodyBox).map((i) => [i.dataset.part, Number(i.value)]));
 so.bodyBox.addEventListener('input', (e) => { const i = e.target.closest('input[data-part]'); if (i) i.nextElementSibling.textContent = i.value; });
 function readStudioOpts() {
-  return { engine: so.engine.value, aspect: so.aspect.value, characterId: so.char.value, characterId2: so.char.value ? so.char2.value : '', lenovo: so.lenovo.value, level: so.level.value, variant: so.variant.value, videoVariant: so.variantVideo.value, raw: so.raw.checked, video: so.video.checked, seed: so.seed.value.trim(), body: so.body.checked ? bodyValues() : null };
+  return { engine: so.engine.value, aspect: so.aspect.value, characterId: so.char.value, characterId2: so.char.value ? so.char2.value : '', lenovo: so.lenovo.value, level: so.level.value, variant: so.variant.value, videoVariant: so.variantVideo.value, seconds: Number(so.seconds.value) || 5, raw: so.raw.checked, video: so.video.checked, seed: so.seed.value.trim(), body: so.body.checked ? bodyValues() : null };
 }
 so.box.addEventListener('change', () => {
   const { seed, body, ...p } = readStudioOpts();
@@ -1344,7 +1355,7 @@ function bodyTag(b) {
 }
 function studioTag(o) {
   const names = Object.fromEntries((state.config?.workflows || []).map((w) => [w.id, w.name]));
-  const bits = [o.engineUsed ? names[o.engineUsed] || o.engineUsed : o.engine ? names[o.engine] || o.engine : 'Automatico', o.aspect, o.characterName2 ? `${o.characterName} e ${o.characterName2}` : o.characterName, o.lenovo === true && 'con Lenovo', o.lenovo === false && 'senza Lenovo', o.level && `filtro ${LEVEL_LABEL[o.level].toLowerCase()}`, o.variant && `LoRA: ${state.config?.options?.kreaVariants?.[o.variant] || o.variant}`, o.videoVariant && `video: ${state.config?.options?.videoVariants?.[o.videoVariant] || o.videoVariant}`, o.raw && 'prompt diretto', o.video && '+ video', o.seed != null && `seed ${o.seed}`, o.body && `fisico: ${bodyTag(o.body)}`].filter(Boolean);
+  const bits = [o.engineUsed ? names[o.engineUsed] || o.engineUsed : o.engine ? names[o.engine] || o.engine : 'Automatico', o.aspect, o.characterName2 ? `${o.characterName} e ${o.characterName2}` : o.characterName, o.lenovo === true && 'con Lenovo', o.lenovo === false && 'senza Lenovo', o.level && `filtro ${LEVEL_LABEL[o.level].toLowerCase()}`, o.variant && `LoRA: ${state.config?.options?.kreaVariants?.[o.variant] || o.variant}`, o.videoVariant && `video: ${state.config?.options?.videoVariants?.[o.videoVariant] || o.videoVariant}`, o.raw && 'prompt diretto', o.video && '+ video', o.seconds && Number(o.seconds) !== 5 && `${o.seconds} s`, o.seed != null && `seed ${o.seed}`, o.body && `fisico: ${bodyTag(o.body)}`].filter(Boolean);
   return `<div class="tag">${icon('spark', 13)}${esc(bits.join(' · '))}</div>`;
 }
 

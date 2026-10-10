@@ -33,6 +33,19 @@ Per Claude sul PC di Andrea. Stesso branch delle prove a due (`claude/admiring-g
 6. [ ] **Bacio**: due persone che si baciano, con e senza la LoRA (variante «Solo le LoRA di prima»). È sperimentale: se peggiora, toglila dal profilo.
 7. [ ] Tempi: annota quanto dura un video di 5 s con 8 e con 12 passi.
 
+## Video lunghi e «Continua» (`src/videochain.js`)
+- Fino a 15 s: un pezzo solo (`manifest` dei workflow MiniMax: massimo 15). Oltre, fino a 30 s: pezzi da 10 s. Ogni pezzo (`mode: 'continue'`) carica il video precedente su ComfyUI (`LoadVideo` → `GetVideoComponents`), usa gli ultimi 22 fotogrammi e il loro audio come guida (`MiniMaxH3AddGuide`, frame 0), genera, toglie i fotogrammi ripetuti e incolla in coda immagini (`ImageBatch`) e audio (`AudioConcat`). Il risultato è il video intero fin lì.
+- Senza `MiniMaxH3AddGuide` (ComfyUI più vecchio) parte solo dall'ultimo fotogramma (`first_frame`). Se mancano gli altri nodi, la foto non si rompe: il pezzo dà l'errore «serve un ComfyUI più recente» con i nomi dei nodi.
+- In chat la durata viene da `send_video` (fino a 30) o dal messaggio («20 secondi», «mezzo minuto»). Nello Studio c'è il menu **Durata**. Il pulsante **Continua** sotto un video chiede cosa succede dopo e quanti secondi aggiungere (2-10).
+- Le nuove LoRA di `minimax.js` valgono anche per i pezzi. Lo shift ora usa il nodo giusto, `MiniMaxH3SigmaShift` (ModelSamplingMiniMaxH3).
+
+Prove:
+8. [ ] Studio, MiniMax image to video da una foto, **Durata 20 s**: escono «parte 1/2 · 10 s» e «parte 2/2 · 20 s». Nel secondo non deve vedersi lo stacco (movimento, luce, vestiti, audio), e non devono esserci fotogrammi ripetuti o salti.
+9. [ ] **Continua** su un video di 5 s con 5 s in più: il video completo dura 10 s. Ripeti una seconda volta per arrivare a 15 s.
+10. [ ] In chat: «mandami un video di 20 secondi». Se lo stacco si vede, prova a cambiare `OVERLAP` in `src/videochain.js` (valori validi: 5, 22, 39).
+11. [ ] Annota tempi e uso di RAM a 30 s: il video intero viene caricato in memoria su ComfyUI per incollare i pezzi.
+12. [ ] Il prompt dei pezzi successivi segue la guida image to video, che parla di `<Picture 1>`: con la clip guida non c'è un'immagine vera e propria. Se Gemma scrive male l'inizio, correggi `partLine` in `src/videochain.js`.
+
 ## Dove si tara
 Solo in `src/minimax.js`: `PROFILE` (forze per filtro, `turbo`, `steps`, `shift`) e `VARIANTS`. Dopo ogni scelta lancia `npm test`. Se un test fissava la scelta vecchia, aggiornalo e dillo ad Andrea.
 

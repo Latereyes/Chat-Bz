@@ -356,6 +356,10 @@ app.post('/api/characters/:id/messages/:messageId/media/:mediaId/animate', wrap(
   const { text, seconds, model } = req.body || {};
   res.json(chat.animateMedia(ownConv(req), req.params.messageId, req.params.mediaId, { text, seconds, model }));
 }));
+app.post('/api/characters/:id/messages/:messageId/media/:mediaId/continue', wrap(async (req, res) => {
+  const { text, seconds, model } = req.body || {};
+  res.json(chat.continueVideo(ownConv(req), req.params.messageId, req.params.mediaId, { text, seconds, model }));
+}));
 app.post('/api/characters/:id/messages/:messageId/media/:mediaId/regenerate', wrap(async (req, res) => {
   res.json(chat.regenerateMedia(ownConv(req), req.params.messageId, req.params.mediaId, { prompt: req.body?.prompt }));
 }));
@@ -376,6 +380,10 @@ app.delete('/api/studio', wrap(async (req, res) => { await studio.clear(store.ge
 app.post('/api/studio/media/:mediaId/cancel', (req, res) => res.json({ ok: store.getStudio(req.user.id).messages.some((m) => m.media?.some((md) => md.id === req.params.mediaId)) && cancel(req.params.mediaId) }));
 app.post('/api/studio/messages/:messageId/media/:mediaId/regenerate', wrap(async (req, res) => {
   res.json(chat.regenerateMedia(store.getStudio(req.user.id), req.params.messageId, req.params.mediaId, { prompt: req.body?.prompt }));
+}));
+app.post('/api/studio/messages/:messageId/media/:mediaId/continue', wrap(async (req, res) => {
+  const { text, seconds, model } = req.body || {};
+  res.json(await studio.continueVideo(store.getStudio(req.user.id), req.params.messageId, req.params.mediaId, { text, seconds, model }));
 }));
 app.post('/api/studio/messages/:messageId/media/:mediaId/animate', wrap(async (req, res) => {
   const { text, seconds, model } = req.body || {};

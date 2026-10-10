@@ -10,6 +10,7 @@ import { figureText, manualBodyLoras, bodyFamily, hasLenovo } from './body.js';
 import { studioLevel, hmTokens, finishPrompt, duoLoras, LEVELS, CONTENT } from './photo.js';
 import { profileFor, VARIANTS } from './krea2.js';
 import { VARIANTS as VIDEO_VARIANTS, videoNeeds, videoRules, leadPrompt } from './minimax.js';
+import { planSegments, addParts, partLine, PART } from './videochain.js';
 
 /**
  * Studio immagini: l'"Image Assistant" di ChatBz 1, non più come personaggio ma come strumento a parte.
@@ -60,7 +61,9 @@ function request({ text, cards = [], media, sourceDescription, sources }) {
     subjectLine(cards),
     cards.length < 2 ? figureLine(cards[0], media.manualBody) : null,
     sources ? `The user attached ${sources} image${sources > 1 ? 's' : ''} to edit: write an editing instruction that changes only what the request asks and keeps everything else (identity, composition, light) unchanged.` : null,
-    sourceDescription !== undefined ? `Starting image (the video starts exactly from it): ${sourceDescription || '(no description)'}` : null,
+    sourceDescription !== undefined ? `${media.mode === 'continue' ? 'Starting frames (the end of the video so far)' : 'Starting image (the video starts exactly from it)'}: ${sourceDescription || '(no description)'}` : null,
+    media.mode === 'continue' ? partLine(media.part, media.seconds)
+      : media.part?.total > 1 ? `This is part 1 of ${media.part.total} of one continuous video: write only the first ${media.seconds} seconds; the action goes on in the next parts.` : null,
     // filtro scelto a mano nello Studio: vale anche per il prompt, non solo per le LoRA
     media.levelReason === 'scelto nello Studio' ? `CONTENT LEVEL: ${CONTENT[media.level]}` : LEVEL,
     media.type === 'video' ? videoRules(media.level, videoNeeds([text, sourceDescription].filter(Boolean).join('\n'), { level: media.level, woman: !cards.length || cards.some((c) => c.gender !== 'uomo') })) : null,
@@ -164,9 +167,13 @@ export function send(conv, opts = {}) {
     if (w.mode === 'img2img') first.denoise = 0.6;
     if (w.mode === 'img2video') first.sourceDescription = 'the photo attached by the user (not described: keep it as it is)';
   }
-  if (w.type === 'video') Object.assign(first, frameCount(w, opts.seconds || 5));
-  const media = [first];
-  if (settings.video) { const v = videoFrom({ ...base, seed: randomSeed(), ...(lv ? { level: lv.level, levelReason: lv.reason } : {}), ...(videoVariant ? { videoVariant } : {}) }, first, opts.seconds); if (v) media.push(v); }
+  // video lunghi: oltre 15 s in pezzi che si continuano (videochain.js)
+  const segs = planSegments(opts.seconds || 5);
+  const wi = getWorkflow(null, 'video', 'img2video');
+  const parts = (v) => addParts(v, segs, wi, { newId: store.newId, seed: randomSeed });
+  if (w.type === 'video') Object.assign(first, frameCount(w, segs[0]));
+  const media = w.type === 'video' && !attachments.length ? parts(first) : [first];
+  if (settings.video) { const v = videoFrom({ ...base, seed: randomSeed(), ...(lv ? { level: lv.level, levelReason: lv.reason } : {}), ...(videoVariant ? { videoVariant } : {}) }, first, segs[0]); if (v) media.push(...parts(v)); }
 
   const msg = { id: store.newId(), role: 'assistant', content: '', media, status: 'pending', createdAt: Date.now() };
   conv.messages.push(msg);
@@ -177,7 +184,7 @@ export function send(conv, opts = {}) {
 }
 
 async function engineer(conv, msg, md, { text, cards = [], model, signal, sources }) {
-  const w = getWorkflow(md.workflow, md.type, md.mode);
+  const w = getWorkflow(md.workflow, md.type, md.mode === 'continue' ? 'img2video' : md.mode);
   const family = md.type === 'image' ? bodyFamily(w.graph) : null;
   const look = typeof md.lenovo !== 'boolean' && hasLenovo(family);   // Lenovo non forzato: lo sceglie Gemma (solo Krea 2)
   let out = '';
@@ -186,7 +193,7 @@ async function engineer(conv, msg, md, { text, cards = [], model, signal, source
     options: { temperature: 0.7 },
     messages: [
       { role: 'system', content: `${promptEngineerSystem(w)}\n\n${STUDIO_RULES}` },
-      { role: 'user', content: request({ text, cards, media: md, sources, sourceDescription: md.mode === 'img2video' ? md.sourceDescription : undefined }) + (look ? `\n${LOOK_CHOICE}` : '') },
+      { role: 'user', content: request({ text, cards, media: md, sources, sourceDescription: md.mode === 'img2video' || md.mode === 'continue' ? md.sourceDescription : undefined }) + (look ? `\n${LOOK_CHOICE}` : '') },
     ],
     onChunk: (c) => {
       if (!c.content) return;
@@ -239,6 +246,8 @@ async function run(conv, msg, { text, cards, raw, model, sources }) {
         for (const md of msg.media) {
           const src = md.sourceMediaId && msg.media.find((x) => x.id === md.sourceMediaId);
           if (src) md.sourceDescription = src.prompt || src.description;
+          const prev = md.continueOfId && msg.media.find((x) => x.id === md.continueOfId);
+          if (prev) md.sourceDescription = `the previous part of the video: ${prev.prompt || prev.description}`;
           md.prompt = await engineer(conv, msg, md, { text, cards, model, signal: ac.signal, sources: md.type === 'image' && md.sourceFile ? sources : 0 });
           emitMedia(conv, msg, md);
         }
@@ -258,6 +267,38 @@ async function run(conv, msg, { text, cards, raw, model, sources }) {
     emit(conv.id, { type: 'done', messageId: msg.id, status: msg.status, error: msg.error });
   }
   for (const md of msg.media) if (md.status === 'engineering') enqueue(conv, msg, md);
+}
+
+/** Continua un video dello studio: un pezzo nuovo che parte da come finisce, incollato in coda (videochain.js). */
+export async function continueVideo(conv, messageId, mediaId, { text, seconds, model } = {}) {
+  if (running.has(conv.ownerId)) throw new Error('Sto già scrivendo un prompt');
+  const msg = conv.messages.find((m) => m.id === messageId);
+  const src = msg?.media?.find((m) => m.id === mediaId && m.type === 'video' && m.status === 'done' && m.file);
+  if (!src) throw new Error('Video non trovato');
+  const wi = getWorkflow(null, 'video', 'img2video');
+  if (!wi) throw new Error('Nessun workflow video disponibile su ComfyUI');
+  const secs = Math.max(2, Math.min(PART, Number(seconds) || 5));
+  const md = { id: store.newId(), toolName: 'studio', type: 'video', mode: 'continue', workflow: wi.id, workflowName: wi.name,
+    description: String(text || '').trim() || 'the scene goes on naturally', prompt: '', seed: randomSeed(), status: 'engineering', createdAt: Date.now(),
+    seconds: secs, totalSeconds: (src.totalSeconds || src.seconds || 0) + secs, aspect: src.aspect, width: src.width, height: src.height,
+    sourceFile: src.file, sourceUrl: mediaUrl(src.file), sourceDescription: `the video so far: ${src.prompt || src.description}`,
+    characterId: src.characterId || null, ...(src.level ? { level: src.level, levelReason: 'come il video di partenza' } : {}), ...(src.videoVariant ? { videoVariant: src.videoVariant } : {}) };
+  msg.media.push(md);
+  emitMedia(conv, msg, md);
+  store.save(conv, { touch: false });
+  const ac = new AbortController();
+  running.set(conv.ownerId, ac);
+  const card = characterCard(conv.ownerId, src.characterId)?.card;
+  gpu.run('ollama', 'Scrivo il prompt del video', async () => {
+    md.prompt = await engineer(conv, msg, md, { text: md.description, cards: card ? [card] : [], model: model || config.ollama.model, signal: ac.signal });
+    emitMedia(conv, msg, md);
+  }).then(() => enqueue(conv, msg, md)).catch((e) => {
+    md.status = ac.signal.aborted ? 'cancelled' : 'error';
+    md.error = ac.signal.aborted ? null : e.message;
+    emitMedia(conv, msg, md);
+    store.save(conv, { touch: false });
+  }).finally(() => running.delete(conv.ownerId));
+  return md;
 }
 
 /** Anima una foto dello studio (immagine → video), con un'indicazione facoltativa sul movimento. */

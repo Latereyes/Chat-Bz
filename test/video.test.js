@@ -70,7 +70,8 @@ test('varianti video: valide; shift 6 aggiunge il nodo dello shift', () => {
   const g = structuredClone(I2V);
   const out = applyVideoStack(g, { level: 'explicit', needs: {}, files: FILES, variant: 'hmnsfw-shift6' });
   assert.equal(out.shift, 6);
-  assert.equal(g[guiderModel(g)].class_type, 'ModelSamplingSD3');
+  assert.equal(g[guiderModel(g)].class_type, 'MiniMaxH3SigmaShift');
+  assert.equal(g[guiderModel(g)].inputs.shift_video, 6);
   const s = structuredClone(I2V);
   applyVideoStack(s, { level: 'explicit', needs: { woman: true }, files: FILES, variant: 'senza-nuove' });
   assert.deepEqual(loras(s), loras(I2V));

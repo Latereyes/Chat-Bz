@@ -140,10 +140,10 @@ export function applyVideoStack(graph, { level = 'neutral', needs = {}, files = 
     end = id;
     out.loras.push({ key, label: def.label, strength });
   }
-  // shift (flow): un nodo ModelSamplingSD3 in fondo alla catena, solo se il profilo lo chiede
+  // shift: il nodo di MiniMax H3 (ModelSamplingMiniMaxH3, default video 12 / audio 3), solo se il profilo lo chiede
   if (profile.shift) {
     const id = String(++n);
-    graph[id] = { class_type: 'ModelSamplingSD3', _meta: { title: 'Shift' }, inputs: { model: [end, 0], shift: profile.shift } };
+    graph[id] = { class_type: 'MiniMaxH3SigmaShift', _meta: { title: 'Shift' }, inputs: { model: [end, 0], shift_video: profile.shift, shift_audio: 3 } };
     end = id;
     out.shift = profile.shift;
   }
