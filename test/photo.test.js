@@ -324,4 +324,6 @@ test('foto a due: espressione nel ritocco del volto; se si toccano niente ritocc
   assert.equal(kiss[0].denoise, DUO_FACES.contactDenoise);
   assert.match(kiss[0].text, /kissing/);
   assert.ok(!contactOf('Two women standing side by side at a bar'));
+  assert.ok(!contactOf('Two women with sun-kissed skin at a bar'));   // falso positivo trovato sul PC
+  for (const t of ['holding the breast of the woman on the left in her hands', 'pulling a nipple into her mouth', 'their bodies touching', 'pressed close together on the bed']) assert.ok(contactOf(t), t);
 });

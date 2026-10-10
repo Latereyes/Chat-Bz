@@ -321,9 +321,9 @@ export async function engineerDuoPhoto({ workflow, cards, states, scene, media, 
 /** Tutta la persona per il ritocco con la sua LoRA (fisico della LoRA, vestiti e posa della scena). */
 export const bodyText = (card) => [card.lora?.trigger, `photo of an ${WHO(card)}`, clip(visualSignature(card.look, 'explicit'), 300), figureText(card), 'same pose, same clothes and same place as in the image, natural skin texture, real photo'].filter(Boolean).join(', ');
 // Frasi del prompt che parlano dell'espressione: il ritocco del volto le ripete, così non la appiattisce
-const EXPRESSION = /\b(?:smil\w*|laugh\w*|grin\w*|express\w*|mouth|lips?|bit(?:es|ing) (?:her|his) lip|kiss\w*|eyes?|gaz\w*|look(?:s|ing)? (?:at|up|down|away|into)|wink\w*|blush\w*|frown\w*|pout\w*|moan\w*|tongue|teeth|tears?|cry\w*|surpris\w*|shy|teasing|playful|seductive|sleepy|tired|orgasm\w*|pleasure|parted)\b/i;
+const EXPRESSION = /(?<![-\w])(?:kiss\w*)|\b(?:smil\w*|laugh\w*|grin\w*|express\w*|mouth|lips?|bit(?:es|ing) (?:her|his) lip|eyes?|gaz\w*|look(?:s|ing)? (?:at|up|down|away|into)|wink\w*|blush\w*|frown\w*|pout\w*|moan\w*|tongue|teeth|tears?|cry\w*|surpris\w*|shy|teasing|playful|seductive|sleepy|tired|orgasm\w*|pleasure|parted)\b/i;
 // Le due persone si toccano (bacio, abbraccio, sesso): il ritaglio di una prende anche l'altra
-const CONTACT = /\b(?:kiss\w*|hug\w*|embrac\w*|cuddl\w*|snuggl\w*|in each other's arms|arms? around|holding each other|intertwined|straddl\w*|on (?:her|his) lap|sitting on (?:her|his)|on top of (?:her|him)|between (?:her|his) legs|lips? (?:touch\w*|lock\w*|press\w*))\b/i;
+const CONTACT = /(?<![-\w])(?:kiss\w*|hug\w*|embrac\w*|cuddl\w*|snuggl\w*|in each other's arms|arms? (?:around|wrapped)|holding (?:each other|hands|her|him|the)|intertwined|straddl\w*|on (?:her|his) lap|sitting on (?:her|his)|on top of (?:her|him)|between (?:her|his|their) legs|lips? (?:touch\w*|lock\w*|press\w*)|pressed (?:close|together|against)|bodies (?:touch\w*|pressed|entwined)|touch\w* (?:her|his|each other)|into (?:her|his) mouth|lick\w*|suck\w*|finger\w*|grop\w*|caress\w*|fondl\w*|spoon\w*)\b/i;
 export const contactOf = (prompt) => CONTACT.test(String(prompt || ''));
 export function expressionOf(prompt) {
   return String(prompt || '').split(/(?<=[.;])\s+/).filter((s) => EXPRESSION.test(s)).slice(0, 2).map((s) => clip(s, 200)).join(' ');

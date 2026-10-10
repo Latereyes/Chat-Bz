@@ -30,6 +30,7 @@ const plus = (d) => () => {
 // Ogni variante cambia i valori di src/krea2.js solo per la sua foto (poi si rimettono come erano)
 const VARIANTI = {
   senza: { label: 'Senza ritocco (come main)', noFaces: true },
+  scena: { label: 'Solo la scena: niente LoRA dei personaggi, niente ritocco (la base delle foto a due)', strip: true },
   prima: { label: 'Ritocco con tutta la catena (com\'era)', set: () => { FACE_CHAIN.full = true; } },
   pulita: { label: 'Catena pulita, volti grandi lasciati com\'erano (attuale)' },
   'pulita-forte': { label: 'Catena pulita, denoise +0.1', set: plus(0.1) },
@@ -103,6 +104,7 @@ for (const { md, card, where } of pick) {
     const clone = structuredClone(md);
     for (const k of OUTPUT) delete clone[k];
     clone.id = `${md.id}--${v}`;
+    if (VARIANTI[v].strip) for (const k of ['duoFaces', 'charLoras', 'charLora']) delete clone[k];
     const shot = { variant: v, file: null, error: null, seconds: 0 };
     const t0 = Date.now();
     try {

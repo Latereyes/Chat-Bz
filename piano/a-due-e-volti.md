@@ -40,6 +40,7 @@ Rispondi ad Andrea in italiano semplice, mostra le foto e chiedi conferma prima 
 - `SOCIAL_LEVEL` ora è il tetto per tutti e di default vale `explicit`.
 
 ### Strumenti
+- `tools/prova-volti.js` rifà foto già fatte (stesso prompt e seed) con varianti del ritocco: `--personaggio "Nome" --ultime 3` o `--media id`, `--elenco` per le varianti.
 - `tools/prepara-pc.ps1` allinea il branch, installa le dipendenze, lancia i test e controlla LoRA, Impact Pack/Subpack, `face_yolov8m` e `person_yolov8m-seg`. Se manca, scarica quest'ultimo.
 - I test sono in `npm test`: `test/photo.test.js` e `test/social.test.js`, 37 test.
 
@@ -91,7 +92,7 @@ Per ogni prova guarda la riga grigia sotto la foto (filtro, LoRA, «volto ritocc
 
 | Prova | Esito | Valori / note |
 |---|---|---|
-| A. foto singole | | |
-| B. foto a due | | |
+| A. foto singole | corretto (2026-10-10) | Volti rotti di Elena Valli e Chiara: il ritocco su un volto già grande lavora sulla foto intera senza ingrandire e Krea 2 Turbo lascia la pelle a tasselli (peggio con denoise più basso; non dipende da LoRA, sampler o maschera). Ora i volti alti più di `SINGLE_FACE.maxFace` = 350 px non si ritoccano. Il ritocco usa una catena pulita (`FACE_CHAIN`: niente LoRA del corpo, MysticXXX, HMNSFW, Unlocked). Denoise invariati. |
+| B. foto a due | corretto (2026-10-10) | Niente tasselli, volti distinti, vestiti non scambiati. Il ritocco spegneva le risate e rompeva i baci: ora riceve le frasi dell'espressione e, se si toccano (`contactOf`), salta il ritocco della persona e usa `DUO_FACES.contactDenoise` = 0.38. Denoise più alti peggiorano le espressioni: restano 0.5/0.42. Da migliorare: somiglianza di Hitomi nel bacio. |
 | C. chat a due | | |
 | D. social | | |
