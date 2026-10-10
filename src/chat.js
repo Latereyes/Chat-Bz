@@ -98,6 +98,8 @@ const TOOL_TEXT = /<\s*tool_call\s*>([\s\S]*?)(?:<\s*\/\s*tool_call\s*>|$)|\b(?:
 const TOOL_ARG = /"?(\w+)"?\s*[:=]\s*"([^"]*)"/g;
 // Il personaggio dice di no al video, o propone di vedersi dal vivo: niente video di ripiego
 const REFUSES_VIDEO = /\b(?:non\s+(?:ti\s+)?(?:mando|faccio|giro|invio|posso|mi\s+va)|niente\s+video|nessun\s+video|dal\s+vivo|di\s+persona|sono\s+qui|siamo\s+qui|guardami)\b/i;
+const ASKS_PHOTO = /\b(?:foto\w*|selfie|scatt\w*|pic\w*|photo\w*|immagin\w*)\b/i;
+const REFUSES_PHOTO = /\bnon\s+(?:ti\s+)?(?:mando|invio|faccio|posso\s+mandart\w*)\b|\bniente\s+foto\b|\bnessuna\s+foto\b/i;
 // Video chiesto a parole: «mandami/fammi/gira un video», «un video?»
 const ASKS_VIDEO = /\b(?:mand\w*|invi\w*|fa(?:mmi|i|resti|rmi)|gira\w*|registr\w*|vorrei|voglio|send|make|record)\b[^.!?\n]{0,40}\b(?:video\w*|videin\w*|clip)\b|\b(?:video|videino|clip)\s*\?/i;
 
@@ -449,6 +451,11 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       if (!calls.length && !tool && userMsg?.content && ASKS_VIDEO.test(userMsg.content) && msg.content.trim()
         && conv.state.scene.presence !== 'together' && !REFUSES_VIDEO.test(msg.content)) {
         calls.push({ function: { name: 'send_video', arguments: { description: `${userMsg.content}\n\n(reply: ${msg.content.trim()})`, fromText: true } } });
+      }
+      // Chat a due: foto chiesta a parole e Gemma risponde solo a parole (prova sul PC 2026-10-10: 3 volte su 4).
+      // Chi è nella foto lo ricava resolveWho dal messaggio («voi due», «insieme» o un nome)
+      if (!calls.length && G && !tool && userMsg?.content && ASKS_PHOTO.test(userMsg.content) && ASKS_MEDIA.test(userMsg.content) && msg.content.trim() && !REFUSES_PHOTO.test(msg.content)) {
+        calls.push({ function: { name: 'send_photo', arguments: { description: `${userMsg.content}\n\n(reply: ${msg.content.trim()})`, fromText: true } } });
       }
       if (!calls.length && (tool === 'photo' || tool === 'video')) {
         calls.push({ function: { name: tool === 'photo' ? 'send_photo' : 'send_video', arguments: { description: userMsg?.content || 'a casual selfie', fromText: !!userMsg?.content } } });

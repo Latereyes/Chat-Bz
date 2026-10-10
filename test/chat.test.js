@@ -32,3 +32,16 @@ test('chat a due: parla per primo chi viene chiamato col nome, il soprannome o i
   assert.equal(first([lex, ale], 'E tu Alessia?'), 'a');
   assert.equal(first([ale, lex], 'Alessandra, tocca a te'), 'l');
 });
+
+test('chat a due: chi è nella foto chiesta a parole', async () => {
+  const { resolveWho } = await import('../src/group.js');
+  const lex = { id: 'l', card: { name: "Alessandra 'Lex' Moretti" } };
+  const zola = { id: 'z', card: { name: 'Zola Mbeki' } };
+  const who = (text, args = {}) => resolveWho([lex, zola], { description: '', ...args }, text).map((m) => m.id).join('+');
+  assert.equal(who('Zola, mandami una tua foto adesso'), 'z');
+  assert.equal(who('Lex, mandami una foto di voi due insieme al tavolo'), 'l+z');
+  assert.equal(who('Adesso fatevi una foto insieme, tutte e due'), 'l+z');
+  assert.equal(who('', { who: 'Lex' }), 'l');
+  assert.equal(who('', { who: 'both' }), 'l+z');
+  assert.equal(who('Zola, una tua foto?', { description: 'Zola, una tua foto?\n\n(reply: Lex: dai Zola!)', fromText: true }), 'z');
+});

@@ -79,7 +79,7 @@ export function turnPlan(members, userText = '', { lastFirst = null, random = Ma
   const second = first === a ? b : a;
   const r = random();
   if (named.length === 1 ? r < 0.35 : r < 0.25) {
-    return { first: first.id, text: `This time only **${first.card.name}** speaks; ${second.card.name} stays quiet (at most a small gesture or reaction under their own name, without words).` };
+    return { first: first.id, text: `This time only **${first.card.name}** speaks, and ${first.card.name} comes first; ${second.card.name} stays quiet (at most a small wordless gesture under their own name, written AFTER ${first.card.name}'s lines). Never write stage directions or notes in parentheses.` };
   }
   if (r > 0.82) {
     return { first: first.id, text: `This time a quick back-and-forth: **${first.card.name}** speaks first, **${second.card.name}** answers ${first.card.name} directly, then ${first.card.name} replies once more. Short turns.` };
@@ -145,21 +145,22 @@ function premisePrompt(members, scene, user) {
       `${a.card.name} (${a.card.age}): ${String(a.card.personality || '').slice(0, 400)} ${String(a.card.life || '').slice(0, 300)}`,
       `${b.card.name} (${b.card.age}): ${String(b.card.personality || '').slice(0, 400)} ${String(b.card.life || '').slice(0, 300)}`,
       bond ? `How they know each other: ${bond}` : '',
-      user?.name ? `The user is ${user.name}.` : '',
+      user?.name ? `The user is ${user.name}${user.gender === 'uomo' ? ', a man (use masculine forms for the group: «i tre», «tutti e tre»)' : user.gender === 'donna' ? ', a woman' : ''}.` : '',
       scene.place ? `Place: ${scene.place}` : '',
     ].filter(Boolean).join('\n') },
   ];
 }
 
 /** Chi è nella foto: dal campo who, altrimenti dai nomi nella descrizione o nel messaggio (nessuno o entrambi = tutti e due). */
-function resolveWho(members, args, userText) {
-  const byName = (t) => members.filter((m) => new RegExp(`\\b${m.card.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(String(t || '')));
+export function resolveWho(members, args, userText) {
+  const byName = (t) => members.filter((m) => nameAliases(m.card.name).some((x) => says(String(t || ''), x)));
   const w = String(args.who || '').trim().toLowerCase();
-  if (w && w !== 'both') { const m = members.find((x) => x.card.name.toLowerCase() === w); if (m) return [m]; }
+  if (w && w !== 'both') { const m = members.find((x) => nameAliases(x.card.name).includes(w)); if (m) return [m]; }
   if (w === 'both') return members;
-  for (const t of [args.description, userText]) {
+  // foto ricavata dal messaggio (fromText): la descrizione contiene anche la risposta, che può nominare l'altra
+  for (const t of args.fromText ? [userText, args.description] : [args.description, userText]) {
     const hit = byName(t);
-    if (hit.length === 1 && !/\b(?:entramb\w|tutt[ei] e due|insieme|both|together)\b/i.test(String(t || ''))) return hit;
+    if (hit.length === 1 && !/\b(?:entramb\w|tutt[ei] e due|voi due|insieme|both|together)\b/i.test(String(t || ''))) return hit;
     if (hit.length) break;
   }
   return members;
