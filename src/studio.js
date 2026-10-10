@@ -172,7 +172,8 @@ export function send(conv, opts = {}) {
   const wi = getWorkflow(null, 'video', 'img2video');
   const parts = (v) => addParts(v, segs, wi, { newId: store.newId, seed: randomSeed });
   if (w.type === 'video') Object.assign(first, frameCount(w, segs[0]));
-  const media = w.type === 'video' && !attachments.length ? parts(first) : [first];
+  // anche da una foto allegata (image to video): prova sul PC 2026-10-10, con 20 s usciva un pezzo solo da 10 s
+  const media = w.type === 'video' ? parts(first) : [first];
   if (settings.video) { const v = videoFrom({ ...base, seed: randomSeed(), ...(lv ? { level: lv.level, levelReason: lv.reason } : {}), ...(videoVariant ? { videoVariant } : {}) }, first, segs[0]); if (v) media.push(...parts(v)); }
 
   const msg = { id: store.newId(), role: 'assistant', content: '', media, status: 'pending', createdAt: Date.now() };
