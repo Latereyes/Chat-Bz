@@ -425,7 +425,7 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
         if (sceneCalls.length) sceneChanged = true;
         calls.push(...result.tool_calls.filter((c) => c.function?.name !== 'update_scene'));
         for (const c of sceneCalls) {
-          conv.state.scene = updateScene(conv.state.scene, parseArgs(c.function.arguments));
+          conv.state.scene = updateScene(conv.state.scene, parseArgs(c.function.arguments), { auto: true });
           msg.presence = conv.state.scene.presence;
           emit(conv.id, { type: 'scene', scene: conv.state.scene, messageId: msg.id, presence: msg.presence });
         }
@@ -443,7 +443,7 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       if (!sceneChanged && msg.content.trim() && needsSceneCheck(conv.state.scene, userMsg?.content, msg.content)) {
         const patch = await sceneCheck(conv, userMsg?.content || '', msg.content, model).catch((e) => { console.warn('[scene]', e.message); return null; });
         if (patch && !signal.aborted) {
-          conv.state.scene = updateScene(conv.state.scene, patch);
+          conv.state.scene = updateScene(conv.state.scene, patch, { auto: true });
           msg.presence = conv.state.scene.presence;
           emit(conv.id, { type: 'scene', scene: conv.state.scene, messageId: msg.id, presence: msg.presence });
         }

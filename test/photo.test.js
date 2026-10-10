@@ -337,3 +337,25 @@ test('foto a due con le LoRA già nella scena: ritocco del volto più leggero', 
   assert.equal(den({ scene: true, prompt: 'Two women kissing.' }), DUO_FACES.scene.contactDenoise);
   assert.ok(den({ scene: true }) < den({}));
 });
+
+test('foto: i vestiti decisi qualche messaggio fa arrivano alla richiesta; l\'intimità non salta a «intima» da sola', async () => {
+  const { outfitNotes, photoRequest } = await import('../src/photo.js');
+  const { updateScene } = await import('../src/relationship.js');
+  const messages = [
+    { role: 'user', content: 'Stasera mettiti il vestito blu. Ci vediamo alle nove.' },
+    { role: 'assistant', content: '*Sorride* Va bene, il vestito blu allora.' },
+    { role: 'user', content: 'Com\'è andata la giornata?' },
+    { role: 'assistant', content: 'Bene, grazie!' },
+    { role: 'user', content: 'Mandami una foto' },
+  ];
+  const o = outfitNotes(messages, messages.length - 1);
+  assert.match(o, /vestito blu/);
+  assert.doesNotMatch(o, /Mandami/);
+  const { card, state } = scenarioState(SCENARIOS.find((s) => s.id === 'normale-bar'));
+  const req = photoRequest({ card, state, media: { description: 'x', width: 768, height: 1024 }, level: 'neutral', outfits: o });
+  assert.match(req, /Clothes mentioned earlier.*vestito blu/);
+  assert.match(req, /follow the conversation/);
+  assert.equal(updateScene({ intimacy: 'none' }, { intimacy: 'intimate' }, { auto: true }).intimacy, 'flirt');
+  assert.equal(updateScene({ intimacy: 'flirt' }, { intimacy: 'intimate' }, { auto: true }).intimacy, 'intimate');
+  assert.equal(updateScene({ intimacy: 'none' }, { intimacy: 'intimate' }).intimacy, 'intimate');   // a mano sì
+});

@@ -107,13 +107,17 @@ export function applyDelta(rel, delta = {}, max = 8) {
 const PRESENCE = { apart: 1, together: 1 };
 const INTIM = { none: 1, flirt: 1, intimate: 1 };
 
-/** Aggiorna la scena con i soli campi forniti (dal tool update_scene o a mano dall'utente). */
-export function updateScene(scene, patch = {}) {
+/**
+ * Aggiorna la scena con i soli campi forniti (dal tool update_scene o a mano dall'utente).
+ * auto: aggiornamento deciso da Gemma (strumento o controllo della scena): l'intimità sale di un gradino alla volta.
+ * Prova sul PC 2026-10-10: «qualcuna vuole venire a casa mia?» portava la scena da niente a «intima».
+ */
+export function updateScene(scene, patch = {}, { auto = false } = {}) {
   const next = { ...scene };
   const s = (v) => String(v ?? '').trim().slice(0, 200);
   if (PRESENCE[patch.presence]) next.presence = patch.presence;
   for (const k of ['place', 'activity', 'outfit', 'mood']) if (patch[k] !== undefined && s(patch[k])) next[k] = s(patch[k]);
-  if (INTIM[patch.intimacy]) next.intimacy = patch.intimacy;
+  if (INTIM[patch.intimacy]) next.intimacy = auto && patch.intimacy === 'intimate' && (scene.intimacy || 'none') === 'none' ? 'flirt' : patch.intimacy;
   if (next.presence !== scene.presence || next.place !== scene.place) next.since = Date.now();
   return next;
 }
