@@ -58,9 +58,23 @@ ${premise}
  * Chi viene nominato nel messaggio parla per primo; l'altro spesso risponde a lui, a volte sta zitto;
  * ogni tanto un breve botta e risposta. random: per i test.
  */
+// Come si può chiamare un personaggio: nome intero, primo nome, cognome, soprannome tra virgolette («Alessandra 'Lex'
+// Moretti» → Lex). Prova sul PC 2026-10-10: con il solo nome intero «Zola, …» non faceva parlare Zola per prima.
+export function nameAliases(name) {
+  const full = String(name || '').trim();
+  const nick = [...full.matchAll(/['"‘’“”«]([^'"‘’“”»]{2,20})['"‘’“”»]/g)].map((m) => m[1].trim());
+  const words = full.replace(/['"‘’“”«»][^'"‘’“”«»]*['"‘’“”«»]/g, ' ').split(/\s+/).filter((w) => w.length >= 3);
+  return [...new Set([full, ...nick, words[0], words.length > 1 ? words.at(-1) : null].filter(Boolean).map((w) => w.toLowerCase()))];
+}
+const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const says = (text, alias) => new RegExp(`(?<![\\p{L}])${esc(alias)}(?![\\p{L}])`, 'iu').test(text);
+
 export function turnPlan(members, userText = '', { lastFirst = null, random = Math.random } = {}) {
   const [a, b] = members;
-  const named = members.filter((m) => new RegExp(`\\b${m.card.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(userText));
+  // nomi in comune (stesso cognome) non dicono chi è
+  const [aa, bb] = members.map((m) => nameAliases(m.card.name));
+  const own = [aa.filter((x) => !bb.includes(x)), bb.filter((x) => !aa.includes(x))];
+  const named = members.filter((m, i) => own[i].some((x) => says(userText, x)));
   const first = named.length === 1 ? named[0] : lastFirst === a.id ? (random() < 0.7 ? b : a) : lastFirst === b.id ? (random() < 0.7 ? a : b) : random() < 0.5 ? a : b;
   const second = first === a ? b : a;
   const r = random();
@@ -126,7 +140,7 @@ function premisePrompt(members, scene, user) {
   const [a, b] = members;
   const bond = bondNote(a.id, b.id);
   return [
-    { role: 'system', content: `You set up the situation of a three-way roleplay between the user and two people, ${a.card.name} and ${b.card.name}. Invent a concrete, believable reason why the three of them are ${scene.presence === 'together' ? 'together in the same place right now' : 'in a group chat right now'}, consistent with both lives and how they know each other: where each one is, what is going on, what each of them wants from this moment, and a small tension or spark between them (who is more interested, who teases who). Reply ONLY with JSON: {"premise": "Italian, 2-4 sentences, concrete"}` },
+    { role: 'system', content: `You set up the situation of a three-way roleplay between the user and two people, ${a.card.name} and ${b.card.name}. Invent a concrete, believable reason why the three of them are ${scene.presence === 'together' ? 'together in the same place right now' : 'in a group chat right now'}, consistent with both lives and how they know each other: where each one is, what is going on, what each of them wants from this moment, and a small tension or spark between them (who is more interested, who teases who). Write it in ITALIAN (prova sul PC: scritta in inglese). Reply ONLY with JSON: {"situazione": "2-4 frasi in italiano, concrete"}` },
     { role: 'user', content: [
       `${a.card.name} (${a.card.age}): ${String(a.card.personality || '').slice(0, 400)} ${String(a.card.life || '').slice(0, 300)}`,
       `${b.card.name} (${b.card.age}): ${String(b.card.personality || '').slice(0, 400)} ${String(b.card.life || '').slice(0, 300)}`,
@@ -177,7 +191,8 @@ export function groupTurn(conv) {
         messages: premisePrompt(members, conv.state.scene, user),
       }).catch(() => '');
       let j; try { j = JSON.parse(out); } catch { j = null; }
-      if (j?.premise) { conv.state.premise = String(j.premise).trim().slice(0, 800); store.save(conv, { touch: false }); }
+      const premise = j?.situazione || j?.premise;
+      if (premise) { conv.state.premise = String(premise).trim().slice(0, 800); store.save(conv, { touch: false }); }
     },
     tools: () => tools(members),
 
