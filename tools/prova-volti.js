@@ -32,7 +32,7 @@ const VARIANTI = {
   senza: { label: 'Senza ritocco (come main)', noFaces: true },
   scena: { label: 'Solo la scena: niente LoRA dei personaggi, niente ritocco (la base delle foto a due)', strip: true },
   prima: { label: 'Ritocco con tutta la catena (com\'era)', set: () => { FACE_CHAIN.full = true; } },
-  pulita: { label: 'Catena pulita, volti grandi lasciati com\'erano (attuale)' },
+  pulita: { label: 'Ritocco attuale (singole: volti grandi lasciati; a due: scena con le LoRA, poi i volti)' },
   'pulita-forte': { label: 'Catena pulita, denoise +0.1', set: plus(0.1) },
   'pulita-leggera': { label: 'Catena pulita, denoise -0.1', set: plus(-0.1) },
   'guida-768': { label: 'Catena pulita, ritaglio a 768', set: () => { DUO_FACES.guideSize = 768; } },
@@ -42,7 +42,7 @@ const VARIANTI = {
   'sampler-beta': { label: 'Catena pulita, 12 passi beta (come la foto esplicita)', set: () => { Object.assign(DUO_FACES, { steps: 12, scheduler: 'beta' }); } },
   'senza-maschera': { label: 'Catena pulita, ridisegna tutto il ritaglio (niente maschera)', set: () => { DUO_FACES.noiseMask = false; } },
   'a-due-come-prima': { label: 'Foto a due: niente espressione nel ritocco, ritocco della persona anche se si toccano', set: () => { Object.assign(DUO_FACES, { expression: false, contact: false }); } },
-  'lora-e-volti': { label: 'Foto a due: scena con le due LoRA a 0.8, poi solo i volti', set: () => { DUO_FACES.sceneLoras = true; } },
+  'scena-senza-lora': { label: 'Foto a due: scena senza LoRA, poi persona e volto (com\'era)', set: () => { DUO_FACES.sceneLoras = false; } },
   'lora-e-volti-leggero': { label: 'Foto a due: scena con le due LoRA, volti ritoccati più leggeri (-0.1)', set: () => { DUO_FACES.sceneLoras = true; plus(-0.1)(); DUO_FACES.contactDenoise = Math.round((DUO_FACES.contactDenoise - 0.1) * 100) / 100; } },
   'contesto-largo': { label: 'Catena pulita, più contesto (crop 3.5)', set: () => { DUO_FACES.cropFactor = 3.5; } },
 };
