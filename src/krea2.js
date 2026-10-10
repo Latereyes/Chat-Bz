@@ -95,4 +95,12 @@ export const DUO_FACES = { denoise: 0.5, explicitDenoise: 0.42, steps: 8, cfg: 1
 // denoise basso (0.35): ridisegna i tratti con la LoRA ma lascia espressione, bocca e sguardo della foto.
 // In esplicito minimo (scelta di Andrea, 2026-10-09): l'espressione del momento conta più della somiglianza fine.
 export const SINGLE_FACE = { on: true, denoise: { neutral: 0.35, sensual: 0.35, explicit: 0.2 } };
+/**
+ * Modello del ritocco (volto e persona): parte dal modello di Krea 2 e tiene solo le LoRA che non deformano un primo piano.
+ * Prima il ritocco usava tutta la catena della foto: LoRA del corpo (seno, fianchi), MysticXXX e HMNSFW lavoravano anche
+ * sul ritaglio del volto (prova sul PC 2026-10-10: volti rotti di Chiara ed Elena Valli, soprattutto nelle foto singole).
+ * keep: chiavi di LORAS che restano; lenovo: tiene Lenovo (stessa pelle e luce del resto della foto);
+ * full: true = come prima (tutta la catena), per confrontare.
+ */
+export const FACE_CHAIN = { full: false, keep: ['realism31', 'realismV2', 'refusal'], lenovo: true };
 export const DUO_BODY = { model: 'segm/person_yolov8m-seg.pt', denoise: 0.42, explicitDenoise: 0.35, cropFactor: 1.3, dropSize: 64 };

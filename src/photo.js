@@ -2,7 +2,7 @@ import * as ollama from './ollama.js';
 import { intimacyOpen, explicitWord } from './relationship.js';
 import { visualSignature, promptEngineerSystem, cleanPrompt, splitLook } from './prompts.js';
 import { figureText, bodyFamily, hasBodyLoras, hasLenovo, applyLenovo, applyBodyLoras, chainEnds, insertAfter, removeLora, FAMILIES } from './body.js';
-import { LORAS, profileFor, DUO_FACES, DUO_BODY, SINGLE_FACE } from './krea2.js';
+import { LORAS, profileFor, DUO_FACES, DUO_BODY, SINGLE_FACE, FACE_CHAIN } from './krea2.js';
 
 /**
  * Foto dei personaggi (chat, social; lo Studio prende solo LoRA e Lenovo), in quattro passi che restituiscono
@@ -362,10 +362,12 @@ export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = 
   let n = Math.max(0, ...ids.map(Number).filter(Number.isFinite)) + 100;
   const node = (class_type, inputs, title) => { const id = String(++n); graph[id] = { class_type, inputs, ...(title ? { _meta: { title } } : {}) }; return id; };
   let image = graph[save].inputs.images;
-  // foto singola: la LoRA è già nella catena principale, il ritocco usa quella (niente LoRA doppia)
-  const loras = single ? [findFile(files, faces[0]?.file) ? end : null] : faces.map((f, i) => {
+  // foto singola: la LoRA è già nella catena principale, il ritocco tiene quella (niente LoRA doppia)
+  const keepFile = single ? findFile(files, faces[0]?.file) : null;
+  const model = faceModel(graph, end, node, keepFile);
+  const loras = single ? [keepFile ? model : null] : faces.map((f, i) => {
     const file = f?.file && findFile(files, f.file);
-    return file ? node('LoraLoaderModelOnly', { model: [end, 0], lora_name: file, strength_model: f.strength ?? 1 }, `LoRA ${i + 1}`) : null;
+    return file ? node('LoraLoaderModelOnly', { model: [model, 0], lora_name: file, strength_model: f.strength ?? 1 }, `LoRA ${i + 1}`) : null;
   });
   // un ritocco per persona (i-esima da sinistra) con la sua LoRA, su una zona trovata da segs
   const fixOne = (i, segs, text, { denoise, label }) => {
@@ -396,6 +398,26 @@ export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = 
   faces.forEach((f, i) => { if (loras[i]) { fixOne(i, segs, f.text, { denoise: single ? faceDenoise(level) : explicit ? DUO_FACES.explicitDenoise : DUO_FACES.denoise, label: 'Ritocco volto' }); done++; } });
   if (done) graph[save].inputs.images = image;
   return done;
+}
+
+/**
+ * Modello per il ritocco: la catena della foto senza le LoRA che deformano un primo piano (corpo, NSFW, pose; vedi FACE_CHAIN).
+ * keepFile: LoRA del personaggio già nella catena (foto singola). Se non c'è niente da togliere si usa la catena com'è.
+ */
+function faceModel(graph, end, node, keepFile = null) {
+  if (FACE_CHAIN.full) return end;
+  const chain = [];
+  let cur = end;
+  while (isLora(graph[cur] || {})) { chain.unshift(cur); cur = String(graph[cur].inputs.model[0]); }
+  const keepFiles = (FACE_CHAIN.keep || []).map((k) => LORAS[k]?.file).filter(Boolean);
+  const keep = (id) => {
+    const f = base(graph[id].inputs.lora_name);
+    return (FACE_CHAIN.lenovo && /lenovo/i.test(f)) || keepFiles.includes(f) || (keepFile && f === base(keepFile));
+  };
+  if (chain.every(keep)) return end;
+  let prev = cur;
+  for (const id of chain.filter(keep)) prev = node('LoraLoaderModelOnly', { ...graph[id].inputs, model: [prev, 0] }, `Ritocco: ${base(graph[id].inputs.lora_name)}`);
+  return prev;
 }
 
 /** Foto con un solo personaggio con LoRA: ritocco del suo volto con la stessa LoRA (vedi SINGLE_FACE). */
