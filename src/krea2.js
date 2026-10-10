@@ -81,7 +81,15 @@ export function profileFor(level, variant) {
  */
 // Foto a due: la scena nasce senza le LoRA dei volti, quindi il ritocco non può essere minimo (il volto viene solo da qui);
 // in esplicito un po' più leggero per tenere l'espressione.
-export const DUO_FACES = { denoise: 0.5, explicitDenoise: 0.42, steps: 8, cfg: 1, sampler: 'euler', scheduler: 'simple', cropFactor: 2.5, guideSize: 1024, feather: 8 };
+// sceneLoras: true = la scena nasce con le due LoRA insieme (0.8, il fisico e il contatto vengono bene ma i volti si
+// mescolano) e poi si ritoccano solo i volti, ognuno con la sua; false = scena senza LoRA, poi persona e volto.
+// Prova sul PC 2026-10-10 (4 foto a due, stesso seed): con sceneLoras la scena, i corpi, i vestiti e il bacio restano
+// quelli preferiti da Andrea e i volti somigliano di più; resta un caso (Hitomi+Alessia) dove il ritocco cambia
+// un po' il viso di Hitomi, che nella scena era già perfetto.
+// contactDenoise: quando si toccano (bacio, abbraccio) più leggero, per non girare i visi e non staccare le labbra
+// scene: denoise quando la scena ha già le LoRA (il volto va solo corretto, non ridisegnato): scelto da Andrea
+// sulle 4 foto a due («lora-e-volti-leggero», 2026-10-10).
+export const DUO_FACES = { sceneLoras: true, scene: { denoise: 0.4, explicitDenoise: 0.32, contactDenoise: 0.28 }, denoise: 0.5, explicitDenoise: 0.42, contactDenoise: 0.38, steps: 8, cfg: 1, sampler: 'euler', scheduler: 'simple', cropFactor: 2.5, guideSize: 1024, feather: 8 };
 /**
  * Prima del volto, se sul PC c'è il rilevamento delle persone (segm/person_yolov8m-seg.pt), si ritocca tutta la persona
  * con la sua LoRA: così il fisico viene dalla LoRA e non solo dalle parole della scheda. denoise più basso del volto,
@@ -94,5 +102,18 @@ export const DUO_FACES = { denoise: 0.5, explicitDenoise: 0.42, steps: 8, cfg: 1
  */
 // denoise basso (0.35): ridisegna i tratti con la LoRA ma lascia espressione, bocca e sguardo della foto.
 // In esplicito minimo (scelta di Andrea, 2026-10-09): l'espressione del momento conta più della somiglianza fine.
-export const SINGLE_FACE = { on: true, denoise: { neutral: 0.35, sensual: 0.35, explicit: 0.2 } };
+// maxFace: altezza in pixel oltre la quale il volto non si ritocca (0 = sempre). Prova sul PC 2026-10-10: un volto già
+// grande (Elena Valli, 390x563) veniva ritoccato con un ritaglio grande quanto tutta la foto e la pelle si crepava;
+// da vicino la LoRA il volto lo fa già bene da sola. Su un volto grande il ritocco lavora sulla foto intera senza
+// ingrandire, e Krea 2 Turbo a denoise basso lascia una trama a tasselli (più basso il denoise, peggio è); sui volti
+// piccoli invece il ritaglio viene ingrandito e il ritocco è pulito (Chiara, volto 197x271: ritoccato bene).
+export const SINGLE_FACE = { on: true, denoise: { neutral: 0.35, sensual: 0.35, explicit: 0.2 }, maxFace: 350 };
+/**
+ * Modello del ritocco (volto e persona): parte dal modello di Krea 2 e tiene solo le LoRA che non deformano un primo piano.
+ * Prima il ritocco usava tutta la catena della foto: LoRA del corpo (seno, fianchi), MysticXXX e HMNSFW lavoravano anche
+ * sul ritaglio del volto (prova sul PC 2026-10-10: volti rotti di Chiara ed Elena Valli, soprattutto nelle foto singole).
+ * keep: chiavi di LORAS che restano; lenovo: tiene Lenovo (stessa pelle e luce del resto della foto);
+ * full: true = come prima (tutta la catena), per confrontare.
+ */
+export const FACE_CHAIN = { full: false, keep: ['realism31', 'realismV2', 'refusal'], lenovo: true };
 export const DUO_BODY = { model: 'segm/person_yolov8m-seg.pt', denoise: 0.42, explicitDenoise: 0.35, cropFactor: 1.3, dropSize: 64 };

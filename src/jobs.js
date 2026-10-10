@@ -8,8 +8,8 @@ import * as store from './store.js';
 import { gpu } from './gpu.js';
 import { getWorkflow, buildGraph, workflows } from './workflows.js';
 import { bodyLoras, withDerived, installedLoras, bodyFamily, lenovoLora, comfyLoras } from './body.js';
-import { applyPhotoStack, applyDuoFaces, applySingleFace, faceDenoise } from './photo.js';
-import { DUO_BODY } from './krea2.js';
+import { applyPhotoStack, applyDuoFaces, applySingleFace, faceDenoise, contactOf } from './photo.js';
+import { DUO_BODY, DUO_FACES } from './krea2.js';
 import { applyVideoStack, isMinimax, videoNeeds } from './minimax.js';
 import { continueGraph, continueFrames, CONTINUE_NODES, GUIDE_NODE } from './videochain.js';
 
@@ -134,9 +134,12 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
     const files = await comfyLoras();
     // Due personaggi con la loro LoRA: scena senza LoRA dei volti, poi ogni volto ritoccato con la sua (se c'è il rilevamento volti)
     const faces = !noFaces && family === 'krea2' && media.mode === 'text2img' && media.duoFaces?.some(Boolean) && faceTools();
+    // LoRA di tutti e due già nella scena, poi solo i volti (DUO_FACES.sceneLoras): solo se ce l'hanno entrambi,
+    // altrimenti la LoRA dell'uno finirebbe sul volto dell'altro senza niente che lo corregga
+    const sceneLoras = faces && DUO_FACES.sceneLoras && media.duoFaces.every(Boolean);
     const res = applyPhotoStack(graph, {
       level: media.level || 'neutral', lenovo, lenovoFile: lenovo ? await lenovoLora(family) : null,
-      bodyLoras: body, charLoras: faces ? [] : media.charLoras || (media.charLora && card?.lora ? [card.lora] : []), prompt: media.prompt, files, variant: media.variant || null,
+      bodyLoras: body, charLoras: faces && !sceneLoras ? [] : media.charLoras || (media.charLora && card?.lora ? [card.lora] : []), prompt: media.prompt, files, variant: media.variant || null,
       stack: media.mode === 'text2img' || media.mode === 'img2img', sampler: media.mode === 'text2img',
     });
     // Un solo personaggio con la sua LoRA: ritocco del volto con la stessa LoRA (somiglianza anche da lontano)
@@ -146,10 +149,13 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
       res.loras.push({ key: 'face', label: 'volto ritoccato', strength: faceDenoise(media.level) });
     }
     if (faces) {
-      const persons = await hasUltralytics(DUO_BODY.model);
-      media.facesFixed = applyDuoFaces(graph, media.duoFaces, { files, seed: media.seed, persons, level: media.level });
+      const found = await hasUltralytics(DUO_BODY.model);
+      // se si toccano la persona non si ritocca (il ritaglio prenderebbe anche l'altra)
+      // con le LoRA già nella scena (sceneLoras) il fisico viene da lì: si ritoccano solo i volti
+      const persons = found && !sceneLoras && !(DUO_FACES.contact !== false && contactOf(media.prompt));
+      media.facesFixed = applyDuoFaces(graph, media.duoFaces, { files, seed: media.seed, persons, level: media.level, prompt: media.prompt, scene: sceneLoras });
       res.loras.push(...media.duoFaces.map((f, i) => f && { key: 'face', label: `${persons ? 'persona e volto' : 'volto'} ${i + 1}: ${f.file.replace(/\.safetensors?$/i, '')}`, strength: f.strength }).filter(Boolean));
-      if (!persons) console.warn(`[foto] foto a due: manca ultralytics/${DUO_BODY.model}, ritocco solo i volti (il fisico viene dalle parole)`);
+      if (!found) console.warn(`[foto] foto a due: manca ultralytics/${DUO_BODY.model}, ritocco solo i volti (il fisico viene dalle parole)`);
     }
     media.lenovoUsed = res.lenovo;
     media.loras = res.body;

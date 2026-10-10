@@ -12,6 +12,7 @@ Personaggi AI locali: chat con Gemma (Ollama) e foto e video con ComfyUI, sulla 
 - `npm start` (o `start.bat`): server su http://localhost:3100. Richiede Ollama su :11434 e ComfyUI su :8188.
 - `npm test`: test automatici (`node --test`). Prima di ogni commit devono finire con `fail 0`.
 - `node tools/prova-foto.js --solo-richieste | --prompt | --foto [--varianti …] [--scenari …] [--seed …]`: banco di prova delle foto (vedi sotto).
+- `node tools/prova-volti.js --personaggio "Nome" --ultime 3 [--varianti senza,prima,pulita]`: rifà foto già fatte (stesso prompt e seed) con varianti del ritocco del volto, in `data/prove-volti/`.
 - `node tools/importa-personaggio.js tools/personaggi/<nome>.json`: importa un personaggio.
 - Node 22.13+, SQLite con `node:sqlite`. Il database e le foto stanno in `data/` (ignorato da git: non cancellarlo mai).
 

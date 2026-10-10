@@ -90,12 +90,17 @@ const MEDIA_WORD = /\b(?:foto\w*|selfie|scatt\w*|immagin\w*|pic|picture|photo\w*
 const VIDEO_WORD = /\b(?:video\w*|clip)\b/i;
 const BRACKET = /\[([^\[\]\n]{12,})\]|\(((?:foto|selfie|photo|video|immagine)[^()\n]{8,})\)/i;
 const ANNOUNCE = /\b(?:ti\s+(?:mando|invio|giro|faccio\s+vedere)|eccoti|ecco(?:mi)?\b[^.!?\n]{0,20}\b(?:foto|selfie)|guarda(?:\s+qui)?\s*[:!]|sending\s+(?:you\s+)?(?:a\s+)?(?:pic|photo)|here'?s\s+(?:a\s+)?(?:pic|photo|selfie))/i;
-const ASKS_MEDIA = /\b(?:mand\w*|invi\w*|fa(?:mmi|i)\s+vedere|fammel\w*\s+vedere|scatta\w*|send|show)\b[^.!?\n]{0,40}\b(?:foto\w*|selfie|pic\w*|photo\w*|video\w*|immagin\w*)\b|\b(?:foto|selfie|pic|photo|video)\s*\?/i;
+// anche «fatevi/fai/facciamo una foto» e «una foto di voi due» (prova sul PC 2026-10-10, chat a due)
+const ASKS_MEDIA = /\b(?:mand\w*|invi\w*|fa(?:mmi|i)\s+vedere|fammel\w*\s+vedere|scatta\w*|fa(?:te(?:vi|ci)?|tti|i(?:ti)?|cciamo(?:ci)?|cciamoci)|send|show|take)\b[^.!?\n]{0,40}\b(?:foto\w*|selfie|pic\w*|photo\w*|video\w*|immagin\w*)\b|\b(?:foto|selfie|pic|photo|video)\s*\?|\b(?:foto|selfie)\s+di\s+voi\b/i;
 // Strumenti scritti come testo invece che chiamati: «<tool_call> update_scene{presence="together"} </tool_call>».
 // Si tolgono dal messaggio; update_scene scritto così non si applica (prova sul PC: portava la scena a "insieme" per sbaglio)
-const TOOL_TEXT = /<\s*tool_call\s*>([\s\S]*?)(?:<\s*\/\s*tool_call\s*>|$)|\b(?:update_scene|send_photo|send_video)\s*\{[^{}]*\}/gi;
+// Anche come funzione Python: «send_photo(who="Hitomi", description="…")» (prova sul PC 2026-10-10, chat a due)
+const TOOL_TEXT = /<\s*tool_call\s*>([\s\S]*?)(?:<\s*\/\s*tool_call\s*>|$)|\b(?:update_scene|send_photo|send_video)\s*(?:\{[^{}]*\}|\((?:[^()"]|"[^"]*")*\))/gi;
+const TOOL_ARG = /"?(\w+)"?\s*[:=]\s*"([^"]*)"/g;
 // Il personaggio dice di no al video, o propone di vedersi dal vivo: niente video di ripiego
 const REFUSES_VIDEO = /\b(?:non\s+(?:ti\s+)?(?:mando|faccio|giro|invio|posso|mi\s+va)|niente\s+video|nessun\s+video|dal\s+vivo|di\s+persona|sono\s+qui|siamo\s+qui|guardami)\b/i;
+const ASKS_PHOTO = /\b(?:foto\w*|selfie|scatt\w*|pic\w*|photo\w*|immagin\w*)\b/i;
+const REFUSES_PHOTO = /\bnon\s+(?:ti\s+)?(?:mando|invio|faccio|posso\s+mandart\w*)\b|\bniente\s+foto\b|\bnessuna\s+foto\b/i;
 // Video chiesto a parole: «mandami/fammi/gira un video», «un video?»
 const ASKS_VIDEO = /\b(?:mand\w*|invi\w*|fa(?:mmi|i|resti|rmi)|gira\w*|registr\w*|vorrei|voglio|send|make|record)\b[^.!?\n]{0,40}\b(?:video\w*|videin\w*|clip)\b|\b(?:video|videino|clip)\s*\?/i;
 
@@ -104,14 +109,15 @@ function cut(text, start, len) {
   return `${before}${before ? ' ' : ''}${text.slice(start + len).trimStart()}`.replace(/\n{3,}/g, '\n\n').trim();
 }
 
-function extractTag(text, userText = '') {
+export function extractTag(text, userText = '') {
   let noteCall = null;
   let textCall = null;
   text = text.replace(TOOL_TEXT, (all, inner) => {
     const body = inner ?? all;
     const name = body.match(/\b(send_photo|send_video)\b/i)?.[1].toLowerCase();
-    const desc = body.match(/"?description"?\s*[:=]\s*"([^"]+)"/i)?.[1];
-    if (name && desc && !textCall) textCall = { function: { name, arguments: { description: desc.trim() } } };
+    // tutti gli argomenti scritti (description, e who nelle chat a due)
+    const args = Object.fromEntries([...body.matchAll(TOOL_ARG)].map(([, k, v]) => [k.toLowerCase(), v.trim()]).filter(([, v]) => v));
+    if (name && args.description && !textCall) textCall = { function: { name, arguments: args } };
     return '';
   });
   let clean = text.replace(SENT_NOTE, (all, kind, desc) => {
@@ -447,6 +453,11 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       if (!calls.length && !tool && userMsg?.content && ASKS_VIDEO.test(userMsg.content) && msg.content.trim()
         && conv.state.scene.presence !== 'together' && !REFUSES_VIDEO.test(msg.content)) {
         calls.push({ function: { name: 'send_video', arguments: { description: `${userMsg.content}\n\n(reply: ${msg.content.trim()})`, fromText: true } } });
+      }
+      // Chat a due: foto chiesta a parole e Gemma risponde solo a parole (prova sul PC 2026-10-10: 3 volte su 4).
+      // Chi è nella foto lo ricava resolveWho dal messaggio («voi due», «insieme» o un nome)
+      if (!calls.length && G && !tool && userMsg?.content && ASKS_PHOTO.test(userMsg.content) && ASKS_MEDIA.test(userMsg.content) && msg.content.trim() && !REFUSES_PHOTO.test(msg.content)) {
+        calls.push({ function: { name: 'send_photo', arguments: { description: `${userMsg.content}\n\n(reply: ${msg.content.trim()})`, fromText: true } } });
       }
       if (!calls.length && (tool === 'photo' || tool === 'video')) {
         calls.push({ function: { name: tool === 'photo' ? 'send_photo' : 'send_video', arguments: { description: userMsg?.content || 'a casual selfie', fromText: !!userMsg?.content } } });

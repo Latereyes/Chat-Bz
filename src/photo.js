@@ -2,7 +2,7 @@ import * as ollama from './ollama.js';
 import { intimacyOpen, explicitWord } from './relationship.js';
 import { visualSignature, promptEngineerSystem, cleanPrompt, splitLook } from './prompts.js';
 import { figureText, bodyFamily, hasBodyLoras, hasLenovo, applyLenovo, applyBodyLoras, chainEnds, insertAfter, removeLora, FAMILIES } from './body.js';
-import { LORAS, profileFor, DUO_FACES, DUO_BODY, SINGLE_FACE } from './krea2.js';
+import { LORAS, profileFor, DUO_FACES, DUO_BODY, SINGLE_FACE, FACE_CHAIN } from './krea2.js';
 
 /**
  * Foto dei personaggi (chat, social; lo Studio prende solo LoRA e Lenovo), in quattro passi che restituiscono
@@ -149,7 +149,7 @@ function framing({ together, man, level, two }) {
   if (together) {
     return level === 'explicit'
       ? "Point of view: unless the user asks otherwise, the viewer's own eyes or phone (POV): the viewer is the partner, so only the parts of the viewer's body that would really be in frame from their eyes appear (hands, arms, legs, torso, genitals when the position puts them in view), never the viewer's face. A third-person view of both only if the user asks for it."
-      : 'Framing: taken a moment ago with a phone by the person they are with (the viewer), from their point of view, unless the conversation says it is a selfie or a mirror selfie.';
+      : `Framing: taken a moment ago with a phone by the person ${she.toLowerCase()} is with (the viewer), from their point of view, unless the conversation says it is a selfie or a mirror selfie. Only ${she.toLowerCase()} is in the photo: no other people, no one's back, shoulder or hands in the foreground, unless the user asks for it.`;
   }
   return `Framing: ${she.toLowerCase()} is alone and takes the photo ${self} for the person ${she.toLowerCase()} is texting (a selfie at arm's length, a mirror selfie or the phone propped up), unless the user asks for another framing.`;
 }
@@ -203,7 +203,8 @@ export function photoRequest({ card, state, media, level, exchanges = [], user, 
     e.user ? `${name}: «${clip(e.user, 700)}»` : null,
     e.reply && level !== 'neutral' ? `${card.name}: «${clip(e.reply, 600)}»` : null,
   ].filter(Boolean).join('\n')).filter(Boolean).join('\n');
-  const viewer = together && user ? [user.gender === 'uomo' ? 'an adult man' : user.gender === 'donna' ? 'an adult woman' : '', clip(user.look, 200)].filter(Boolean).join(', ') : '';
+  // l'aspetto di chi guarda serve solo al POV esplicito: altrimenti Krea lo disegnava accanto (prova sul PC 2026-10-10)
+  const viewer = together && user && level === 'explicit' ? [user.gender === 'uomo' ? 'an adult man' : user.gender === 'donna' ? 'an adult woman' : '', clip(user.look, 200)].filter(Boolean).join(', ') : '';
   return [
     `Subject: ${WHO(card)}. Appearance (keep it exactly, it defines who this is): ${visualSignature(card.look, level) || '(not specified)'}`,
     fig ? `Figure (keep these proportions exactly and clearly visible${level === 'neutral' ? ', through the clothes' : ''}): ${fig}.` : null,
@@ -321,7 +322,10 @@ export async function engineerDuoPhoto({ workflow, cards, states, scene, media, 
 /** Tutta la persona per il ritocco con la sua LoRA (fisico della LoRA, vestiti e posa della scena). */
 export const bodyText = (card) => [card.lora?.trigger, `photo of an ${WHO(card)}`, clip(visualSignature(card.look, 'explicit'), 300), figureText(card), 'same pose, same clothes and same place as in the image, natural skin texture, real photo'].filter(Boolean).join(', ');
 // Frasi del prompt che parlano dell'espressione: il ritocco del volto le ripete, così non la appiattisce
-const EXPRESSION = /\b(?:smil\w*|laugh\w*|grin\w*|express\w*|mouth|lips?|bit(?:es|ing) (?:her|his) lip|eyes?|gaz\w*|look(?:s|ing)? (?:at|up|down|away|into)|wink\w*|blush\w*|frown\w*|pout\w*|moan\w*|tongue|teeth|tears?|cry\w*|surpris\w*|shy|teasing|playful|seductive|sleepy|tired|orgasm\w*|pleasure|parted)\b/i;
+const EXPRESSION = /(?<![-\w])(?:kiss\w*)|\b(?:smil\w*|laugh\w*|grin\w*|express\w*|mouth|lips?|bit(?:es|ing) (?:her|his) lip|eyes?|gaz\w*|look(?:s|ing)? (?:at|up|down|away|into)|wink\w*|blush\w*|frown\w*|pout\w*|moan\w*|tongue|teeth|tears?|cry\w*|surpris\w*|shy|teasing|playful|seductive|sleepy|tired|orgasm\w*|pleasure|parted)\b/i;
+// Le due persone si toccano (bacio, abbraccio, sesso): il ritaglio di una prende anche l'altra
+const CONTACT = /(?<![-\w])(?:kiss\w*|hug\w*|embrac\w*|cuddl\w*|snuggl\w*|in each other's arms|arms? (?:around|wrapped)|holding (?:each other|hands|her|him|the)|intertwined|straddl\w*|on (?:her|his) lap|sitting on (?:her|his)|on top of (?:her|him)|between (?:her|his|their) legs|lips? (?:touch\w*|lock\w*|press\w*)|pressed (?:close|together|against)|bodies (?:touch\w*|pressed|entwined)|touch\w* (?:her|his|each other)|into (?:her|his) mouth|lick\w*|suck\w*|finger\w*|grop\w*|caress\w*|fondl\w*|spoon\w*)\b/i;
+export const contactOf = (prompt) => CONTACT.test(String(prompt || ''));
 export function expressionOf(prompt) {
   return String(prompt || '').split(/(?<=[.;])\s+/).filter((s) => EXPRESSION.test(s)).slice(0, 2).map((s) => clip(s, 200)).join(' ');
 }
@@ -350,8 +354,14 @@ export function duoLoras(cards, family, mode = 'text2img') {
  * senza le LoRA dei volti nella catena principale. faces[i] = volto i-esimo da sinistra (null = lascialo com'è).
  * Restituisce quanti volti ritocca (0 = grafo invariato).
  */
-export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = false, single = false, level = 'neutral' } = {}) {
+export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = false, single = false, level = 'neutral', prompt = '', scene = false } = {}) {
   const explicit = level === 'explicit';
+  // prova sul PC 2026-10-10: nel bacio il ritocco della persona cambiava vestiti e posa e quello del volto girava il viso
+  // verso la camera; senza l'espressione nel testo i sorrisi si spegnevano
+  const contact = !single && DUO_FACES.contact !== false && contactOf(prompt);
+  if (contact) persons = false;
+  const expression = single || DUO_FACES.expression === false ? '' : expressionOf(prompt);
+  const faceOf = (f) => (expression && f.text ? `${f.text}, ${expression}, exactly the same facial expression, mouth, eye direction and head angle as in the image` : f.text);
   if (bodyFamily(graph) !== 'krea2' || !faces?.some(Boolean)) return 0;
   const ids = Object.keys(graph);
   const save = ids.find((id) => graph[id].class_type === 'SaveImage');
@@ -362,10 +372,12 @@ export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = 
   let n = Math.max(0, ...ids.map(Number).filter(Number.isFinite)) + 100;
   const node = (class_type, inputs, title) => { const id = String(++n); graph[id] = { class_type, inputs, ...(title ? { _meta: { title } } : {}) }; return id; };
   let image = graph[save].inputs.images;
-  // foto singola: la LoRA è già nella catena principale, il ritocco usa quella (niente LoRA doppia)
-  const loras = single ? [findFile(files, faces[0]?.file) ? end : null] : faces.map((f, i) => {
+  // foto singola: la LoRA è già nella catena principale, il ritocco tiene quella (niente LoRA doppia)
+  const keepFile = single ? findFile(files, faces[0]?.file) : null;
+  const model = faceModel(graph, end, node, keepFile);
+  const loras = single ? [keepFile ? model : null] : faces.map((f, i) => {
     const file = f?.file && findFile(files, f.file);
-    return file ? node('LoraLoaderModelOnly', { model: [end, 0], lora_name: file, strength_model: f.strength ?? 1 }, `LoRA ${i + 1}`) : null;
+    return file ? node('LoraLoaderModelOnly', { model: [model, 0], lora_name: file, strength_model: f.strength ?? 1 }, `LoRA ${i + 1}`) : null;
   });
   // un ritocco per persona (i-esima da sinistra) con la sua LoRA, su una zona trovata da segs
   const fixOne = (i, segs, text, { denoise, label }) => {
@@ -375,11 +387,15 @@ export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = 
     const one = node('ImpactSEGSOrderedFilter', single
       ? { segs: [segs, 0], target: 'area(=w*h)', order: true, take_start: 0, take_count: 1 }
       : { segs: [segs, 0], target: 'x1', order: false, take_start: i, take_count: 1 });
+    // foto singola: un volto già grande si lascia com'è (vedi SINGLE_FACE.maxFace). Il filtro misura il ritaglio
+    // (volto × cropFactor), non il volto: Impact Pack 8.27 sul PC, 2026-10-10
+    const only = single && SINGLE_FACE.maxFace && label === 'Ritocco volto'
+      ? node('ImpactSEGSRangeFilter', { segs: [one, 0], target: 'height', mode: true, min_value: 0, max_value: Math.round(SINGLE_FACE.maxFace * DUO_FACES.cropFactor) }) : one;
     const fix = node('DetailerForEach', {
-      image, segs: [one, 0], model: [loras[i], 0], clip: [clipId, 0], vae: [vaeId, 0], positive: [pos, 0], negative: [neg, 0],
+      image, segs: [only, 0], model: [loras[i], 0], clip: [clipId, 0], vae: [vaeId, 0], positive: [pos, 0], negative: [neg, 0],
       guide_size: DUO_FACES.guideSize, guide_size_for: true, max_size: DUO_FACES.guideSize, seed: seed + i, steps: DUO_FACES.steps, cfg: DUO_FACES.cfg,
       sampler_name: DUO_FACES.sampler, scheduler: DUO_FACES.scheduler, denoise, feather: DUO_FACES.feather,
-      noise_mask: true, force_inpaint: true, wildcard: '', cycle: 1,
+      noise_mask: DUO_FACES.noiseMask ?? true, force_inpaint: true, wildcard: '', cycle: 1,
     }, `${label} ${i + 1}`);
     image = [fix, 0];
   };
@@ -393,9 +409,35 @@ export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = 
   const det = node('UltralyticsDetectorProvider', { model_name: 'bbox/face_yolov8m.pt' });
   const segs = node('BboxDetectorSEGS', { bbox_detector: [det, 0], image, threshold: 0.5, dilation: 10, crop_factor: DUO_FACES.cropFactor, drop_size: 10, labels: 'all' });
   let done = 0;
-  faces.forEach((f, i) => { if (loras[i]) { fixOne(i, segs, f.text, { denoise: single ? faceDenoise(level) : explicit ? DUO_FACES.explicitDenoise : DUO_FACES.denoise, label: 'Ritocco volto' }); done++; } });
+  faces.forEach((f, i) => { if (loras[i]) { fixOne(i, segs, faceOf(f), { denoise: single ? faceDenoise(level) : duoDenoise({ contact, explicit, scene }), label: 'Ritocco volto' }); done++; } });
   if (done) graph[save].inputs.images = image;
   return done;
+}
+
+/**
+ * Modello per il ritocco: la catena della foto senza le LoRA che deformano un primo piano (corpo, NSFW, pose; vedi FACE_CHAIN).
+ * keepFile: LoRA del personaggio già nella catena (foto singola). Se non c'è niente da togliere si usa la catena com'è.
+ */
+function faceModel(graph, end, node, keepFile = null) {
+  if (FACE_CHAIN.full) return end;
+  const chain = [];
+  let cur = end;
+  while (isLora(graph[cur] || {})) { chain.unshift(cur); cur = String(graph[cur].inputs.model[0]); }
+  const keepFiles = (FACE_CHAIN.keep || []).map((k) => LORAS[k]?.file).filter(Boolean);
+  const keep = (id) => {
+    const f = base(graph[id].inputs.lora_name);
+    return (FACE_CHAIN.lenovo && /lenovo/i.test(f)) || keepFiles.includes(f) || (keepFile && f === base(keepFile));
+  };
+  if (chain.every(keep)) return end;
+  let prev = cur;
+  for (const id of chain.filter(keep)) prev = node('LoraLoaderModelOnly', { ...graph[id].inputs, model: [prev, 0] }, `Ritocco: ${base(graph[id].inputs.lora_name)}`);
+  return prev;
+}
+
+/** Quanto ridisegnare un volto in una foto a due: scene = le LoRA sono già nella scena (DUO_FACES.scene, più leggero). */
+function duoDenoise({ contact, explicit, scene }) {
+  const d = scene && DUO_FACES.scene ? DUO_FACES.scene : DUO_FACES;
+  return contact ? d.contactDenoise : explicit ? d.explicitDenoise : d.denoise;
 }
 
 /** Foto con un solo personaggio con LoRA: ritocco del suo volto con la stessa LoRA (vedi SINGLE_FACE). */

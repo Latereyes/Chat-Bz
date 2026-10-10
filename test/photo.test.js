@@ -233,7 +233,9 @@ test('foto singola con LoRA: ritocco del volto più grande con la stessa LoRA, e
   const prompt = 'A selfie at her desk. She is laughing with her mouth open, eyes squinting. Warm lamp light.';
   assert.equal(applySingleFace(g, CHARACTERS.hitomi, { files: FILES, prompt }), 1);
   const fix = Object.values(g).find((x) => x.class_type === 'DetailerForEach');
-  const filter = g[fix.inputs.segs[0]].inputs;
+  const range = g[fix.inputs.segs[0]];
+  assert.equal(range.class_type, 'ImpactSEGSRangeFilter');   // volti grandi lasciati com'erano
+  const filter = g[range.inputs.segs[0]].inputs;
   assert.deepEqual([filter.target, filter.order], ['area(=w*h)', true]);
   // niente LoRA doppia: il ritocco usa la catena che ha già la LoRA del personaggio
   assert.equal(Object.values(g).filter((x) => x.class_type === 'LoraLoaderModelOnly' && x.inputs.lora_name === 'Krea220Hitomi.safetensors').length, before);
@@ -252,4 +254,86 @@ test('ritocco del volto: minimo in esplicito', async () => {
   assert.ok(den('explicit') <= 0.25);
   const duo = (level) => { const g = structuredClone(KREA.graph); applyDuoFaces(g, [{ file: 'Krea220Hitomi.safetensors', text: 'x' }], { files: FILES, level }); return Object.values(g).find((x) => x.class_type === 'DetailerForEach').inputs.denoise; };
   assert.ok(duo('explicit') < duo('neutral'));
+});
+
+test('ritocco del volto: senza LoRA del corpo, NSFW e pose (deformano il primo piano), con realismo, Lenovo e personaggio', async () => {
+  const { applySingleFace, applyDuoFaces } = await import('../src/photo.js');
+  const { FACE_CHAIN } = await import('../src/krea2.js');
+  const prompt = 'HMNSFW missionary, ANGLE_pov, a woman on a bed';
+  const body = [{ part: 'breast', name: 'seno.safetensors', strength: 1 }];
+  const chainOf = (g, id) => { const out = []; for (let cur = String(id); g[cur]; cur = String(g[cur].inputs.model?.[0])) out.push(g[cur].inputs.lora_name || g[cur].class_type); return out; };
+  const g = structuredClone(KREA.graph);
+  applyPhotoStack(g, { level: 'explicit', lenovo: true, lenovoFile: 'lenovo_krea2.safetensors', bodyLoras: body, files: FILES, prompt, charLoras: [CHARACTERS.hitomi.lora] });
+  const sampler = Object.values(g).find((n) => n.class_type === 'KSampler');
+  const main = chainOf(g, sampler.inputs.model[0]);
+  assert.ok(main.includes('seno.safetensors') && main.includes(LORAS.mystic.file) && main.includes(LORAS.hmnsfw.file));
+  assert.equal(applySingleFace(g, CHARACTERS.hitomi, { files: FILES, prompt, level: 'explicit' }), 1);
+  const fix = Object.values(g).find((x) => x.class_type === 'DetailerForEach');
+  const face = chainOf(g, fix.inputs.model[0]);
+  for (const f of ['seno.safetensors', LORAS.mystic.file, LORAS.hmnsfw.file, LORAS.unlocked.file]) assert.ok(!face.includes(f), f);
+  for (const f of ['Krea220Hitomi.safetensors', LORAS.realism31.file, 'lenovo_krea2.safetensors']) assert.ok(face.includes(f), f);
+  assert.equal(face.filter((f) => f === 'Krea220Hitomi.safetensors').length, 1);
+  assert.deepEqual(chainOf(g, sampler.inputs.model[0]), main);   // la foto principale non cambia
+  // foto a due: stessa catena pulita sotto la LoRA di ciascuno
+  const d = structuredClone(KREA.graph);
+  applyPhotoStack(d, { level: 'explicit', files: FILES, prompt });
+  applyDuoFaces(d, [{ file: 'Krea220Hitomi.safetensors', text: 'x' }], { files: FILES, level: 'explicit' });
+  const duo = chainOf(d, Object.values(d).find((x) => x.class_type === 'DetailerForEach').inputs.model[0]);
+  assert.equal(duo[0], 'Krea220Hitomi.safetensors');
+  assert.ok(!duo.includes(LORAS.mystic.file));
+  // full: come prima (tutta la catena), per il confronto
+  FACE_CHAIN.full = true;
+  try {
+    const h = structuredClone(KREA.graph);
+    applyPhotoStack(h, { level: 'explicit', bodyLoras: body, files: FILES, prompt, charLoras: [CHARACTERS.hitomi.lora] });
+    const s = Object.values(h).find((n) => n.class_type === 'KSampler');
+    applySingleFace(h, CHARACTERS.hitomi, { files: FILES, prompt, level: 'explicit' });
+    assert.equal(Object.values(h).find((x) => x.class_type === 'DetailerForEach').inputs.model[0], s.inputs.model[0]);
+  } finally { FACE_CHAIN.full = false; }
+});
+
+test('foto singola: un volto già grande non si ritocca (maxFace)', async () => {
+  const { applySingleFace } = await import('../src/photo.js');
+  const { SINGLE_FACE } = await import('../src/krea2.js');
+  const g = structuredClone(KREA.graph);
+  applyPhotoStack(g, { level: 'neutral', files: FILES, charLoras: [CHARACTERS.hitomi.lora] });
+  assert.equal(SINGLE_FACE.maxFace, 350);
+  applySingleFace(g, CHARACTERS.hitomi, { files: FILES });
+  const fix = Object.values(g).find((x) => x.class_type === 'DetailerForEach');
+  const range = g[fix.inputs.segs[0]];
+  assert.equal(range.class_type, 'ImpactSEGSRangeFilter');
+  assert.equal(range.inputs.max_value, Math.round(350 * 2.5));   // misura il ritaglio, non il volto
+  assert.equal(g[range.inputs.segs[0]].class_type, 'ImpactSEGSOrderedFilter');   // prima il più grande, poi il limite
+});
+
+test('foto a due: espressione nel ritocco del volto; se si toccano niente ritocco della persona e volto più leggero', async () => {
+  const { applyDuoFaces, contactOf } = await import('../src/photo.js');
+  const { DUO_FACES } = await import('../src/krea2.js');
+  const run = (prompt) => {
+    const g = structuredClone(KREA.graph);
+    applyPhotoStack(g, { level: 'neutral', files: FILES });
+    applyDuoFaces(g, [{ file: 'Krea220Hitomi.safetensors', text: 'H1t0m1, face', body: 'H1t0m1, body' }, null], { files: FILES, persons: true, prompt });
+    return Object.values(g).filter((x) => x.class_type === 'DetailerForEach').map((x) => ({ denoise: x.inputs.denoise, text: g[x.inputs.positive[0]].inputs.text }));
+  };
+  const bar = run('Two women at a bar. Both are laughing with their mouths open. Warm light.');
+  assert.equal(bar.length, 2);
+  assert.match(bar[1].text, /laughing with their mouths open/);
+  assert.equal(bar[1].denoise, DUO_FACES.denoise);
+  const kiss = run('Two women kissing on a sofa, lips touching, eyes closed.');
+  assert.equal(kiss.length, 1);   // solo il volto
+  assert.equal(kiss[0].denoise, DUO_FACES.contactDenoise);
+  assert.match(kiss[0].text, /kissing/);
+  assert.ok(!contactOf('Two women standing side by side at a bar'));
+  assert.ok(!contactOf('Two women with sun-kissed skin at a bar'));   // falso positivo trovato sul PC
+  for (const t of ['holding the breast of the woman on the left in her hands', 'pulling a nipple into her mouth', 'their bodies touching', 'pressed close together on the bed']) assert.ok(contactOf(t), t);
+});
+
+test('foto a due con le LoRA già nella scena: ritocco del volto più leggero', async () => {
+  const { applyDuoFaces } = await import('../src/photo.js');
+  const { DUO_FACES } = await import('../src/krea2.js');
+  const den = (opts) => { const g = structuredClone(KREA.graph); applyPhotoStack(g, { level: 'neutral', files: FILES }); applyDuoFaces(g, [{ file: 'Krea220Hitomi.safetensors', text: 'x' }], { files: FILES, ...opts }); return Object.values(g).find((x) => x.class_type === 'DetailerForEach').inputs.denoise; };
+  assert.equal(den({ scene: true }), DUO_FACES.scene.denoise);
+  assert.equal(den({ scene: true, level: 'explicit' }), DUO_FACES.scene.explicitDenoise);
+  assert.equal(den({ scene: true, prompt: 'Two women kissing.' }), DUO_FACES.scene.contactDenoise);
+  assert.ok(den({ scene: true }) < den({}));
 });
