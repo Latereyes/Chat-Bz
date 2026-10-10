@@ -38,7 +38,9 @@ export const PROFILE = {
 
 /** Varianti da confrontare (Studio: menu «LoRA video»). null toglie una LoRA del profilo. */
 export const VARIANTS = {
-  base: { label: 'Profilo video attuale' },
+  base: { label: 'Profilo video attuale (6 passi)' },
+  // passi per tutti i filtri: per confrontare 6 e 8 nello Studio (Andrea, 2026-10-10)
+  passi8: { label: '8 passi (invece di 6)', steps: 8 },
   'senza-hmnsfw': { label: 'Senza HMNSFW (turbo 1)', explicit: { hmnsfw: null }, explicitTurbo: 1 },
   'hmnsfw-forte': { label: 'HMNSFW 1.0', explicit: { hmnsfw: 1 } },
   'hmnsfw-shift6': { label: 'HMNSFW con shift 6 (come consiglia l\'autore)', explicitShift: 6 },
@@ -56,7 +58,7 @@ export function profileFor(level, variant) {
   const loras = { ...base.loras };
   for (const [k, s] of Object.entries(v?.[level] || {})) { if (s === null) delete loras[k]; else loras[k] = s; }
   const pick = (key, def) => (level === 'explicit' && v && `explicit${key}` in v ? v[`explicit${key}`] : def);
-  return { loras, turbo: pick('Turbo', base.turbo), steps: pick('Steps', base.steps), shift: pick('Shift', base.shift) };
+  return { loras, turbo: pick('Turbo', base.turbo), steps: v?.steps ?? pick('Steps', base.steps), shift: pick('Shift', base.shift) };
 }
 
 // Cosa c'è nel video (dal prompt e dalla richiesta): decide le LoRA «when»

@@ -76,3 +76,16 @@ test('varianti video: valide; shift 6 aggiunge il nodo dello shift', () => {
   applyVideoStack(s, { level: 'explicit', needs: { woman: true }, files: FILES, variant: 'senza-nuove' });
   assert.deepEqual(loras(s), loras(I2V));
 });
+
+test('passi dei video: 6 di base, 8 con la variante «passi8» in tutti i filtri', () => {
+  const steps = (g) => Object.values(g).find((n) => n.class_type === 'BasicScheduler').inputs.steps;
+  const g = structuredClone(I2V);
+  applyVideoStack(g, { level: 'neutral', needs: { woman: true }, files: FILES });
+  assert.equal(steps(g), 6);
+  for (const level of ['neutral', 'explicit']) {
+    const v = structuredClone(I2V);
+    const out = applyVideoStack(v, { level, needs: { woman: true }, files: FILES, variant: 'passi8' });
+    assert.equal(steps(v), 8);
+    assert.equal(out.steps, 8);
+  }
+});
