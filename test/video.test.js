@@ -89,3 +89,18 @@ test('passi dei video: 6 di base, 8 con la variante «passi8» in tutti i filtri
     assert.equal(out.steps, 8);
   }
 });
+
+test('video espliciti: varianti per trovare la causa (12 passi, senza genitali, senza seno)', () => {
+  const needs = videoNeeds('POV, she rides him, his erect penis inside her pussy, her breasts bounce', { level: 'explicit', woman: true });
+  const run = (variant) => { const g = structuredClone(I2V); applyVideoStack(g, { level: 'explicit', needs, files: FILES, variant }); return g; };
+  const steps = (g) => Object.values(g).find((n) => n.class_type === 'BasicScheduler').inputs.steps;
+  const g12 = run('hmnsfw-12');
+  assert.equal(steps(g12), 12);
+  assert.equal(loras(g12).find(([f]) => f === LORAS.turbo.file)[1], 0.5);
+  assert.ok(has(g12, LORAS.hmnsfw.file));
+  const gg = run('senza-genitali');
+  assert.ok(!has(gg, LORAS.vagina.file) && !has(gg, LORAS.hmpussy.file) && !has(gg, LORAS.penis.file));
+  assert.ok(has(gg, LORAS.hmnsfw.file) && has(gg, LORAS.breast.file));
+  const gs = run('senza-seno');
+  assert.ok(!has(gs, LORAS.breast.file) && has(gs, LORAS.vagina.file));
+});

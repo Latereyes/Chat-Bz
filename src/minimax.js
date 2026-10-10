@@ -41,6 +41,10 @@ export const VARIANTS = {
   base: { label: 'Profilo video attuale (6 passi)' },
   // passi per tutti i filtri: per confrontare 6 e 8 nello Studio (Andrea, 2026-10-10)
   passi8: { label: '8 passi (invece di 6)', steps: 8 },
+  // video espliciti rotti con e senza HMNSFW (Andrea, 2026-10-10): una causa alla volta
+  'hmnsfw-12': { label: 'HMNSFW come dice l\'autore (turbo 0.5, 12 passi)', explicitSteps: 12 },
+  'senza-genitali': { label: 'Senza Vagina, hmpussy e Penis V2', explicit: { vagina: null, hmpussy: null, penis: null } },
+  'senza-seno': { label: 'Senza la LoRA del seno', sensual: { breast: null }, explicit: { breast: null } },
   'senza-hmnsfw': { label: 'Senza HMNSFW (turbo 1)', explicit: { hmnsfw: null }, explicitTurbo: 1 },
   'hmnsfw-forte': { label: 'HMNSFW 1.0', explicit: { hmnsfw: 1 } },
   'hmnsfw-shift6': { label: 'HMNSFW con shift 6 (come consiglia l\'autore)', explicitShift: 6 },

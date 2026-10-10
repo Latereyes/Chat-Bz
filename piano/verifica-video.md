@@ -130,3 +130,43 @@ Applicato il 2026-10-10: 0,7 MP e 6 passi nei due workflow MiniMax. Verifica su 
 
 - A 8 s meglio, a 5 s nessuna differenza visibile: nei movimenti veloci delle mani (si pulisce la farina, stringe la pagnotta) le mani escono «a rete» in tutte e due. La risoluzione aiuta nei gesti lenti, non basta in quelli veloci.
 - Esplicito (profilo con turbo 0.5 e 12 passi) a 0,7 MP: 5 s in 160 s; con 6 passi 87 s. Da giudicare su un video esplicito vero.
+
+## 8. Video espliciti rotti, con e senza HMNSFW (Andrea, 2026-10-10)
+Andrea dice che i video espliciti vengono rotti sia con il profilo (con HMNSFW) sia con «Senza HMNSFW». Finora l'esplicito non era mai stato provato su un video vero. Il banco di prova usava solo `needs: { woman }`, quindi non agganciava mai Vagina, hmpussy e Penis V2.
+
+Cosa c'è oggi in un video esplicito con un uomo (cowgirl POV), oltre al modello:
+
+| | turbo | passi | LoRA aggiunte (oltre a VBVR 0.8, Unlocked 0.6, Mystic 0.6) |
+|---|---|---|---|
+| profilo | **0.5** | **6** | seno 1.3, Vagina 1, hmpussy 0.35, Penis V2 1, HMNSFW 0.8 |
+| «Senza HMNSFW» | 1 | 6 | seno 1.3, Vagina 1, hmpussy 0.35, Penis V2 1 |
+
+Sospetti, in ordine:
+1. **Troppe LoRA insieme.** Seno, Vagina e Penis V2 sono comuni ai due casi rotti: in tutto 8-9 LoRA, quasi tutte a forza piena.
+2. **Turbo 0.5 con 6 passi** (solo con HMNSFW). L'autore di HMNSFW consiglia turbo 0.5 con 12 passi. Con metà turbo, 6 passi sono probabilmente pochi e il video resta «sporco». I 6 passi sono stati scelti sui video normali, dove il turbo è a 1.
+3. **La LoRA del seno a 1.3.**
+
+### Prova (una causa alla volta, stessa foto e stesso seed)
+Con ChatBz fermo, una foto di partenza esplicita o in intimo di un personaggio:
+```powershell
+node tools/prova-video.js --foto data\media\<id>\<foto>.png --filtro explicit --nome esplicito --varianti base,senza-hmnsfw,hmnsfw-12,senza-genitali,senza-seno,senza-nuove
+```
+Senza `--prompt` usa una scena di prova (cowgirl POV) che aggancia tutte le LoRA, come in chat (anche `HMPenis, front view` in testa). Per ogni variante stampa passi e LoRA usate. I video vanno in `data\prova-video\banco\esplicito-<variante>-explicit-5s.mp4`.
+
+Le stesse varianti sono anche nello Studio (menu «LoRA e passi video»), per provarle a mano con lo stesso seed.
+
+| Se è buono… | …vuol dire | Correzione in `src/minimax.js` (`PROFILE.explicit`) |
+|---|---|---|
+| solo `senza-nuove` | sono le LoRA nuove insieme | prova `senza-genitali` e `senza-seno` per sapere quale; abbassa quella (es. 0.6) o toglila |
+| `senza-genitali` | Vagina / Penis V2 | forze più basse (0.5-0.7) o solo una delle due |
+| `senza-seno` | seno a 1.3 | seno 0.8-1.0 |
+| `hmnsfw-12` ma non `base` | pochi passi per turbo 0.5 | `steps: 12` (più lento: ~160 s per 5 s), oppure turbo 1 con HMNSFW |
+| nessuno, nemmeno `senza-nuove` | non sono le LoRA nuove: risoluzione 0,7 MP o prompt | prova `--varianti vecchio` (0,4 MP e 8 passi) e guarda il prompt |
+
+Annota anche *come* sono rotti, perché aiuta a capire la causa:
+- rumore o macchie, immagine «non finita»: pochi passi;
+- colori bruciati o pelle di plastica: troppe LoRA o forze alte;
+- corpi deformati o anatomia sbagliata: una LoRA dei genitali;
+- video fermo o che cambia scena: prompt.
+
+Mostra i video ad Andrea, poi cambia `PROFILE.explicit` e lancia `npm test` (il test «esplicito con un uomo» fissa forze e passi: aggiornalo).

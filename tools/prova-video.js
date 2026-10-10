@@ -7,6 +7,11 @@
  *   node tools/prova-video.js --foto data/media/<id>/<foto>.png [--varianti base,passi12,…] [--secondi 5] [--seed 42]
  *     [--filtro neutral|sensual|explicit] [--uomo] [--nome marco] [--prompt "…"]
  *
+ * Le varianti sono quelle qui sotto (passi, turbo, risoluzione) oppure quelle del menu «LoRA e passi video» dello Studio
+ * (src/minimax.js: senza-hmnsfw, hmnsfw-12, senza-genitali, senza-seno, senza-nuove…). Le LoRA «quando servono»
+ * (seno, Vagina, Penis V2, bacio) si agganciano come in chat, da cosa dice il prompt: con --filtro explicit e senza
+ * --prompt si usa una scena esplicita di prova (cowgirl POV) che le aggancia tutte.
+ *
  * I video vanno in data/prova-video/banco/[<nome>-]<variante>[-<filtro>]-<secondi>s.mp4, i tempi in data/prova-video/banco/tempi.json.
  * Con l'agent del PC acceso chiede il permesso della GPU (priorità bassa: chi usa ChatBz passa prima); senza agent
  * lancialo con ChatBz fermo, la GPU è una sola.
@@ -16,7 +21,7 @@ import path from 'node:path';
 import config from '../src/config.js';
 import * as comfy from '../src/comfy.js';
 import { loadWorkflows, buildGraph } from '../src/workflows.js';
-import { applyVideoStack } from '../src/minimax.js';
+import { applyVideoStack, videoNeeds, leadPrompt, VARIANTS as VIDEO_VARIANTS } from '../src/minimax.js';
 import * as agent from '../src/gpu-agent.js';
 
 const args = process.argv.slice(2);
@@ -43,6 +48,14 @@ export const VARIANTS = {
 };
 
 const FILES = { vbvr: 'H3_VBVR_Pro_attn_only.safetensors', unlocked: 'Minimax_H3_Unlocked_V2.safetensors', mystic: 'MysticXXX_MMH3-V4.safetensors', turbo: 'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors' };
+
+const PROMPT_EXPLICIT = `For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.
+
+integrated_multimodal_description: [Shot 1] A candid, unretouched phone camera look, the shot begins exactly from <Picture 1>. POV, cowgirl: the naked young woman is riding the man lying under her, his erect penis inside her pussy. She moves her hips up and down in a steady rhythm, her breasts bounce with each motion, she looks down at the camera and moans. The camera stays still, from his point of view.
+
+overall_soundscape: skin against skin, the bed creaking softly, her breathing and moans.
+
+non_diegetic_music: N/A`;
 
 const PROMPT = `For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.
 
@@ -73,12 +86,15 @@ async function main() {
   const level = opt('--filtro', 'neutral');
   const tag = opt('--nome', '');
   const names = opt('--varianti', 'base').split(',').filter(Boolean);
-  for (const n of names) if (!VARIANTS[n]) { console.log(`Variante sconosciuta: ${n} (${Object.keys(VARIANTS).join(', ')})`); process.exit(1); }
+  for (const n of names) if (!VARIANTS[n] && !VIDEO_VARIANTS[n]) { console.log(`Variante sconosciuta: ${n} (${[...Object.keys(VARIANTS), ...Object.keys(VIDEO_VARIANTS)].join(', ')})`); process.exit(1); }
   const w = loadWorkflows().find((x) => x.id === 'minimax-h3-i2v');
   const d = w.duration;
   let frames = Math.max(d.frameOffset, Math.round(seconds * d.fps));
   while ((frames - d.frameOffset) % d.frameStep) frames++;
-  const prompt = opt('--prompt', PROMPT);
+  const woman = !args.includes('--uomo');
+  const needs = videoNeeds(opt('--prompt', level === 'explicit' ? PROMPT_EXPLICIT : PROMPT), { level, woman });
+  // come in chat: HMPenis e la direzione in testa alla descrizione quando c'è il pene
+  const prompt = leadPrompt(opt('--prompt', level === 'explicit' ? PROMPT_EXPLICIT : PROMPT), needs);
   const dir = path.join(config.paths.data, 'prova-video', 'banco');
   fs.mkdirSync(dir, { recursive: true });
   const logFile = path.join(dir, 'tempi.json');
@@ -87,8 +103,10 @@ async function main() {
   const files = await comfy.listModels('loras').catch(() => null);
   for (const name of names) {
     const graph = buildGraph(w, { prompt, seed, frames, image });
-    applyVideoStack(graph, { level, needs: { woman: !args.includes('--uomo') }, files });
-    applyVariant(graph, VARIANTS[name]);
+    const stack = applyVideoStack(graph, { level, needs, files, variant: VARIANTS[name] ? null : name });
+    if (VARIANTS[name]) applyVariant(graph, VARIANTS[name]);
+    const steps = Object.values(graph).find((n) => n.class_type === 'BasicScheduler')?.inputs.steps;
+    console.log(`\n${name}: ${steps} passi, LoRA ${stack.loras.map((l) => `${l.label} ${l.strength}`).join(', ') || 'del workflow'}${stack.missing.length ? ` (mancano: ${stack.missing.join(', ')})` : ''}`);
     let t0 = Date.now();
     process.stdout.write(`${name} ${seconds}s (${frames} fotogrammi)… `);
     // prova sul PC 2026-10-10: senza permesso Gemma di ChatBz si caricava insieme a MiniMax e il video ci metteva 10 minuti
@@ -102,7 +120,7 @@ async function main() {
     const dest = path.join(dir, `${key}.mp4`);
     fs.writeFileSync(dest, await comfy.fetchFile(f));
     const secs = Math.round((Date.now() - t0) / 1000);
-    log[key] = { secs, frames, seed, level, variant: VARIANTS[name] };
+    log[key] = { secs, frames, seed, level, variant: VARIANTS[name] || name, steps, loras: stack.loras.map((l) => `${l.label} ${l.strength}`) };
     fs.writeFileSync(logFile, JSON.stringify(log, null, 2));
     console.log(`${secs} s → ${dest}`);
   }
