@@ -99,3 +99,22 @@ Annota qui esiti e valori scelti, un commit per ogni correzione, `npm test` verd
 | 4. chat 20 s | OK, giunzione da migliorare | 2 pezzi, 20,75 s, 151 + 185 s; prompt della parte 2 pulito. Alla giunzione (scena con gesti delle mani) circa 1 s di fotogrammi mossi e sfocati con un piccolo scatto dell'inquadratura, poi torna nitido. Da provare `OVERLAP` 39 |
 | 4. telefono, chat a due, esplicito | non fatte | |
 | LoRA (`piano/video.md`) | | |
+
+## 7. Video in chat da 5-8 s: velocità contro qualità (prova sul PC 2026-10-10)
+`node tools/prova-video.js --foto <foto> --secondi 5|8 --varianti …`: stessa foto (Chiara, al bar), stesso prompt con gesti delle mani, seed 42. Qualità = artefatti nelle zone in movimento (mani mosse, doppie, «pelose»), misurati con il flusso ottico (errore di ricostruzione dove c'è movimento: più basso è meglio) e guardati a occhio. Video e confronti in `data\prova-video\banco\`.
+
+| Variante | 5 s: tempo | 5 s: errore moto (picchi) | 8 s: tempo | 8 s: errore moto (picchi) |
+|---|---|---|---|---|
+| attuale: 0,4 MP, 8 passi | 69-79 s | 5,9 (10,1) | 105 s | 5,9 (11,4) |
+| 6 / 10 / 12 passi | 49 / 71 / 114 s | 6,0 / 6,3 / 6,0 | | |
+| turbo 0.7, 12 passi | 97 s | 5,7 (10,4) | | |
+| VBVR 0 / 0.5 / 1, senza Unlocked e Mystic | 72-96 s | 5,6-6,1 | | |
+| 0,55 MP, 8 passi | 104 s | 4,8 (9,5) | 147 s | 4,6 (8,4) |
+| 0,55 MP, 6 passi | 76 s | 4,6 (8,6) | | |
+| **0,7 MP, 6 passi** | **98 s** | **4,0 (8,2)** | **162 s** | **3,9 (6,3)** |
+| 0,7 MP, 8 passi | 126 s | 3,6 (5,7) | 203 s | 3,7 (6,4) |
+| 0,85 MP, 8 passi | 149 s | 4,1 (6,9) | | |
+
+- Passi, turbo e LoRA cambiano poco gli artefatti: conta la risoluzione. A 0,4 MP la mano che saluta esce sfocata e doppia, a 8 s anche «pelosa»; a 0,7 MP resta nitida. Oltre 0,7 non migliora.
+- A 0,7 MP 6 passi bastano (8 s: stesso risultato di 8 passi, 40 s in meno).
+- Una sola scena e un solo seed: da confermare su un video esplicito e su un altro personaggio.
