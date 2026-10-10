@@ -151,7 +151,7 @@ Sospetti, in ordine:
 ### Prova (una causa alla volta, stessa foto e stesso seed)
 **Usa Hitomi**: è un personaggio inventato (LoRA `Krea220Hitomi`, parola chiave H1t0m1), non una persona reale. Le prove esplicite si fanno solo con lei. Con ChatBz fermo:
 ```powershell
-node tools/prova-video.js --personaggio Hitomi --filtro explicit --nome hitomi --varianti base,senza-nuove,senza-genitali,senza-seno,hmnsfw-12,esplicito-leggero,esplicito-leggero-12
+node tools/prova-video.js --personaggio Hitomi --filtro explicit --nome hitomi --varianti base,solo-hmnsfw,senza-hmnsfw,senza-mystic-unlocked,hmnsfw-shift6,senza-nuove
 ```
 `--personaggio Hitomi` prende l'ultima sua foto esplicita finita in chat (se non c'è, l'ultima sensuale). Se non ne ha, chiedile prima una foto esplicita in chat, oppure passa una sua foto con `--foto data\media\<id>\<foto>.png`.
 Senza `--prompt` usa una scena di prova (cowgirl POV) che aggancia tutte le LoRA, come in chat (anche `HMPenis, front view` in testa). Per ogni variante stampa passi e LoRA usate. I video vanno in `data\prova-video\banco\hitomi-<variante>-explicit-5s.mp4`.
@@ -163,9 +163,26 @@ Le stesse varianti sono anche nello Studio (menu «LoRA e passi video», «Chi»
 | solo `senza-nuove` | sono le LoRA nuove insieme | prova `senza-genitali` e `senza-seno` per sapere quale; abbassa quella (es. 0.6) o toglila |
 | `senza-genitali` | Vagina / Penis V2 | forze più basse (0.5-0.7) o solo una delle due |
 | `senza-seno` | seno a 1.3 | seno 0.8-1.0 |
-| `esplicito-leggero` o `esplicito-leggero-12` | forze troppo alte (e passi) | metti in `PROFILE.explicit` le forze della variante buona, e `steps: 12` se serve la seconda |
-| `hmnsfw-12` ma non `base` | pochi passi per turbo 0.5 | `steps: 12` (più lento: ~160 s per 5 s), oppure turbo 1 con HMNSFW |
+| `solo-hmnsfw` | seno o Penis V2 deformano ancora | toglile dal profilo o abbassale a 0.3-0.4 |
+| `senza-hmnsfw` | HMNSFW (o il turbo a 0.5) | togli HMNSFW o mettilo a 0.5 con turbo 1 |
+| `senza-mystic-unlocked` | troppe LoRA NSFW che si sommano | `mystic: 0, unlocked: 0` in `PROFILE.explicit` |
+| `hmnsfw-shift6` | serve la ricetta completa dell'autore | `shift: 6` in `PROFILE.explicit` |
 | nessuno, nemmeno `senza-nuove` | non sono le LoRA nuove: risoluzione 0,7 MP o prompt | prova `--varianti vecchio` (0,4 MP e 8 passi) e guarda il prompt |
+
+### Primo giro (Andrea nello Studio, Hitomi, 2026-10-10)
+
+| Variante | Esito |
+|---|---|
+| profilo di allora (turbo 0.5, **6 passi**, seno 1.3, Penis 1, HMNSFW 0.8) | corpo deformato, ghosting pesante |
+| 12 passi, seno 0.8, Penis 0.6 («esplicito leggero 12») | meglio, ma ancora deformato |
+| 12 passi, seno 1.3, Penis 1 («hmnsfw 12») | molto simile alla precedente |
+
+Vagina e hmpussy non c'erano: il prompt non parlava della vulva. Conclusione: **contano i passi, non la forza delle LoRA**. Applicato: esplicito a 12 passi con seno 0.8, Vagina 0.5 e Penis 0.6. Inoltre Gemma ora chiede un ritmo lento e regolare (`videoRules`), perché il ghosting nasce dai movimenti veloci.
+
+Attenzione: la riga sotto la prima prova riportava le LoRA di Krea 2 (Realism, Hitomi, volto ritoccato), cioè quelle della foto di partenza, non quelle del video. Controlla che sotto un video la riga mostri le LoRA del video (turbo, HMNSFW…).
+
+### Secondo giro: cosa deforma ancora
+Stessa foto e stesso seed, varianti `base` (il nuovo profilo), `solo-hmnsfw`, `senza-hmnsfw`, `senza-mystic-unlocked`, `hmnsfw-shift6`, `senza-nuove`. Per confronto c'è anche `passi6`, il profilo di prima.
 
 Annota anche *come* sono rotti, perché aiuta a capire la causa:
 - scie e corpi doppi nel movimento (ghosting): LoRA addestrate su foto troppo forti, oppure pochi passi;

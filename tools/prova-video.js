@@ -8,7 +8,7 @@
  *     [--filtro neutral|sensual|explicit] [--uomo] [--nome marco] [--prompt "…"]
  *
  * Le varianti sono quelle qui sotto (passi, turbo, risoluzione) oppure quelle del menu «LoRA e passi video» dello Studio
- * (src/minimax.js: senza-hmnsfw, hmnsfw-12, senza-genitali, senza-seno, senza-nuove…). Le LoRA «quando servono»
+ * (src/minimax.js: passi6, solo-hmnsfw, senza-hmnsfw, senza-genitali, senza-mystic-unlocked, hmnsfw-shift6, senza-nuove…). Le LoRA «quando servono»
  * (seno, Vagina, Penis V2, bacio) si agganciano come in chat, da cosa dice il prompt: con --filtro explicit e senza
  * --prompt si usa una scena esplicita di prova (cowgirl POV) che le aggancia tutte.
  * --personaggio "Nome": invece di --foto, l'ultima foto finita di quel personaggio in chat (con --filtro explicit

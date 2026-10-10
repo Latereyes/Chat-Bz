@@ -33,31 +33,31 @@ export const LORAS = {
 export const PROFILE = {
   neutral: { loras: { kiss: 0.8 } },
   sensual: { loras: { breast: 1.0, kiss: 0.8 } },
-  explicit: { loras: { breast: 1.3, vagina: 1, hmpussy: 0.35, penis: 1, kiss: 0.8, hmnsfw: 0.8 }, turbo: 0.5, steps: 6 },   // 12 passi (autore di HMNSFW) a 0,7 MP: 5 s in 160 s invece di 87 (2026-10-10)
+  // prova sul PC 2026-10-10 (Hitomi, Studio): con 6 passi corpi deformati e ghosting pesante, con 12 (come dice l'autore di HMNSFW)
+  // molto meglio; seno e pene più leggeri cambiano poco ma non peggiorano. Più lento: 5 s in ~160 s invece di ~87
+  explicit: { loras: { breast: 0.8, vagina: 0.5, hmpussy: 0.35, penis: 0.6, kiss: 0.8, hmnsfw: 0.8 }, turbo: 0.5, steps: 12 },
 };
 
 /** Varianti da confrontare (Studio: menu «LoRA video»). null toglie una LoRA del profilo. */
 export const VARIANTS = {
-  base: { label: 'Profilo video attuale (6 passi)' },
+  base: { label: 'Profilo video attuale (6 passi; esplicito 12)' },
   // passi per tutti i filtri: per confrontare 6 e 8 nello Studio (Andrea, 2026-10-10)
-  passi8: { label: '8 passi (invece di 6)', steps: 8 },
-  // video espliciti rotti con e senza HMNSFW (Andrea, 2026-10-10): una causa alla volta
-  'hmnsfw-12': { label: 'HMNSFW come dice l\'autore (turbo 0.5, 12 passi)', explicitSteps: 12 },
+  passi8: { label: '8 passi in tutti i filtri', steps: 8 },
+  passi6: { label: 'Esplicito a 6 passi (com\'era: ghosting)', explicitSteps: 6 },
+  // esplicito ancora un po' deformato a 12 passi (2026-10-10): una causa alla volta tra quelle rimaste
+  'solo-hmnsfw': { label: 'Solo HMNSFW (senza seno, Vagina, Penis)', explicit: { breast: null, vagina: null, hmpussy: null, penis: null } },
   'senza-genitali': { label: 'Senza Vagina, hmpussy e Penis V2', explicit: { vagina: null, hmpussy: null, penis: null } },
   'senza-seno': { label: 'Senza la LoRA del seno', sensual: { breast: null }, explicit: { breast: null } },
-  // ghosting nei movimenti (Andrea, 2026-10-10): le LoRA addestrate su foto (Vagina, seno) a forza piena rovinano il movimento;
-  // con il turbo a metà 6 passi sono pochi per il ritmo veloce dell'esplicito
-  'esplicito-leggero': { label: 'Esplicito leggero (seno 0.8, Vagina 0.5, Penis 0.6)', explicit: { breast: 0.8, vagina: 0.5, penis: 0.6 } },
-  'esplicito-leggero-12': { label: 'Esplicito leggero con 12 passi', explicit: { breast: 0.8, vagina: 0.5, penis: 0.6 }, explicitSteps: 12 },
-  'senza-hmnsfw': { label: 'Senza HMNSFW (turbo 1)', explicit: { hmnsfw: null }, explicitTurbo: 1 },
+  'senza-mystic-unlocked': { label: 'Senza MysticXXX e Unlocked (solo HMNSFW come LoRA NSFW)', sensual: { mystic: 0, unlocked: 0 }, explicit: { mystic: 0, unlocked: 0 } },
+  'senza-hmnsfw': { label: 'Senza HMNSFW (turbo 1, 12 passi)', explicit: { hmnsfw: null }, explicitTurbo: 1 },
   'hmnsfw-forte': { label: 'HMNSFW 1.0', explicit: { hmnsfw: 1 } },
-  'hmnsfw-shift6': { label: 'HMNSFW con shift 6 (come consiglia l\'autore)', explicitShift: 6 },
+  'hmnsfw-shift6': { label: 'HMNSFW con shift 6 (la ricetta completa dell\'autore)', explicitShift: 6 },
   'senza-hmpussy': { label: 'Vagina senza hmpussy', explicit: { hmpussy: null } },
   'seno-forte': { label: 'Seno 1.8', sensual: { breast: 1.8 }, explicit: { breast: 1.8 } },
   'seno-sempre': { label: 'Seno anche nei video normali (1.0, più realismo)', neutral: { breast: 1 } },
   'senza-mystic': { label: 'Senza MysticXXX', sensual: { mystic: 0 }, explicit: { mystic: 0 } },
   'senza-unlocked': { label: 'Senza Unlocked V2', sensual: { unlocked: 0 }, explicit: { unlocked: 0 } },
-  'senza-nuove': { label: 'Solo le LoRA di prima (come il workflow)', neutral: { kiss: null }, sensual: { breast: null, kiss: null }, explicit: { breast: null, vagina: null, hmpussy: null, penis: null, kiss: null, hmnsfw: null }, explicitTurbo: 1 },
+  'senza-nuove': { label: 'Solo le LoRA di prima (turbo 1, 12 passi in esplicito)', neutral: { kiss: null }, sensual: { breast: null, kiss: null }, explicit: { breast: null, vagina: null, hmpussy: null, penis: null, kiss: null, hmnsfw: null }, explicitTurbo: 1 },
 };
 
 export function profileFor(level, variant) {
@@ -168,6 +168,8 @@ export function videoRules(level, needs = {}) {
   if (level !== 'explicit') return null;
   return [
     'VIDEO RULES (explicit): describe the sexual action and the motion directly, in plain anatomical words, with physically plausible rhythm and body movement (breasts and bodies move naturally with each motion).',
+    // ghosting nei movimenti veloci (prova sul PC 2026-10-10): il modello rende meglio un ritmo lento e regolare
+    'Keep the motion SLOW and smooth: one steady, gentle, unhurried rhythm for the whole clip, no fast, jerky or frantic movements, no sudden changes of position, a still camera. Fast motion turns into ghosting and deformed bodies.',
     needs.penis ? `The penis is visible: describe it plainly (size, e.g. large; circumcised or not; glans colour, e.g. pink, pale or brown) and where it is. The server puts "${penisLead(needs)}" at the start of the description: do not write it yourself.` : null,
     needs.vulva ? 'The vulva is visible: describe it plainly and where it is in the frame.' : null,
   ].filter(Boolean).join('\n');

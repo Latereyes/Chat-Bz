@@ -26,7 +26,7 @@ test('bacio: la LoRA del bacio solo quando c\'è un bacio', () => {
   assert.ok(has(g, LORAS.kiss.file));
 });
 
-test('esplicito con un uomo: HMNSFW, seno, vulva, pene, turbo 0.5 e 6 passi, catena collegata', () => {
+test('esplicito con un uomo: HMNSFW, seno, vulva, pene, turbo 0.5 e 12 passi, catena collegata', () => {
   const needs = videoNeeds('POV, she rides him, his erect penis inside her pussy, her breasts bounce', { level: 'explicit', woman: true });
   assert.deepEqual([needs.penis, needs.vulva, needs.direction], [true, true, 'front']);
   const g = structuredClone(I2V);
@@ -35,7 +35,9 @@ test('esplicito con un uomo: HMNSFW, seno, vulva, pene, turbo 0.5 e 6 passi, cat
   assert.equal(loras(g).find(([f]) => f === LORAS.hmpussy.file)[1], 0.35);
   assert.deepEqual(out.missing, []);
   assert.equal(loras(g).find(([f]) => f === LORAS.turbo.file)[1], 0.5);
-  assert.equal(Object.values(g).find((n) => n.class_type === 'BasicScheduler').inputs.steps, 6);
+  assert.equal(Object.values(g).find((n) => n.class_type === 'BasicScheduler').inputs.steps, 12);
+  // seno e pene più leggeri (prova sul PC 2026-10-10)
+  assert.deepEqual(['breast', 'vagina', 'penis'].map((k) => loras(g).find(([f]) => f === LORAS[k].file)[1]), [0.8, 0.5, 0.6]);
   // guider e scheduler usano la fine della catena, e ogni LoRA porta a un nodo che esiste
   const end = guiderModel(g);
   assert.equal(g[end].class_type, 'LoraLoaderModelOnly');
@@ -77,7 +79,7 @@ test('varianti video: valide; shift 6 aggiunge il nodo dello shift', () => {
   assert.deepEqual(loras(s), loras(I2V));
 });
 
-test('passi dei video: 6 di base, 8 con la variante «passi8» in tutti i filtri', () => {
+test('passi dei video: 6 di base (12 in esplicito), 8 con la variante «passi8» in tutti i filtri', () => {
   const steps = (g) => Object.values(g).find((n) => n.class_type === 'BasicScheduler').inputs.steps;
   const g = structuredClone(I2V);
   applyVideoStack(g, { level: 'neutral', needs: { woman: true }, files: FILES });
@@ -90,20 +92,22 @@ test('passi dei video: 6 di base, 8 con la variante «passi8» in tutti i filtri
   }
 });
 
-test('video espliciti: varianti per trovare la causa (12 passi, senza genitali, senza seno)', () => {
+test('video espliciti: varianti per trovare la causa (6 passi, solo HMNSFW, senza genitali, senza seno, senza Mystic e Unlocked)', () => {
   const needs = videoNeeds('POV, she rides him, his erect penis inside her pussy, her breasts bounce', { level: 'explicit', woman: true });
   const run = (variant) => { const g = structuredClone(I2V); applyVideoStack(g, { level: 'explicit', needs, files: FILES, variant }); return g; };
   const steps = (g) => Object.values(g).find((n) => n.class_type === 'BasicScheduler').inputs.steps;
-  const g12 = run('hmnsfw-12');
-  assert.equal(steps(g12), 12);
-  assert.equal(loras(g12).find(([f]) => f === LORAS.turbo.file)[1], 0.5);
-  assert.ok(has(g12, LORAS.hmnsfw.file));
+  assert.equal(steps(run('passi6')), 6);
+  const gh = run('solo-hmnsfw');
+  assert.ok(has(gh, LORAS.hmnsfw.file) && !has(gh, LORAS.breast.file) && !has(gh, LORAS.vagina.file) && !has(gh, LORAS.penis.file));
+  assert.equal(steps(gh), 12);
   const gg = run('senza-genitali');
   assert.ok(!has(gg, LORAS.vagina.file) && !has(gg, LORAS.hmpussy.file) && !has(gg, LORAS.penis.file));
   assert.ok(has(gg, LORAS.hmnsfw.file) && has(gg, LORAS.breast.file));
-  const gl = run('esplicito-leggero-12');
-  assert.equal(steps(gl), 12);
-  assert.equal(loras(gl).find(([f]) => f === LORAS.vagina.file)[1], 0.5);
   const gs = run('senza-seno');
   assert.ok(!has(gs, LORAS.breast.file) && has(gs, LORAS.vagina.file));
+  const gm = run('senza-mystic-unlocked');
+  assert.equal(loras(gm).find(([f]) => f === LORAS.mystic.file)[1], 0);
+  assert.equal(loras(gm).find(([f]) => f === LORAS.unlocked.file)[1], 0);
+  // ritmo lento chiesto a Gemma in esplicito
+  assert.match(videoRules('explicit', needs), /SLOW/);
 });
