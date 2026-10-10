@@ -11,6 +11,7 @@ import { promptProfile } from './auth.js';
 import { systemPrompt, nowBlock, tools, promptEngineerSystem, characterMediaRequest, cleanPrompt, sceneCheckPrompt } from './prompts.js';
 import { engineerPhoto, photoLevel } from './photo.js';
 import { groupTurn } from './group.js';
+import { videoNeeds, videoRules, leadPrompt } from './minimax.js';
 import { updateScene } from './relationship.js';
 import * as queue from './queue.js';
 import * as social from './social.js';
@@ -170,7 +171,7 @@ function videoFromPhoto(base, photo, duration) {
   const { seconds, frames } = frameCount(w, duration || 5);
   return { ...base, type: 'video', mode: 'img2video', workflow: w.id, workflowName: w.name, seconds, frames,
     aspect: photo.aspect, ...dimensionsForRatio(w, (photo.width || 3) / (photo.height || 4)),
-    sourceFile: photo.file, sourceUrl: mediaUrl(photo.file), sourceDescription: photo.prompt || photo.description };
+    sourceFile: photo.file, sourceUrl: mediaUrl(photo.file), sourceDescription: photo.prompt || photo.description, sourceLevel: photo.level };
 }
 
 /** Trasforma send_photo / send_video in un media da generare. */
@@ -223,19 +224,30 @@ async function engineerPrompt(conv, msg, media, model, signal, ctx = {}) {
     if (r.lenovo !== null) media.lenovo = r.lenovo;
     return r.prompt;
   }
-  const { level } = photoLevel({ card: conv.card, state: conv.state, userText: ctx.userText, reply: ctx.reply });
+  // Video: il filtro è quello del momento, o quello della foto da cui parte se è più alto (sempre entro il tetto)
+  const lv = photoLevel({ card: conv.card, state: conv.state, userText: ctx.userText, reply: ctx.reply });
+  const level = !lv.reason.startsWith('tetto') && RANK[media.sourceLevel] > RANK[lv.level] ? media.sourceLevel : lv.level;
+  const reason = level === lv.level ? lv.reason : 'come la foto di partenza';
+  const woman = conv.card.gender !== 'uomo';
+  const seen = [ctx.userText, ctx.reply, media.description, media.sourceDescription].filter(Boolean).join('\n');
   let text = '';
   const out = await ollama.chat({
     model, signal, think: false,
-    options: { temperature: 0.7 },
+    options: { temperature: level === 'explicit' ? 0.5 : 0.7 },
     messages: [
       { role: 'system', content: promptEngineerSystem(w) },
-      { role: 'user', content: characterMediaRequest({ card: conv.card, state: conv.state, media, width: media.width, height: media.height, seconds: media.seconds, sourceDescription: media.sourceFile || media.sourceMediaId ? media.sourceDescription : undefined, userText: ctx.userText, reply: ctx.reply, user, level }) },
+      { role: 'user', content: [characterMediaRequest({ card: conv.card, state: conv.state, media, width: media.width, height: media.height, seconds: media.seconds, sourceDescription: media.sourceFile || media.sourceMediaId ? media.sourceDescription : undefined, userText: ctx.userText, reply: ctx.reply, user, level }),
+        videoRules(level, videoNeeds(seen, { level, woman }))].filter(Boolean).join('\n') },
     ],
     onChunk: (c) => { if (c.content) { text += c.content; onChunk(c.content); } },
   });
-  return cleanPrompt(out.content || text) || media.description;
+  const prompt = cleanPrompt(out.content || text) || media.description;
+  // LoRA del video (minimax.js): decise dal filtro e da cosa c'è davvero nel video, prompt compreso
+  const needs = videoNeeds(`${seen}\n${prompt}`, { level, woman });
+  Object.assign(media, { level, levelReason: reason, videoNeeds: needs });
+  return leadPrompt(prompt, needs);
 }
+const RANK = { neutral: 0, sensual: 1, explicit: 2 };
 
 function checkAttachments(conv, list) {
   const out = [];
@@ -434,7 +446,7 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       // Prompt per il modello immagine/video (Gemma è ancora in VRAM: si fa subito)
       for (const md of msg.media) {
         const src = md.sourceMediaId && msg.media.find((x) => x.id === md.sourceMediaId);
-        if (src) md.sourceDescription = src.prompt || src.description;
+        if (src) Object.assign(md, { sourceDescription: src.prompt || src.description, sourceLevel: src.level });
         md.prompt = G
           ? await G.engineer(msg, md, { model, signal, user, userText: userMsg?.content, reply: msg.content, onChunk: (delta) => emit(conv.id, { type: 'prompt_delta', messageId: msg.id, mediaId: md.id, delta }) })
           : await engineerPrompt(conv, msg, md, model, signal, { userText: userMsg?.content, reply: msg.content });

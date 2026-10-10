@@ -62,7 +62,13 @@ $lora = @(
   @("Krea2_HMNSFW_AIO.safetensors", "posizioni (HMNSFW)"),
   @("Detailer-KREA2.safetensors", "dettaglio"),
   @("lenovo_krea2.safetensors", "Lenovo, look foto amatoriale"),
-  @("Krea220Hitomi.safetensors", "volto di Hitomi")
+  @("Krea220Hitomi.safetensors", "volto di Hitomi"),
+  @("PlagueKind-tiddies-realismslider.safetensors", "video: seno naturale e realismo"),
+  @("Vagina_minimax-h3_epoch20.safetensors", "video: genitali femminili"),
+  @("hmpussy_minimax-h3.safetensors", "video: genitali femminili in movimento (nome del file da confermare)"),
+  @("PenisV2_minimax-h3_epoch60.safetensors", "video: genitali maschili (HMPenis)"),
+  @("cxy_kiss_lora_h3_v01_step1500.safetensors", "video: bacio"),
+  @("HMNSFW-AIO-V2.5.safetensors", "video: NSFW")
 )
 $tutti = Get-ChildItem -Path $dir -Recurse -File -Filter *.safetensors* | Select-Object -ExpandProperty Name
 foreach ($l in $lora) {

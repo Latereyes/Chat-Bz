@@ -1125,10 +1125,10 @@ function renderMedia(msg, md) {
 // Filtro della foto e perché, LoRA e Lenovo: si capisce subito perché è uscita così
 const LEVEL_LABEL = { neutral: 'Normale', sensual: 'Sensuale', explicit: 'Esplicito' };
 function mediaInfo(md) {
-  if (md.type !== 'image' || !md.level) return '';
+  if ((md.type !== 'image' && md.type !== 'video') || !md.level) return '';
   const loras = [...(md.stack || []).map((l) => `${l.label} ${l.strength}`), md.lenovoUsed && 'Lenovo', ...(md.loras?.length ? ['corpo'] : [])].filter(Boolean);
   const hm = md.hm ? ` · HMNSFW ${md.hm.position}${md.hm.angle ? ` ${md.hm.angle}` : ''}` : '';
-  const variant = md.variant ? ` · variante ${md.variant}` : '';
+  const variant = (md.variant || md.videoVariant ? ` · variante ${md.variant || md.videoVariant}` : '') + (md.type === 'video' && md.sampler?.steps ? ` · ${md.sampler.steps} passi` : '');
   return `<div class="media-level" title="${esc(loras.join(', '))}"><b>${LEVEL_LABEL[md.level] || md.level}</b>${md.levelReason ? ` · ${esc(md.levelReason)}` : ''}${esc(variant)}${esc(hm)}${loras.length ? ` · ${esc(loras.join(', '))}` : ''}</div>`;
 }
 
@@ -1272,7 +1272,7 @@ async function prepareImage(file) {
 
 // ---------- Studio immagini (l'assistente immagini, separato dai personaggi) ----------
 const convPath = () => (state.conv?.studio ? '/api/studio' : `/api/characters/${state.conv.id}`);
-const so = { char2: $('#so-char2'), char2Wrap: $('#so-char2-wrap'), box: $('#studio-opts'), lenovo: $('#so-lenovo'), level: $('#so-level'), variant: $('#so-variant'), engine: $('#so-engine'), aspect: $('#so-aspect'), char: $('#so-char'), raw: $('#so-raw'), video: $('#so-video'), seed: $('#so-seed'), body: $('#so-body'), bodyBox: $('#so-body-box') };
+const so = { variantVideo: $('#so-variant-video'), char2: $('#so-char2'), char2Wrap: $('#so-char2-wrap'), box: $('#studio-opts'), lenovo: $('#so-lenovo'), level: $('#so-level'), variant: $('#so-variant'), engine: $('#so-engine'), aspect: $('#so-aspect'), char: $('#so-char'), raw: $('#so-raw'), video: $('#so-video'), seed: $('#so-seed'), body: $('#so-body'), bodyBox: $('#so-body-box') };
 const SO_ASPECTS = { '3:4': '3:4 verticale', '9:16': '9:16 storia', '1:1': '1:1 quadrato', '4:3': '4:3 orizzontale', '16:9': '16:9 panoramico', '2:3': '2:3 ritratto', '3:2': '3:2 foto' };
 
 function fillStudioOpts() {
@@ -1291,6 +1291,9 @@ function fillStudioOpts() {
   const variants = state.config?.options?.kreaVariants || {};
   so.variant.innerHTML = Object.entries(variants).map(([v, l]) => `<option value="${esc(v)}">${v === 'base' ? 'LoRA: profilo' : esc(l)}</option>`).join('');
   so.variant.value = variants[p.variant] ? p.variant : 'base';
+  const vv = state.config?.options?.videoVariants || {};
+  so.variantVideo.innerHTML = Object.entries(vv).map(([v, l]) => `<option value="${esc(v)}">${v === 'base' ? 'LoRA video: profilo' : esc(l)}</option>`).join('');
+  so.variantVideo.value = vv[p.videoVariant] ? p.videoVariant : 'base';
   so.video.checked = !!p.video;
   so.body.checked = !!p.bodyOn;
   // Cursori delle LoRA del corpo: limiti dalle taglie (stesse forze delle schede), 0 = LoRA spenta
@@ -1320,7 +1323,7 @@ function syncVideoOpt() {
 const bodyValues = () => Object.fromEntries($$('input[data-part]', so.bodyBox).map((i) => [i.dataset.part, Number(i.value)]));
 so.bodyBox.addEventListener('input', (e) => { const i = e.target.closest('input[data-part]'); if (i) i.nextElementSibling.textContent = i.value; });
 function readStudioOpts() {
-  return { engine: so.engine.value, aspect: so.aspect.value, characterId: so.char.value, characterId2: so.char.value ? so.char2.value : '', lenovo: so.lenovo.value, level: so.level.value, variant: so.variant.value, raw: so.raw.checked, video: so.video.checked, seed: so.seed.value.trim(), body: so.body.checked ? bodyValues() : null };
+  return { engine: so.engine.value, aspect: so.aspect.value, characterId: so.char.value, characterId2: so.char.value ? so.char2.value : '', lenovo: so.lenovo.value, level: so.level.value, variant: so.variant.value, videoVariant: so.variantVideo.value, raw: so.raw.checked, video: so.video.checked, seed: so.seed.value.trim(), body: so.body.checked ? bodyValues() : null };
 }
 so.box.addEventListener('change', () => {
   const { seed, body, ...p } = readStudioOpts();
@@ -1341,7 +1344,7 @@ function bodyTag(b) {
 }
 function studioTag(o) {
   const names = Object.fromEntries((state.config?.workflows || []).map((w) => [w.id, w.name]));
-  const bits = [o.engineUsed ? names[o.engineUsed] || o.engineUsed : o.engine ? names[o.engine] || o.engine : 'Automatico', o.aspect, o.characterName2 ? `${o.characterName} e ${o.characterName2}` : o.characterName, o.lenovo === true && 'con Lenovo', o.lenovo === false && 'senza Lenovo', o.level && `filtro ${LEVEL_LABEL[o.level].toLowerCase()}`, o.variant && `LoRA: ${state.config?.options?.kreaVariants?.[o.variant] || o.variant}`, o.raw && 'prompt diretto', o.video && '+ video', o.seed != null && `seed ${o.seed}`, o.body && `fisico: ${bodyTag(o.body)}`].filter(Boolean);
+  const bits = [o.engineUsed ? names[o.engineUsed] || o.engineUsed : o.engine ? names[o.engine] || o.engine : 'Automatico', o.aspect, o.characterName2 ? `${o.characterName} e ${o.characterName2}` : o.characterName, o.lenovo === true && 'con Lenovo', o.lenovo === false && 'senza Lenovo', o.level && `filtro ${LEVEL_LABEL[o.level].toLowerCase()}`, o.variant && `LoRA: ${state.config?.options?.kreaVariants?.[o.variant] || o.variant}`, o.videoVariant && `video: ${state.config?.options?.videoVariants?.[o.videoVariant] || o.videoVariant}`, o.raw && 'prompt diretto', o.video && '+ video', o.seed != null && `seed ${o.seed}`, o.body && `fisico: ${bodyTag(o.body)}`].filter(Boolean);
   return `<div class="tag">${icon('spark', 13)}${esc(bits.join(' · '))}</div>`;
 }
 

@@ -40,6 +40,9 @@ Personaggi AI locali: chat con Gemma (Ollama) e foto e video con ComfyUI, sulla 
 ## Prove in corso: chat a due, foto a due, ritocco del volto
 Sul branch `claude/admiring-goldberg-rgvept` (non ancora in `main`): leggi **`piano/a-due-e-volti.md`** per cosa è cambiato, le prove da fare e i valori da tarare.
 
+## Video MiniMax: LoRA nuove da provare
+`src/minimax.js` (catalogo, profilo per filtro, varianti) e **`piano/video.md`** (cosa provare e cosa tarare).
+
 ## Taratura in corso
 Il lavoro di adesso è in `piano/prossimi-passi.md`: segui quella lista, spunta le caselle e compila la tabella delle scelte. Il contesto è in `piano/piano-immagini.md`. Per i giri di prova c'è la skill `taratura-foto`. Nello Studio i menu «Filtro» e «LoRA Krea» permettono di provare una variante su una singola foto.
 

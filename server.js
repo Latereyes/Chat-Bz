@@ -22,6 +22,7 @@ import * as notify from './src/notify.js';
 import { publicCharacter, draftFromIdea, draftFromPhoto, PHOTO_QUESTION, normalizeCard, RELATIONS, PACES, INTIMACY, STYLES, SOCIAL_HOT } from './src/characters.js';
 import { analyzeBody, BODY, DERIVED, FAMILIES, bodyRange, figureText, installedLoras, normalizeManual, comfyLoras } from './src/body.js';
 import { LORAS, VARIANTS } from './src/krea2.js';
+import { LORAS as VIDEO_LORAS, VARIANTS as VIDEO_VARIANTS } from './src/minimax.js';
 import { updateScene, initialState, DIM_LABEL, intimacyOpen, closeness } from './src/relationship.js';
 
 const app = express();
@@ -121,6 +122,7 @@ app.get('/api/config', wrap(async (req, res) => {
       relations: RELATIONS, paces: PACES, intimacy: INTIMACY, styles: STYLES, socialHot: SOCIAL_HOT, dims: DIM_LABEL,
       // varianti delle LoRA di Krea 2 (banco di prova), scelte anche nello Studio
       kreaVariants: Object.fromEntries(Object.entries(VARIANTS).map(([id, v]) => [id, v.label])),
+      videoVariants: Object.fromEntries(Object.entries(VIDEO_VARIANTS).map(([id, v]) => [id, v.label])),
       body: Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, { label: b.label, short: b.short, hint: b.hint, range: bodyRange(k), sizes: Object.fromEntries(Object.entries(b.sizes).map(([s, [l]]) => [s, l])), strengths: Object.fromEntries(Object.entries(b.sizes).map(([s, [, v]]) => [s, v])) }])),
     },
     models,
@@ -473,6 +475,8 @@ const server = app.listen(config.port, config.host, () => {
     const files = (await comfyLoras()) || [];
     const missing = Object.values(LORAS).filter((l) => !files.some((f) => f.replace(/\\/g, '/').split('/').pop() === l.file)).map((l) => l.file);
     if (files.length && missing.length) console.log(`  LoRA di supporto di Krea 2 non trovate su ComfyUI (si saltano): ${missing.join(', ')}`);
+    const missingVideo = Object.values(VIDEO_LORAS).filter((l) => !files.some((f) => f.replace(/\\/g, '/').split('/').pop() === l.file)).map((l) => l.file);
+    if (files.length && missingVideo.length) console.log(`  LoRA dei video MiniMax non trovate su ComfyUI (si saltano): ${missingVideo.join(', ')}`);
   });
   refresh();
   setInterval(refresh, 5 * 60 * 1000);

@@ -10,6 +10,7 @@ import { getWorkflow, buildGraph, workflows } from './workflows.js';
 import { bodyLoras, withDerived, installedLoras, bodyFamily, lenovoLora, comfyLoras } from './body.js';
 import { applyPhotoStack, applyDuoFaces, applySingleFace, faceDenoise } from './photo.js';
 import { DUO_BODY } from './krea2.js';
+import { applyVideoStack, isMinimax, videoNeeds } from './minimax.js';
 
 /** Sul PC c'è il rilevamento dei volti (Impact Pack + face_yolov8m)? Lo usano già i workflow che lo richiedono. */
 const faceTools = () => workflows().some((w) => w.available !== false && (w.requires || []).some((r) => r.file === 'bbox/face_yolov8m.pt'));
@@ -133,6 +134,15 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
     media.stack = res.loras;
     media.sampler = res.sampler || undefined;
     if (res.missing.length) console.warn(`[foto] LoRA non installate su ComfyUI, salto: ${res.missing.join(', ')}`);
+  }
+
+  // Video MiniMax H3: LoRA per filtro e per cosa c'è nel video (seno, genitali, bacio), passi e turbo (minimax.js)
+  if (media.type === 'video' && isMinimax(graph)) {
+    const level = media.level || 'neutral';
+    const res = applyVideoStack(graph, { level, needs: media.videoNeeds || videoNeeds(media.prompt, { level, woman: card?.gender !== 'uomo' }), files: await comfyLoras(), variant: media.videoVariant || null });
+    media.stack = res.loras;
+    media.sampler = res.steps || res.shift ? { steps: res.steps, shift: res.shift } : undefined;
+    if (res.missing.length) console.warn(`[video] LoRA non installate su ComfyUI, salto: ${res.missing.join(', ')}`);
   }
 
   let lastPreview = 0;

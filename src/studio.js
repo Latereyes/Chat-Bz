@@ -9,6 +9,7 @@ import { promptEngineerSystem, visualSignature, cleanPrompt, LOOK_CHOICE, splitL
 import { figureText, manualBodyLoras, bodyFamily, hasLenovo } from './body.js';
 import { studioLevel, hmTokens, finishPrompt, duoLoras, LEVELS, CONTENT } from './photo.js';
 import { profileFor, VARIANTS } from './krea2.js';
+import { VARIANTS as VIDEO_VARIANTS, videoNeeds, videoRules, leadPrompt } from './minimax.js';
 
 /**
  * Studio immagini: l'"Image Assistant" di ChatBz 1, non più come personaggio ma come strumento a parte.
@@ -62,6 +63,7 @@ function request({ text, cards = [], media, sourceDescription, sources }) {
     sourceDescription !== undefined ? `Starting image (the video starts exactly from it): ${sourceDescription || '(no description)'}` : null,
     // filtro scelto a mano nello Studio: vale anche per il prompt, non solo per le LoRA
     media.levelReason === 'scelto nello Studio' ? `CONTENT LEVEL: ${CONTENT[media.level]}` : LEVEL,
+    media.type === 'video' ? videoRules(media.level, videoNeeds([text, sourceDescription].filter(Boolean).join('\n'), { level: media.level, woman: !cards.length || cards.some((c) => c.gender !== 'uomo') })) : null,
     `Output format: ${media.width}x${media.height}${media.seconds ? `, duration ${media.seconds} seconds` : ''}.`,
     'Write the final prompt now.',
   ].filter(Boolean).join('\n');
@@ -139,10 +141,12 @@ export function send(conv, opts = {}) {
   const seed = /^\d{1,15}$/.test(String(opts.seed ?? '').trim()) ? Number(opts.seed) : randomSeed();
   // Filtro: scelto a mano, altrimenti dalla richiesta (lo Studio non ha tetto); decide le LoRA di supporto di Krea 2
   const level = LEVELS.includes(opts.level) ? opts.level : null;
-  const lv = w.type !== 'image' ? null : level ? { level, reason: 'scelto nello Studio' } : studioLevel(text);
+  const lv = w.type !== 'image' && w.type !== 'video' ? null : level ? { level, reason: 'scelto nello Studio' } : studioLevel(text);
+  // Variante delle LoRA dei video MiniMax (minimax.js), come quella di Krea per le foto
+  const videoVariant = opts.videoVariant && Object.hasOwn(VIDEO_VARIANTS, opts.videoVariant) && opts.videoVariant !== 'base' ? opts.videoVariant : null;
   // Variante delle LoRA di Krea 2 (quelle del banco di prova): per tarare una foto alla volta
   const variant = opts.variant && Object.hasOwn(VARIANTS, opts.variant) && opts.variant !== 'base' ? opts.variant : null;
-  const settings = { engine: opts.engine || '', aspect, raw, video: !!opts.video && w.type === 'image', seconds: opts.seconds || 5, characterId: owner?.id || null, characterName: owner?.card.name || null, characterName2: owner2?.card.name || null, seed: opts.seed ? seed : null, body: manualBody ? Object.fromEntries(manualBody.map((l) => [l.part, l.strength])) : null, lenovo, level, variant, engineUsed: w.id !== (opts.engine || '') && manualBody ? w.id : null };
+  const settings = { engine: opts.engine || '', aspect, raw, video: !!opts.video && w.type === 'image', seconds: opts.seconds || 5, characterId: owner?.id || null, characterName: owner?.card.name || null, characterName2: owner2?.card.name || null, seed: opts.seed ? seed : null, body: manualBody ? Object.fromEntries(manualBody.map((l) => [l.part, l.strength])) : null, lenovo, level, variant, videoVariant, engineUsed: w.id !== (opts.engine || '') && manualBody ? w.id : null };
   const userMsg = { id: store.newId(), role: 'user', content: text, attachments: attachments.length ? attachments : undefined, studio: settings, createdAt: Date.now() };
   conv.messages.push(userMsg);
   emit(conv.id, { type: 'message', message: userMsg });
@@ -150,7 +154,7 @@ export function send(conv, opts = {}) {
   const base = { toolName: 'studio', description: text, prompt: raw ? text : '', seed, status: 'engineering', createdAt: Date.now(), characterId: owner?.id || null };
   // Ritratto chiesto dalla scheda: appena pronto diventa la foto profilo del personaggio
   const avatarFor = opts.avatarFor && owner?.id === opts.avatarFor ? owner.id : null;
-  const first = { ...base, id: store.newId(), type: w.type, mode: w.mode, workflow: w.id, workflowName: w.name, ...(lv ? { level: lv.level, levelReason: lv.reason } : {}), ...(variant && lv ? { variant } : {}), ...(manualBody && w.type === 'image' ? { manualBody } : owner2 && w.type === 'image' ? { manualBody: [] } : {}), ...(lenovo !== null && w.type === 'image' ? { lenovo } : {}), ...(avatarFor && w.type === 'image' ? { avatarFor } : {}) };
+  const first = { ...base, id: store.newId(), type: w.type, mode: w.mode, workflow: w.id, workflowName: w.name, ...(lv ? { level: lv.level, levelReason: lv.reason } : {}), ...(variant && lv && w.type === 'image' ? { variant } : {}), ...(videoVariant && w.type === 'video' ? { videoVariant } : {}), ...(manualBody && w.type === 'image' ? { manualBody } : owner2 && w.type === 'image' ? { manualBody: [] } : {}), ...(lenovo !== null && w.type === 'image' ? { lenovo } : {}), ...(avatarFor && w.type === 'image' ? { avatarFor } : {}) };
   if (!attachments.length) Object.assign(first, { aspect, ...dimensions(w, aspect) });
   else {
     // Foto allegata: modifica (Qwen-Image-Edit), rielaborazione, oppure video che parte da lì
@@ -162,7 +166,7 @@ export function send(conv, opts = {}) {
   }
   if (w.type === 'video') Object.assign(first, frameCount(w, opts.seconds || 5));
   const media = [first];
-  if (settings.video) { const v = videoFrom({ ...base, seed: randomSeed() }, first, opts.seconds); if (v) media.push(v); }
+  if (settings.video) { const v = videoFrom({ ...base, seed: randomSeed(), ...(lv ? { level: lv.level, levelReason: lv.reason } : {}), ...(videoVariant ? { videoVariant } : {}) }, first, opts.seconds); if (v) media.push(v); }
 
   const msg = { id: store.newId(), role: 'assistant', content: '', media, status: 'pending', createdAt: Date.now() };
   conv.messages.push(msg);
@@ -192,7 +196,15 @@ async function engineer(conv, msg, md, { text, cards = [], model, signal, source
   });
   const { prompt, lenovo } = splitLook(res.content || out);
   if (look && lenovo !== null) md.lenovo = lenovo;
+  if (md.type === 'video') return videoPrompt(cleanPrompt(prompt) || text, md, { text, cards });
   return studioPrompt(cleanPrompt(prompt) || text, md, family, { text, cards });
+}
+
+/** Video: cosa c'è (seno, genitali, bacio) decide le LoRA di MiniMax; HMPenis in testa se serve. */
+function videoPrompt(prompt, md, { text, cards = [] }) {
+  const woman = cards.length ? cards.some((c) => c.gender !== 'uomo') : !/\b(?:a man|un uomo|ragazzo|guy|male)\b/i.test(text) || /\b(?:woman|girl|donna|ragazza|lei)\b/i.test(text);
+  md.videoNeeds = videoNeeds([text, md.sourceDescription, prompt].filter(Boolean).join('\n'), { level: md.level || 'neutral', woman });
+  return leadPrompt(prompt, md.videoNeeds);
 }
 
 /**
@@ -233,7 +245,7 @@ async function run(conv, msg, { text, cards, raw, model, sources }) {
       }, { onWait: (active) => emit(conv.id, { type: 'status', messageId: msg.id, status: 'waiting', reason: active.label }) });
     } else {
       // Prompt diretto: il video parte dalla stessa descrizione (con la parola chiave della LoRA del personaggio)
-      for (const md of msg.media) md.prompt = md.type === 'image' ? studioPrompt(text, md, bodyFamily(getWorkflow(md.workflow, md.type, md.mode).graph), { text, cards, raw: true }) : text;
+      for (const md of msg.media) md.prompt = md.type === 'image' ? studioPrompt(text, md, bodyFamily(getWorkflow(md.workflow, md.type, md.mode).graph), { text, cards, raw: true }) : videoPrompt(text, md, { text, cards });
     }
     msg.status = 'done';
   } catch (e) {
@@ -254,7 +266,8 @@ export async function animate(conv, messageId, mediaId, { text, seconds, model }
   const msg = conv.messages.find((m) => m.id === messageId);
   const src = msg?.media?.find((m) => m.id === mediaId && m.type === 'image' && m.status === 'done' && m.file);
   if (!src) throw new Error('Foto non trovata');
-  const md = videoFrom({ toolName: 'studio', description: String(text || '').trim() || 'subtle natural movement, the scene comes alive', prompt: '', seed: randomSeed(), status: 'engineering', createdAt: Date.now() }, src, seconds);
+  const md = videoFrom({ toolName: 'studio', description: String(text || '').trim() || 'subtle natural movement, the scene comes alive', prompt: '', seed: randomSeed(), status: 'engineering', createdAt: Date.now(),
+    ...(src.level ? { level: src.level, levelReason: 'come la foto di partenza' } : {}) }, src, seconds);
   if (!md) throw new Error('Nessun workflow video disponibile su ComfyUI');
   msg.media.push(md);
   emitMedia(conv, msg, md);
