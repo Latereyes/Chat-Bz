@@ -8,7 +8,7 @@ import { LORAS, VARIANTS, profileFor, videoNeeds, leadPrompt, applyVideoStack, v
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const graph = (id) => JSON.parse(fs.readFileSync(path.join(root, 'workflows', id, 'workflow.json'), 'utf8'));
 const I2V = graph('minimax-h3-i2v');
-const FILES = Object.values(LORAS).map((l) => l.file).filter((f) => f !== LORAS.hmpussy.file);
+const FILES = Object.values(LORAS).map((l) => l.file);
 const loras = (g) => Object.values(g).filter((n) => n.class_type === 'LoraLoaderModelOnly').map((n) => [n.inputs.lora_name, n.inputs.strength_model]);
 const has = (g, file) => loras(g).some(([f]) => f === file);
 const guiderModel = (g) => Object.values(g).find((n) => n.class_type === 'BasicGuider').inputs.model[0];
@@ -32,7 +32,7 @@ test('esplicito con un uomo: HMNSFW, seno, vulva, pene, turbo 0.5 e 12 passi, ca
   const g = structuredClone(I2V);
   const out = applyVideoStack(g, { level: 'explicit', needs, files: FILES });
   for (const k of ['hmnsfw', 'breast', 'vagina', 'penis']) assert.ok(has(g, LORAS[k].file), k);
-  assert.ok(out.missing.includes(LORAS.hmpussy.file));   // nome da confermare: si salta
+  assert.deepEqual(out.missing, []);
   assert.equal(loras(g).find(([f]) => f === LORAS.turbo.file)[1], 0.5);
   assert.equal(Object.values(g).find((n) => n.class_type === 'BasicScheduler').inputs.steps, 12);
   // guider e scheduler usano la fine della catena, e ogni LoRA porta a un nodo che esiste

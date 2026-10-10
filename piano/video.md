@@ -10,8 +10,7 @@ Per Claude sul PC di Andrea. Stesso branch delle prove a due (`claude/admiring-g
 | LoRA | File | Quando | Forza (ipotesi) |
 |---|---|---|---|
 | Seno (realism slider) | `PlagueKind-tiddies-realismslider.safetensors` | c'è una donna; Sensuale ed Esplicito | 1.0 / 1.3 (autore: 1.0-2.0 sul realistico, oltre 2.0 si rompe) |
-| Vagina | `Vagina_minimax-h3_epoch20.safetensors` | Esplicito, donna, vulva in vista | 1.0 |
-| hmpussy | `hmpussy_minimax-h3.safetensors` (**nome da confermare**) | insieme a Vagina | 0.35 |
+| Vagina | `Vagina_minimax-h3_epoch20.safetensors` | Esplicito, donna, vulva in vista | 1.0 (hmpussy, la sua compagna addestrata su video, sul PC non c'è) |
 | Penis V2 | `PenisV2_minimax-h3_epoch60.safetensors` | Esplicito con un uomo / pene | 1.0; il server mette `HMPenis, front/back/side view.` in testa a `integrated_multimodal_description` |
 | Bacio | `cxy_kiss_lora_h3_v01_step1500.safetensors` | c'è un bacio (sperimentale, V0.1) | 0.8 |
 | HMNSFW AIO 2.5 | `HMNSFW-AIO-V2.5.safetensors` | Esplicito | 0.8, con **turbo 0.5 e 12 passi** (autore: euler, simple, 12 passi, shift 6, turbo 0.5) |
@@ -22,7 +21,7 @@ Per Claude sul PC di Andrea. Stesso branch delle prove a due (`claude/admiring-g
 - I test sono in `test/video.test.js`.
 
 ## Prove (con lo stesso seed, dallo Studio)
-1. [ ] `tools\prepara-pc.ps1`: controlla che ci siano le LoRA video. **hmpussy**: se il file sul PC ha un altro nome, correggi `LORAS.hmpussy.file` in `src/minimax.js` e la riga nello script.
+1. [ ] `tools\prepara-pc.ps1`: controlla che ci siano le LoRA video.
 2. [ ] **Normale**: anima una foto vestita (motore MiniMax image to video, oppure «Anima»). Il video deve uscire come prima: la riga sotto non deve elencare LoRA nuove.
 3. [ ] **Sensuale**: una foto in intimo, poi «Anima» con un movimento. Confronta «LoRA video: profilo» con «Seno 1.8» e con «Solo le LoRA di prima».
 4. [ ] **Esplicito**, una prova per posizione (cowgirl POV, missionario, pecorina da dietro, handjob). Confronta:

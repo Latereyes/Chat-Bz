@@ -14,10 +14,9 @@ export const LORAS = {
   // nuove (2026-10-10)
   // Seno naturale in movimento; con forza alta spinge anche il realismo. Autore: 1.0-2.0 su immagini realistiche, oltre 2.0 si rompe
   breast: { file: 'PlagueKind-tiddies-realismslider.safetensors', label: 'Seno (realism slider)', when: 'woman' },
-  // Genitali femminili: «Vagina» addestrata su foto (1.0), «hmpussy» su video (0.35) tiene la forma nel movimento, solo sotto l'altra
+  // Genitali femminili, addestrata su foto: l'autore la usa a 1.0. (Esiste anche «hmpussy», addestrata su video, da
+  // tenere a 0.35 sotto questa: sul PC per ora non c'è; se arriva, si aggiunge qui con when: 'vulva'.)
   vagina: { file: 'Vagina_minimax-h3_epoch20.safetensors', label: 'Vagina', when: 'vulva' },
-  // Nome del file da confermare con Andrea: finché non c'è su ComfyUI si salta
-  hmpussy: { file: 'hmpussy_minimax-h3.safetensors', label: 'hmpussy', when: 'vulva' },
   // Genitali maschili: parola chiave HMPenis in testa, più direzione (front / back / side)
   penis: { file: 'PenisV2_minimax-h3_epoch60.safetensors', label: 'Penis V2', when: 'penis', trigger: 'HMPenis' },
   // Bacio (V0.1, sperimentale: addestrata a 512×512, 5 s)
@@ -34,7 +33,7 @@ export const LORAS = {
 export const PROFILE = {
   neutral: { loras: { kiss: 0.8 } },
   sensual: { loras: { breast: 1.0, kiss: 0.8 } },
-  explicit: { loras: { breast: 1.3, vagina: 1, hmpussy: 0.35, penis: 1, kiss: 0.8, hmnsfw: 0.8 }, turbo: 0.5, steps: 12 },
+  explicit: { loras: { breast: 1.3, vagina: 1, penis: 1, kiss: 0.8, hmnsfw: 0.8 }, turbo: 0.5, steps: 12 },
 };
 
 /** Varianti da confrontare (Studio: menu «LoRA video»). null toglie una LoRA del profilo. */
@@ -47,7 +46,7 @@ export const VARIANTS = {
   'seno-sempre': { label: 'Seno anche nei video normali (1.0, più realismo)', neutral: { breast: 1 } },
   'senza-mystic': { label: 'Senza MysticXXX', sensual: { mystic: 0 }, explicit: { mystic: 0 } },
   'senza-unlocked': { label: 'Senza Unlocked V2', sensual: { unlocked: 0 }, explicit: { unlocked: 0 } },
-  'senza-nuove': { label: 'Solo le LoRA di prima (come il workflow)', neutral: { kiss: null }, sensual: { breast: null, kiss: null }, explicit: { breast: null, vagina: null, hmpussy: null, penis: null, kiss: null, hmnsfw: null }, explicitTurbo: 1, explicitSteps: 8 },
+  'senza-nuove': { label: 'Solo le LoRA di prima (come il workflow)', neutral: { kiss: null }, sensual: { breast: null, kiss: null }, explicit: { breast: null, vagina: null, penis: null, kiss: null, hmnsfw: null }, explicitTurbo: 1, explicitSteps: 8 },
 };
 
 export function profileFor(level, variant) {
