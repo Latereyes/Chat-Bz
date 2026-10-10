@@ -113,6 +113,13 @@ if ($LASTEXITCODE -ne 0) { Write-Host $prova; Attento "il banco di prova non par
 elseif ($prova -match "atteso") { Attento "qualche scenario ha un filtro diverso dall'atteso: lancia node tools/prova-foto.js --solo-richieste e guarda le righe con ⚠" }
 else { Bene "14 scenari: filtri e token come previsto" }
 
+Passo 8 "Video MiniMax: nodi, LoRA e grafi su ComfyUI"
+$video = node --disable-warning=ExperimentalWarning tools/verifica-video.js 2>&1 | Out-String
+if ($video -match "non risponde") { Attento "ComfyUI è spento: avvialo e lancia  node tools/verifica-video.js" }
+elseif ($LASTEXITCODE -ne 0) { Write-Host $video; Attento "video: ComfyUI rifiuterebbe qualche grafo (output qui sopra), vedi piano\verifica-video.md" }
+elseif ($video -match "!!") { Write-Host $video; Attento "video: funziona, ma guarda le righe con !! qui sopra" }
+else { Bene "ComfyUI accetta i grafi dei video, anche video lunghi e «Continua»" }
+
 Write-Host ""
 if ($ok) { Write-Host "Tutto pronto." -ForegroundColor Green }
 else { Write-Host "Pronto, ma guarda le righe gialle (!!) qui sopra." -ForegroundColor Yellow }

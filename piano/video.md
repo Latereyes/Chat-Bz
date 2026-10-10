@@ -1,6 +1,6 @@
 # Video MiniMax H3: LoRA nuove, cosa provare
 
-Per Claude sul PC di Andrea. Stesso branch delle prove a due (`claude/admiring-goldberg-rgvept`). Rispondi ad Andrea in italiano semplice e chiedi prima di cambiare valori o fare commit (regole in `CLAUDE.md`).
+Per Claude sul PC di Andrea. **Prima** fai i controlli di `piano/verifica-video.md` (ComfyUI aggiornato, grafi accettati, prova tecnica). Stesso branch delle prove a due (`claude/admiring-goldberg-rgvept`). Rispondi ad Andrea in italiano semplice e chiedi prima di cambiare valori o fare commit (regole in `CLAUDE.md`).
 
 ## Cosa è cambiato
 - **`src/minimax.js`** (nuovo) contiene catalogo, profilo per filtro e varianti delle LoRA dei video, come `src/krea2.js` per le foto. La applica `renderMedia` (`src/jobs.js`) a ogni video MiniMax H3 (`applyVideoStack`).
@@ -27,7 +27,7 @@ Per Claude sul PC di Andrea. Stesso branch delle prove a due (`claude/admiring-g
 3. [ ] **Sensuale**: una foto in intimo, poi «Anima» con un movimento. Confronta «LoRA video: profilo» con «Seno 1.8» e con «Solo le LoRA di prima».
 4. [ ] **Esplicito**, una prova per posizione (cowgirl POV, missionario, pecorina da dietro, handjob). Confronta:
    - profilo (HMNSFW 0.8, turbo 0.5, 12 passi) e «Senza HMNSFW (turbo 1, 8 passi)»: qualità e tempo;
-   - «HMNSFW con shift 6»: lo shift è un nodo `ModelSamplingSD3` aggiunto in fondo alla catena. Se ComfyUI lo rifiuta o il video si rovina, **non usarlo**;
+   - «HMNSFW con shift 6»: lo shift è un nodo `MiniMaxH3SigmaShift` aggiunto in fondo alla catena. Se ComfyUI lo rifiuta o il video si rovina, **non usarlo**;
    - «Solo le LoRA di prima»: il riferimento, cioè com'era fino a ieri.
 5. [ ] **Pene**: controlla la direzione (`front` in POV, `back` da dietro, `side` di lato) nella riga del prompt. Se la LoRA rende peggio a pene piccolo, l'autore dice che va meglio con misure medio-grandi.
 6. [ ] **Bacio**: due persone che si baciano, con e senza la LoRA (variante «Solo le LoRA di prima»). È sperimentale: se peggiora, toglila dal profilo.
