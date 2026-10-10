@@ -33,13 +33,13 @@ export const LORAS = {
 export const PROFILE = {
   neutral: { loras: { kiss: 0.8 } },
   sensual: { loras: { breast: 1.0, kiss: 0.8 } },
-  explicit: { loras: { breast: 1.3, vagina: 1, hmpussy: 0.35, penis: 1, kiss: 0.8, hmnsfw: 0.8 }, turbo: 0.5, steps: 12 },
+  explicit: { loras: { breast: 1.3, vagina: 1, hmpussy: 0.35, penis: 1, kiss: 0.8, hmnsfw: 0.8 }, turbo: 0.5, steps: 6 },   // 12 passi (autore di HMNSFW) a 0,7 MP: 5 s in 160 s invece di 87 (2026-10-10)
 };
 
 /** Varianti da confrontare (Studio: menu «LoRA video»). null toglie una LoRA del profilo. */
 export const VARIANTS = {
   base: { label: 'Profilo video attuale' },
-  'senza-hmnsfw': { label: 'Senza HMNSFW (turbo 1, 8 passi)', explicit: { hmnsfw: null }, explicitTurbo: 1, explicitSteps: 8 },
+  'senza-hmnsfw': { label: 'Senza HMNSFW (turbo 1)', explicit: { hmnsfw: null }, explicitTurbo: 1 },
   'hmnsfw-forte': { label: 'HMNSFW 1.0', explicit: { hmnsfw: 1 } },
   'hmnsfw-shift6': { label: 'HMNSFW con shift 6 (come consiglia l\'autore)', explicitShift: 6 },
   'senza-hmpussy': { label: 'Vagina senza hmpussy', explicit: { hmpussy: null } },
@@ -47,7 +47,7 @@ export const VARIANTS = {
   'seno-sempre': { label: 'Seno anche nei video normali (1.0, più realismo)', neutral: { breast: 1 } },
   'senza-mystic': { label: 'Senza MysticXXX', sensual: { mystic: 0 }, explicit: { mystic: 0 } },
   'senza-unlocked': { label: 'Senza Unlocked V2', sensual: { unlocked: 0 }, explicit: { unlocked: 0 } },
-  'senza-nuove': { label: 'Solo le LoRA di prima (come il workflow)', neutral: { kiss: null }, sensual: { breast: null, kiss: null }, explicit: { breast: null, vagina: null, hmpussy: null, penis: null, kiss: null, hmnsfw: null }, explicitTurbo: 1, explicitSteps: 8 },
+  'senza-nuove': { label: 'Solo le LoRA di prima (come il workflow)', neutral: { kiss: null }, sensual: { breast: null, kiss: null }, explicit: { breast: null, vagina: null, hmpussy: null, penis: null, kiss: null, hmnsfw: null }, explicitTurbo: 1 },
 };
 
 export function profileFor(level, variant) {

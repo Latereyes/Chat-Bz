@@ -26,7 +26,7 @@ test('bacio: la LoRA del bacio solo quando c\'è un bacio', () => {
   assert.ok(has(g, LORAS.kiss.file));
 });
 
-test('esplicito con un uomo: HMNSFW, seno, vulva, pene, turbo 0.5 e 12 passi, catena collegata', () => {
+test('esplicito con un uomo: HMNSFW, seno, vulva, pene, turbo 0.5 e 6 passi, catena collegata', () => {
   const needs = videoNeeds('POV, she rides him, his erect penis inside her pussy, her breasts bounce', { level: 'explicit', woman: true });
   assert.deepEqual([needs.penis, needs.vulva, needs.direction], [true, true, 'front']);
   const g = structuredClone(I2V);
@@ -35,7 +35,7 @@ test('esplicito con un uomo: HMNSFW, seno, vulva, pene, turbo 0.5 e 12 passi, ca
   assert.equal(loras(g).find(([f]) => f === LORAS.hmpussy.file)[1], 0.35);
   assert.deepEqual(out.missing, []);
   assert.equal(loras(g).find(([f]) => f === LORAS.turbo.file)[1], 0.5);
-  assert.equal(Object.values(g).find((n) => n.class_type === 'BasicScheduler').inputs.steps, 12);
+  assert.equal(Object.values(g).find((n) => n.class_type === 'BasicScheduler').inputs.steps, 6);
   // guider e scheduler usano la fine della catena, e ogni LoRA porta a un nodo che esiste
   const end = guiderModel(g);
   assert.equal(g[end].class_type, 'LoraLoaderModelOnly');
