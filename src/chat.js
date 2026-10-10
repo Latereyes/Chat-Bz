@@ -12,7 +12,7 @@ import { systemPrompt, nowBlock, tools, promptEngineerSystem, characterMediaRequ
 import { engineerPhoto, photoLevel } from './photo.js';
 import { groupTurn } from './group.js';
 import { videoNeeds, videoRules, leadPrompt } from './minimax.js';
-import { planSegments, secondsFrom, partLine, addParts, PART } from './videochain.js';
+import { planSegments, secondsFrom, partLine, continuePrompt, addParts, PART } from './videochain.js';
 import { updateScene } from './relationship.js';
 import * as queue from './queue.js';
 import * as social from './social.js';
@@ -257,7 +257,8 @@ async function engineerPrompt(conv, msg, media, model, signal, ctx = {}) {
     ],
     onChunk: (c) => { if (c.content) { text += c.content; onChunk(c.content); } },
   });
-  const prompt = cleanPrompt(out.content || text) || media.description;
+  const clean = cleanPrompt(out.content || text);
+  const prompt = (media.mode === 'continue' ? continuePrompt(clean) : clean) || media.description;
   // LoRA del video (minimax.js): decise dal filtro e da cosa c'è davvero nel video, prompt compreso
   const needs = videoNeeds(`${seen}\n${prompt}`, { level, woman });
   Object.assign(media, { level, levelReason: reason, videoNeeds: needs });

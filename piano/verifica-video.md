@@ -91,10 +91,42 @@ Annota qui esiti e valori scelti, un commit per ogni correzione, `npm test` verd
 
 | Prova | Esito | Note / valori |
 |---|---|---|
-| 2. verifica dei grafi | | |
-| 3. prova tecnica con guida | | |
-| 3. prova tecnica senza guida | | |
-| 4. Studio 20 s / 30 s | | |
-| 4. Continua | | |
-| 4. chat 20 s | | |
+| 2. verifica dei grafi | OK (2026-10-10) | ComfyUI 0.39.0: nodi nuovi, MiniMaxH3AddGuide, SigmaShift e tutte le LoRA presenti. Lo strumento dava falsi allarmi su SaveVideo (`format.codec…`): corretto, ora capisce i menu annidati |
+| 3. prova tecnica con guida | OK | 5,17 s + 3 s → 8,71 s (107 fotogrammi generati, 85 nuovi: 13 in più per l'arrotondamento a 17k+5). Giunzione senza salti né fotogrammi ripetuti, audio continuo e a tempo. 85 s |
+| 3. prova tecnica senza guida | OK, ma peggio | 5,17 s + 3 s → 8,17 s esatti. Alla giunzione il movimento quasi si ferma per qualche fotogramma e l'audio cala di colpo. 114 s. Si tiene la guida |
+| 4. Studio 20 s / 30 s | 20 s OK, 30 s da rifare | 20 s da una foto allegata: usciva un pezzo solo da 10 s (corretto in `studio.js`); dopo la correzione 2 pezzi, 10,1 s e 20,75 s, giunzione liscia, audio continuo, 142 + 171 s. 30 s (text to video): parte 1 OK, parte 2 «ComfyUI non ha restituito alcun file» anche se ComfyUI l'aveva salvata (la history non era ancora scritta: corretto in `comfy.js`), parte 3 «La parte precedente del video non è riuscita» come previsto. Da rifare con la correzione |
+| 4. Continua | OK | +5 s su un video da 10 s → 15,8 s, giunzione liscia, 108 s. Il prompt della parte nuova parlava di «<Picture 1>» e ridescriveva la scena: corretto (`continuePrompt` e `partLine`) |
+| 4. chat 20 s | OK, giunzione da migliorare | 2 pezzi, 20,75 s, 151 + 185 s; prompt della parte 2 pulito. Alla giunzione (scena con gesti delle mani) circa 1 s di fotogrammi mossi e sfocati con un piccolo scatto dell'inquadratura, poi torna nitido. Da provare `OVERLAP` 39 |
+| 4. telefono, chat a due, esplicito | non fatte | |
 | LoRA (`piano/video.md`) | | |
+
+## 7. Video in chat da 5-8 s: velocità contro qualità (prova sul PC 2026-10-10)
+`node tools/prova-video.js --foto <foto> --secondi 5|8 --varianti …`: stessa foto (Chiara, al bar), stesso prompt con gesti delle mani, seed 42. Qualità = artefatti nelle zone in movimento (mani mosse, doppie, «pelose»), misurati con il flusso ottico (errore di ricostruzione dove c'è movimento: più basso è meglio) e guardati a occhio. Video e confronti in `data\prova-video\banco\`.
+
+| Variante | 5 s: tempo | 5 s: errore moto (picchi) | 8 s: tempo | 8 s: errore moto (picchi) |
+|---|---|---|---|---|
+| attuale: 0,4 MP, 8 passi | 69-79 s | 5,9 (10,1) | 105 s | 5,9 (11,4) |
+| 6 / 10 / 12 passi | 49 / 71 / 114 s | 6,0 / 6,3 / 6,0 | | |
+| turbo 0.7, 12 passi | 97 s | 5,7 (10,4) | | |
+| VBVR 0 / 0.5 / 1, senza Unlocked e Mystic | 72-96 s | 5,6-6,1 | | |
+| 0,55 MP, 8 passi | 104 s | 4,8 (9,5) | 147 s | 4,6 (8,4) |
+| 0,55 MP, 6 passi | 76 s | 4,6 (8,6) | | |
+| **0,7 MP, 6 passi** | **98 s** | **4,0 (8,2)** | **162 s** | **3,9 (6,3)** |
+| 0,7 MP, 8 passi | 126 s | 3,6 (5,7) | 203 s | 3,7 (6,4) |
+| 0,85 MP, 8 passi | 149 s | 4,1 (6,9) | | |
+
+- Passi, turbo e LoRA cambiano poco gli artefatti: conta la risoluzione. A 0,4 MP la mano che saluta esce sfocata e doppia, a 8 s anche «pelosa»; a 0,7 MP resta nitida. Oltre 0,7 non migliora.
+- A 0,7 MP 6 passi bastano (8 s: stesso risultato di 8 passi, 40 s in meno).
+- Una sola scena e un solo seed: da confermare su un video esplicito e su un altro personaggio.
+
+Applicato il 2026-10-10: 0,7 MP e 6 passi nei due workflow MiniMax. Verifica su Marco (fornaio, mani veloci che si puliscono e girano una pagnotta):
+
+| Marco | tempo | errore moto (picchi) |
+|---|---|---|
+| 5 s prima (0,4 MP, 8 passi) | 64 s | 6,7 (12,1) |
+| 5 s adesso | 105 s | 6,7 (12,5) |
+| 8 s prima | 97 s | 7,0 (11,9) |
+| 8 s adesso | 159 s | 5,2 (8,4) |
+
+- A 8 s meglio, a 5 s nessuna differenza visibile: nei movimenti veloci delle mani (si pulisce la farina, stringe la pagnotta) le mani escono «a rete» in tutte e due. La risoluzione aiuta nei gesti lenti, non basta in quelli veloci.
+- Esplicito (profilo con turbo 0.5 e 12 passi) a 0,7 MP: 5 s in 160 s; con 6 passi 87 s. Da giudicare su un video esplicito vero.

@@ -5,7 +5,7 @@
   "mode": "img2video",
   "description": "Anima un'immagine: il video parte esattamente dall'immagine data, con audio nativo.",
   "resolution": {
-    "megapixels": 0.4,
+    "megapixels": 0.7,
     "multiple": 32
   },
   "duration": {

@@ -109,7 +109,22 @@ export function addParts(first, segs, wi, { newId, seed }) {
 
 /** Riga per il prompt engineer di un pezzo che continua un video. */
 export function partLine(part, seconds) {
-  return part?.total > 1
+  return (part?.total > 1
     ? `This is part ${part.index} of ${part.total} of ONE continuous video. It starts exactly where the previous part ends (its last moments are the starting frames, described below): continue the same action, place, people, clothes and light with no cut, and write only what happens in the next ${seconds} seconds.`
-    : `This video CONTINUES an existing one: it starts exactly where the previous video ends (its last moments are the starting frames, described below). Continue the same scene with no cut and write only what happens in the next ${seconds} seconds.`;
+    : `This video CONTINUES an existing one: it starts exactly where the previous video ends (its last moments are the starting frames, described below). Continue the same scene with no cut and write only what happens in the next ${seconds} seconds.`)
+    + ` There is NO starting picture here: do not mention <Picture 1> and do not recap the scene. Use this first line instead: "${CONTINUE_HEAD}" and begin the description with "[Shot 1] The shot continues with no cut:" followed by what happens next.`;
+}
+
+const CONTINUE_HEAD = 'For the target video, the shot continues exactly from the last moments of the previous video.';
+
+/**
+ * Prompt di un pezzo che continua: via i rimandi alla foto di partenza, che qui non c'è (c'è la coda del video).
+ * Prova sul PC 2026-10-10: con la guida del workflow image to video Gemma scriveva «<Picture 1> is fully referenced» e
+ * «the shot begins exactly from <Picture 1>», e ripartiva da capo con la descrizione della scena.
+ */
+export function continuePrompt(prompt) {
+  return String(prompt || '')
+    .replace(/^For the target video,[^\n]*<Picture 1>[^\n]*$/m, CONTINUE_HEAD)
+    .replace(/,?\s*the shot (?:begins|starts) exactly from <Picture 1>\s*:?/gi, ', the shot continues with no cut:')
+    .replace(/<Picture 1>/g, 'the previous video');
 }
