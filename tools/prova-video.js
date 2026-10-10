@@ -5,8 +5,9 @@
  * generazione e qualità, che qui vuol dire soprattutto niente artefatti nelle zone in movimento (mani, capelli).
  *
  *   node tools/prova-video.js --foto data/media/<id>/<foto>.png [--varianti base,passi12,…] [--secondi 5] [--seed 42]
+ *     [--filtro neutral|sensual|explicit] [--uomo] [--nome marco] [--prompt "…"]
  *
- * I video vanno in data/prova-video/banco/<variante>-<secondi>s.mp4, i tempi in data/prova-video/banco/tempi.json.
+ * I video vanno in data/prova-video/banco/[<nome>-]<variante>[-<filtro>]-<secondi>s.mp4, i tempi in data/prova-video/banco/tempi.json.
  * Con l'agent del PC acceso chiede il permesso della GPU (priorità bassa: chi usa ChatBz passa prima); senza agent
  * lancialo con ChatBz fermo, la GPU è una sola.
  */
@@ -21,9 +22,10 @@ import * as agent from '../src/gpu-agent.js';
 const args = process.argv.slice(2);
 const opt = (name, def) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : def; };
 
-// Una cosa alla volta rispetto al workflow (0,4 MP, 8 passi, turbo 1, VBVR 0.8, Unlocked 0.6, Mystic 0.6)
+// Una cosa alla volta rispetto al workflow (0,7 MP, 6 passi, turbo 1, VBVR 0.8, Unlocked 0.6, Mystic 0.6; fino al 2026-10-10 0,4 MP e 8 passi)
 export const VARIANTS = {
   base: {},
+  vecchio: { mp: 0.4, steps: 8 },   // come prima del 2026-10-10
   passi6: { steps: 6 },
   passi10: { steps: 10 },
   passi12: { steps: 12 },
@@ -68,6 +70,8 @@ async function main() {
   if (!foto || !fs.existsSync(foto)) { console.log('Serve --foto <immagine di partenza>'); process.exit(1); }
   const seconds = Number(opt('--secondi', 5));
   const seed = Number(opt('--seed', 42));
+  const level = opt('--filtro', 'neutral');
+  const tag = opt('--nome', '');
   const names = opt('--varianti', 'base').split(',').filter(Boolean);
   for (const n of names) if (!VARIANTS[n]) { console.log(`Variante sconosciuta: ${n} (${Object.keys(VARIANTS).join(', ')})`); process.exit(1); }
   const w = loadWorkflows().find((x) => x.id === 'minimax-h3-i2v');
@@ -83,7 +87,7 @@ async function main() {
   const files = await comfy.listModels('loras').catch(() => null);
   for (const name of names) {
     const graph = buildGraph(w, { prompt, seed, frames, image });
-    applyVideoStack(graph, { level: 'neutral', needs: { woman: true }, files });
+    applyVideoStack(graph, { level, needs: { woman: !args.includes('--uomo') }, files });
     applyVariant(graph, VARIANTS[name]);
     let t0 = Date.now();
     process.stdout.write(`${name} ${seconds}s (${frames} fotogrammi)… `);
@@ -94,10 +98,11 @@ async function main() {
     try { out = await comfy.run(graph); } finally { await lease?.release(); }
     const f = out.files.find((x) => /\.mp4$/i.test(x.filename));
     if (!f) { console.log('nessun file'); continue; }
-    const dest = path.join(dir, `${name}-${seconds}s.mp4`);
+    const key = `${tag ? `${tag}-` : ''}${name}${level !== 'neutral' ? `-${level}` : ''}-${seconds}s`;
+    const dest = path.join(dir, `${key}.mp4`);
     fs.writeFileSync(dest, await comfy.fetchFile(f));
     const secs = Math.round((Date.now() - t0) / 1000);
-    log[`${name}-${seconds}s`] = { secs, frames, seed, variant: VARIANTS[name] };
+    log[key] = { secs, frames, seed, level, variant: VARIANTS[name] };
     fs.writeFileSync(logFile, JSON.stringify(log, null, 2));
     console.log(`${secs} s → ${dest}`);
   }

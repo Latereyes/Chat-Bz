@@ -118,3 +118,15 @@ Annota qui esiti e valori scelti, un commit per ogni correzione, `npm test` verd
 - Passi, turbo e LoRA cambiano poco gli artefatti: conta la risoluzione. A 0,4 MP la mano che saluta esce sfocata e doppia, a 8 s anche «pelosa»; a 0,7 MP resta nitida. Oltre 0,7 non migliora.
 - A 0,7 MP 6 passi bastano (8 s: stesso risultato di 8 passi, 40 s in meno).
 - Una sola scena e un solo seed: da confermare su un video esplicito e su un altro personaggio.
+
+Applicato il 2026-10-10: 0,7 MP e 6 passi nei due workflow MiniMax. Verifica su Marco (fornaio, mani veloci che si puliscono e girano una pagnotta):
+
+| Marco | tempo | errore moto (picchi) |
+|---|---|---|
+| 5 s prima (0,4 MP, 8 passi) | 64 s | 6,7 (12,1) |
+| 5 s adesso | 105 s | 6,7 (12,5) |
+| 8 s prima | 97 s | 7,0 (11,9) |
+| 8 s adesso | 159 s | 5,2 (8,4) |
+
+- A 8 s meglio, a 5 s nessuna differenza visibile: nei movimenti veloci delle mani (si pulisce la farina, stringe la pagnotta) le mani escono «a rete» in tutte e due. La risoluzione aiuta nei gesti lenti, non basta in quelli veloci.
+- Esplicito (profilo con turbo 0.5 e 12 passi) a 0,7 MP: 5 s in 160 s; con 6 passi 87 s. Da giudicare su un video esplicito vero.
