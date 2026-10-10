@@ -149,7 +149,7 @@ function framing({ together, man, level, two }) {
   if (together) {
     return level === 'explicit'
       ? "Point of view: unless the user asks otherwise, the viewer's own eyes or phone (POV): the viewer is the partner, so only the parts of the viewer's body that would really be in frame from their eyes appear (hands, arms, legs, torso, genitals when the position puts them in view), never the viewer's face. A third-person view of both only if the user asks for it."
-      : 'Framing: taken a moment ago with a phone by the person they are with (the viewer), from their point of view, unless the conversation says it is a selfie or a mirror selfie.';
+      : `Framing: taken a moment ago with a phone by the person ${she.toLowerCase()} is with (the viewer), from their point of view, unless the conversation says it is a selfie or a mirror selfie. Only ${she.toLowerCase()} is in the photo: the viewer is behind the camera and never appears, and no other person is in the frame unless the user asks for it.`;
   }
   return `Framing: ${she.toLowerCase()} is alone and takes the photo ${self} for the person ${she.toLowerCase()} is texting (a selfie at arm's length, a mirror selfie or the phone propped up), unless the user asks for another framing.`;
 }
@@ -203,7 +203,8 @@ export function photoRequest({ card, state, media, level, exchanges = [], user, 
     e.user ? `${name}: «${clip(e.user, 700)}»` : null,
     e.reply && level !== 'neutral' ? `${card.name}: «${clip(e.reply, 600)}»` : null,
   ].filter(Boolean).join('\n')).filter(Boolean).join('\n');
-  const viewer = together && user ? [user.gender === 'uomo' ? 'an adult man' : user.gender === 'donna' ? 'an adult woman' : '', clip(user.look, 200)].filter(Boolean).join(', ') : '';
+  // l'aspetto di chi guarda serve solo al POV esplicito: altrimenti Krea lo disegnava accanto (prova sul PC 2026-10-10)
+  const viewer = together && user && level === 'explicit' ? [user.gender === 'uomo' ? 'an adult man' : user.gender === 'donna' ? 'an adult woman' : '', clip(user.look, 200)].filter(Boolean).join(', ') : '';
   return [
     `Subject: ${WHO(card)}. Appearance (keep it exactly, it defines who this is): ${visualSignature(card.look, level) || '(not specified)'}`,
     fig ? `Figure (keep these proportions exactly and clearly visible${level === 'neutral' ? ', through the clothes' : ''}): ${fig}.` : null,

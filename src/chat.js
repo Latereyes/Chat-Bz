@@ -90,7 +90,8 @@ const MEDIA_WORD = /\b(?:foto\w*|selfie|scatt\w*|immagin\w*|pic|picture|photo\w*
 const VIDEO_WORD = /\b(?:video\w*|clip)\b/i;
 const BRACKET = /\[([^\[\]\n]{12,})\]|\(((?:foto|selfie|photo|video|immagine)[^()\n]{8,})\)/i;
 const ANNOUNCE = /\b(?:ti\s+(?:mando|invio|giro|faccio\s+vedere)|eccoti|ecco(?:mi)?\b[^.!?\n]{0,20}\b(?:foto|selfie)|guarda(?:\s+qui)?\s*[:!]|sending\s+(?:you\s+)?(?:a\s+)?(?:pic|photo)|here'?s\s+(?:a\s+)?(?:pic|photo|selfie))/i;
-const ASKS_MEDIA = /\b(?:mand\w*|invi\w*|fa(?:mmi|i)\s+vedere|fammel\w*\s+vedere|scatta\w*|send|show)\b[^.!?\n]{0,40}\b(?:foto\w*|selfie|pic\w*|photo\w*|video\w*|immagin\w*)\b|\b(?:foto|selfie|pic|photo|video)\s*\?/i;
+// anche «fatevi/fai/facciamo una foto» e «una foto di voi due» (prova sul PC 2026-10-10, chat a due)
+const ASKS_MEDIA = /\b(?:mand\w*|invi\w*|fa(?:mmi|i)\s+vedere|fammel\w*\s+vedere|scatta\w*|fa(?:te(?:vi|ci)?|tti|i(?:ti)?|cciamo(?:ci)?|cciamoci)|send|show|take)\b[^.!?\n]{0,40}\b(?:foto\w*|selfie|pic\w*|photo\w*|video\w*|immagin\w*)\b|\b(?:foto|selfie|pic|photo|video)\s*\?|\b(?:foto|selfie)\s+di\s+voi\b/i;
 // Strumenti scritti come testo invece che chiamati: «<tool_call> update_scene{presence="together"} </tool_call>».
 // Si tolgono dal messaggio; update_scene scritto così non si applica (prova sul PC: portava la scena a "insieme" per sbaglio)
 // Anche come funzione Python: «send_photo(who="Hitomi", description="…")» (prova sul PC 2026-10-10, chat a due)

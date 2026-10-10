@@ -45,3 +45,11 @@ test('chat a due: chi è nella foto chiesta a parole', async () => {
   assert.equal(who('', { who: 'both' }), 'l+z');
   assert.equal(who('Zola, una tua foto?', { description: 'Zola, una tua foto?\n\n(reply: Lex: dai Zola!)', fromText: true }), 'z');
 });
+
+test('foto chiesta a parole: anche «fatevi una foto» e «una foto di voi due»', async () => {
+  const { extractTag } = await import('../src/chat.js');
+  for (const t of ['Adesso fatevi una foto insieme, tutte e due', 'Facciamoci un selfie!', 'Una foto di voi due al tavolo']) {
+    assert.ok(extractTag('Eccoci, guarda qui: ', t).call, t);
+  }
+  assert.ok(!extractTag('Ciao, tutto bene', 'Che fate stasera?').call);
+});
