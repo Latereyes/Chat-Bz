@@ -11,6 +11,8 @@ import { promptProfile } from './auth.js';
 import { systemPrompt, nowBlock, tools, promptEngineerSystem, characterMediaRequest, cleanPrompt, sceneCheckPrompt } from './prompts.js';
 import { engineerPhoto, photoLevel } from './photo.js';
 import { groupTurn } from './group.js';
+import { videoNeeds, videoRules, leadPrompt } from './minimax.js';
+import { planSegments, secondsFrom, partLine, addParts, PART } from './videochain.js';
 import { updateScene } from './relationship.js';
 import * as queue from './queue.js';
 import * as social from './social.js';
@@ -170,7 +172,7 @@ function videoFromPhoto(base, photo, duration) {
   const { seconds, frames } = frameCount(w, duration || 5);
   return { ...base, type: 'video', mode: 'img2video', workflow: w.id, workflowName: w.name, seconds, frames,
     aspect: photo.aspect, ...dimensionsForRatio(w, (photo.width || 3) / (photo.height || 4)),
-    sourceFile: photo.file, sourceUrl: mediaUrl(photo.file), sourceDescription: photo.prompt || photo.description };
+    sourceFile: photo.file, sourceUrl: mediaUrl(photo.file), sourceDescription: photo.prompt || photo.description, sourceLevel: photo.level };
 }
 
 /** Trasforma send_photo / send_video in un media da generare. */
@@ -188,23 +190,29 @@ function mediaFromCall(conv, call, callIndex) {
     return { ...base, type: 'image', mode: 'text2img', workflow: w.id, workflowName: w.name, aspect, ...dimensions(w, aspect) };
   }
   if (name === 'send_video') {
+    // durata: dallo strumento o detta a parole («un video di 20 secondi»); oltre 15 s in pezzi che si continuano
+    const total = Number(args.duration) || secondsFrom(description) || 5;
+    const segs = planSegments(total);
     const photo = lastCharacterPhoto(conv);
-    if (photo) return videoFromPhoto(base, photo, args.duration);
+    if (photo) return withParts(videoFromPhoto(base, photo, segs[0]), segs);
     const w = getWorkflow(null, 'video');
     if (!w) return null;
-    const { seconds, frames } = frameCount(w, args.duration || 5);
+    const { seconds, frames } = frameCount(w, segs[0]);
     // Nessuna foto recente: prima una foto della scena, poi si anima quella (così il video le somiglia, come in ChatBz 1)
     const still = mediaFromCall(conv, { function: { name: 'send_photo', arguments: { description: `Still first frame of a short video: ${description}`, aspect_ratio: '9:16' } } }, callIndex);
     const wi = getWorkflow(null, 'video', 'img2video');
     if (still && wi) {
-      const f = frameCount(wi, args.duration || 5);
-      return [still, { ...base, id: store.newId(), type: 'video', mode: 'img2video', workflow: wi.id, workflowName: wi.name, seconds: f.seconds, frames: f.frames,
-        aspect: '9:16', ...dimensionsForRatio(wi, still.width / still.height), sourceMediaId: still.id }];
+      const f = frameCount(wi, segs[0]);
+      return [still, ...withParts({ ...base, id: store.newId(), type: 'video', mode: 'img2video', workflow: wi.id, workflowName: wi.name, seconds: f.seconds, frames: f.frames,
+        aspect: '9:16', ...dimensionsForRatio(wi, still.width / still.height), sourceMediaId: still.id }, segs)];
     }
-    return { ...base, type: 'video', mode: 'text2video', workflow: w.id, workflowName: w.name, seconds, frames, aspect: '9:16', ...dimensions(w, '9:16') };
+    return withParts({ ...base, type: 'video', mode: 'text2video', workflow: w.id, workflowName: w.name, seconds, frames, aspect: '9:16', ...dimensions(w, '9:16') }, segs);
   }
   return null;
 }
+
+/** Video lungo: il primo pezzo e quelli che lo continuano (videochain.js). */
+const withParts = (first, segs) => addParts(first, segs, getWorkflow(null, 'video', 'img2video'), { newId: store.newId, seed: randomSeed });
 
 /**
  * Riscrive la descrizione del personaggio nel prompt ottimizzato per il modello (in streaming).
@@ -213,7 +221,8 @@ function mediaFromCall(conv, call, callIndex) {
  * ctx: ultimo messaggio dell'utente e risposta del personaggio.
  */
 async function engineerPrompt(conv, msg, media, model, signal, ctx = {}) {
-  const w = getWorkflow(media.workflow, media.type, media.mode);
+  // un pezzo che continua un video usa il workflow image to video (il grafo «continua» lo costruisce videochain.js)
+  const w = getWorkflow(media.workflow, media.type, media.mode === 'continue' ? 'img2video' : media.mode);
   const user = promptProfile(conv.ownerId);
   const onChunk = (delta) => emit(conv.id, { type: 'prompt_delta', messageId: msg.id, mediaId: media.id, delta });
   if (media.type === 'image') {
@@ -223,19 +232,32 @@ async function engineerPrompt(conv, msg, media, model, signal, ctx = {}) {
     if (r.lenovo !== null) media.lenovo = r.lenovo;
     return r.prompt;
   }
-  const { level } = photoLevel({ card: conv.card, state: conv.state, userText: ctx.userText, reply: ctx.reply });
+  // Video: il filtro è quello del momento, o quello della foto da cui parte se è più alto (sempre entro il tetto)
+  const lv = photoLevel({ card: conv.card, state: conv.state, userText: ctx.userText, reply: ctx.reply });
+  const level = !lv.reason.startsWith('tetto') && RANK[media.sourceLevel] > RANK[lv.level] ? media.sourceLevel : lv.level;
+  const reason = level === lv.level ? lv.reason : 'come la foto di partenza';
+  const woman = conv.card.gender !== 'uomo';
+  const seen = [ctx.userText, ctx.reply, media.description, media.sourceDescription].filter(Boolean).join('\n');
   let text = '';
   const out = await ollama.chat({
     model, signal, think: false,
-    options: { temperature: 0.7 },
+    options: { temperature: level === 'explicit' ? 0.5 : 0.7 },
     messages: [
       { role: 'system', content: promptEngineerSystem(w) },
-      { role: 'user', content: characterMediaRequest({ card: conv.card, state: conv.state, media, width: media.width, height: media.height, seconds: media.seconds, sourceDescription: media.sourceFile || media.sourceMediaId ? media.sourceDescription : undefined, userText: ctx.userText, reply: ctx.reply, user, level }) },
+      { role: 'user', content: [characterMediaRequest({ card: conv.card, state: conv.state, media, width: media.width, height: media.height, seconds: media.seconds, sourceDescription: media.sourceFile || media.sourceMediaId || media.continueOfId || media.mode === 'continue' ? media.sourceDescription : undefined, userText: ctx.userText, reply: ctx.reply, user, level }),
+        media.mode === 'continue' ? partLine(media.part, media.seconds)
+          : media.part?.total > 1 ? `This is part 1 of ${media.part.total} of one continuous video: write only the first ${media.seconds} seconds; the action goes on in the next parts.` : null,
+        videoRules(level, videoNeeds(seen, { level, woman }))].filter(Boolean).join('\n') },
     ],
     onChunk: (c) => { if (c.content) { text += c.content; onChunk(c.content); } },
   });
-  return cleanPrompt(out.content || text) || media.description;
+  const prompt = cleanPrompt(out.content || text) || media.description;
+  // LoRA del video (minimax.js): decise dal filtro e da cosa c'è davvero nel video, prompt compreso
+  const needs = videoNeeds(`${seen}\n${prompt}`, { level, woman });
+  Object.assign(media, { level, levelReason: reason, videoNeeds: needs });
+  return leadPrompt(prompt, needs);
 }
+const RANK = { neutral: 0, sensual: 1, explicit: 2 };
 
 function checkAttachments(conv, list) {
   const out = [];
@@ -434,7 +456,10 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       // Prompt per il modello immagine/video (Gemma è ancora in VRAM: si fa subito)
       for (const md of msg.media) {
         const src = md.sourceMediaId && msg.media.find((x) => x.id === md.sourceMediaId);
-        if (src) md.sourceDescription = src.prompt || src.description;
+        if (src) Object.assign(md, { sourceDescription: src.prompt || src.description, sourceLevel: src.level });
+        // pezzo che continua il precedente: parte da come finisce quello
+        const prev = md.continueOfId && msg.media.find((x) => x.id === md.continueOfId);
+        if (prev) Object.assign(md, { sourceDescription: `the previous part of the video: ${prev.prompt || prev.description}`, sourceLevel: prev.level });
         md.prompt = G
           ? await G.engineer(msg, md, { model, signal, user, userText: userMsg?.content, reply: msg.content, onChunk: (delta) => emit(conv.id, { type: 'prompt_delta', messageId: msg.id, mediaId: md.id, delta }) })
           : await engineerPrompt(conv, msg, md, model, signal, { userText: userMsg?.content, reply: msg.content });
@@ -478,6 +503,36 @@ export function animateMedia(conv, messageId, mediaId, { text, seconds, model } 
   running.set(conv.id, ac);
   gpu.run('ollama', 'Scrivo il prompt del video', async () => {
     md.prompt = await engineerPrompt(conv, msg, md, model || config.ollama.model, ac.signal);
+    emitMedia(conv, msg, md);
+  }).then(() => enqueue(conv, msg, md)).catch((e) => {
+    md.status = ac.signal.aborted ? 'cancelled' : 'error';
+    md.error = ac.signal.aborted ? null : e.message;
+    emitMedia(conv, msg, md);
+    store.save(conv, { touch: false });
+  }).finally(() => running.delete(conv.id));
+  return md;
+}
+
+/** Continua un video della chat: un pezzo nuovo che parte da come finisce, incollato in coda (videochain.js). */
+export function continueVideo(conv, messageId, mediaId, { text, seconds, model } = {}) {
+  if (running.has(conv.id)) throw new Error('Sta già rispondendo');
+  if (conv.group) throw new Error('Nelle chat a due i video per ora non ci sono');
+  const msg = conv.messages.find((m) => m.id === messageId);
+  const src = msg?.media?.find((m) => m.id === mediaId && m.type === 'video' && m.status === 'done' && m.file);
+  if (!src) throw new Error('Video non trovato');
+  const wi = getWorkflow(null, 'video', 'img2video');
+  if (!wi) throw new Error('Nessun workflow video disponibile su ComfyUI');
+  const md = { id: store.newId(), toolName: 'send_video', type: 'video', mode: 'continue', workflow: wi.id, workflowName: wi.name,
+    description: String(text || '').trim() || 'the scene goes on naturally', prompt: '', seed: randomSeed(), status: 'engineering', createdAt: Date.now(),
+    seconds: Math.max(2, Math.min(PART, Number(seconds) || 5)), totalSeconds: (src.totalSeconds || src.seconds || 0) + Math.max(2, Math.min(PART, Number(seconds) || 5)), aspect: src.aspect, width: src.width, height: src.height,
+    sourceFile: src.file, sourceUrl: mediaUrl(src.file), sourceDescription: `the video so far: ${src.prompt || src.description}`, sourceLevel: src.level };
+  msg.media.push(md);
+  emitMedia(conv, msg, md);
+  store.save(conv, { touch: false });
+  const ac = new AbortController();
+  running.set(conv.id, ac);
+  gpu.run('ollama', 'Scrivo il prompt del video', async () => {
+    md.prompt = await engineerPrompt(conv, msg, md, model || config.ollama.model, ac.signal, { userText: text });
     emitMedia(conv, msg, md);
   }).then(() => enqueue(conv, msg, md)).catch((e) => {
     md.status = ac.signal.aborted ? 'cancelled' : 'error';

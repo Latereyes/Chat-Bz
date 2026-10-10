@@ -62,7 +62,13 @@ $lora = @(
   @("Krea2_HMNSFW_AIO.safetensors", "posizioni (HMNSFW)"),
   @("Detailer-KREA2.safetensors", "dettaglio"),
   @("lenovo_krea2.safetensors", "Lenovo, look foto amatoriale"),
-  @("Krea220Hitomi.safetensors", "volto di Hitomi")
+  @("Krea220Hitomi.safetensors", "volto di Hitomi"),
+  @("PlagueKind-tiddies-realismslider.safetensors", "video: seno naturale e realismo"),
+  @("Vagina_minimax-h3_epoch20.safetensors", "video: genitali femminili"),
+  @("hmpussy_v6_epoch30.safetensors", "video: genitali femminili in movimento (sotto Vagina)"),
+  @("PenisV2_minimax-h3_epoch60.safetensors", "video: genitali maschili (HMPenis)"),
+  @("cxy_kiss_lora_h3_v01_step1500.safetensors", "video: bacio"),
+  @("HMNSFW-AIO-V2.5.safetensors", "video: NSFW")
 )
 $tutti = Get-ChildItem -Path $dir -Recurse -File -Filter *.safetensors* | Select-Object -ExpandProperty Name
 foreach ($l in $lora) {
@@ -106,6 +112,13 @@ $prova = node --disable-warning=ExperimentalWarning tools/prova-foto.js --solo-r
 if ($LASTEXITCODE -ne 0) { Write-Host $prova; Attento "il banco di prova non parte (output qui sopra)" }
 elseif ($prova -match "atteso") { Attento "qualche scenario ha un filtro diverso dall'atteso: lancia node tools/prova-foto.js --solo-richieste e guarda le righe con ⚠" }
 else { Bene "14 scenari: filtri e token come previsto" }
+
+Passo 8 "Video MiniMax: nodi, LoRA e grafi su ComfyUI"
+$video = node --disable-warning=ExperimentalWarning tools/verifica-video.js 2>&1 | Out-String
+if ($video -match "non risponde") { Attento "ComfyUI è spento: avvialo e lancia  node tools/verifica-video.js" }
+elseif ($LASTEXITCODE -ne 0) { Write-Host $video; Attento "video: ComfyUI rifiuterebbe qualche grafo (output qui sopra), vedi piano\verifica-video.md" }
+elseif ($video -match "!!") { Write-Host $video; Attento "video: funziona, ma guarda le righe con !! qui sopra" }
+else { Bene "ComfyUI accetta i grafi dei video, anche video lunghi e «Continua»" }
 
 Write-Host ""
 if ($ok) { Write-Host "Tutto pronto." -ForegroundColor Green }

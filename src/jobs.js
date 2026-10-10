@@ -10,6 +10,22 @@ import { getWorkflow, buildGraph, workflows } from './workflows.js';
 import { bodyLoras, withDerived, installedLoras, bodyFamily, lenovoLora, comfyLoras } from './body.js';
 import { applyPhotoStack, applyDuoFaces, applySingleFace, faceDenoise, contactOf } from './photo.js';
 import { DUO_BODY, DUO_FACES } from './krea2.js';
+import { applyVideoStack, isMinimax, videoNeeds } from './minimax.js';
+import { continueGraph, continueFrames, CONTINUE_NODES, GUIDE_NODE } from './videochain.js';
+
+/**
+ * Grafo «continua» (videochain.js): il video da continuare va nella cartella input di ComfyUI; con MiniMaxH3AddGuide
+ * il pezzo nuovo parte dagli ultimi fotogrammi (e dall'audio), senza solo dall'ultimo fotogramma.
+ */
+async function continueGraphFor(w, media) {
+  const has = await comfy.hasNodes([...CONTINUE_NODES, GUIDE_NODE]);
+  const missing = CONTINUE_NODES.filter((n) => !has[n]);
+  if (missing.length) throw new Error(`Per continuare un video serve un ComfyUI più recente (mancano i nodi: ${missing.join(', ')})`);
+  const video = await comfy.uploadImage(await fs.readFile(path.join(config.paths.media, media.sourceFile)), `chatbz_${path.basename(media.sourceFile)}`);
+  media.continueGuide = !!has[GUIDE_NODE];
+  media.frames = continueFrames(media.seconds, media.continueGuide);
+  return continueGraph(w, { video, prompt: media.prompt, seed: media.seed, seconds: media.seconds, guide: media.continueGuide });
+}
 
 /** Sul PC c'è il rilevamento dei volti (Impact Pack + face_yolov8m)? Lo usano già i workflow che lo richiedono. */
 const faceTools = () => workflows().some((w) => w.available !== false && (w.requires || []).some((r) => r.file === 'bbox/face_yolov8m.pt'));
@@ -56,6 +72,13 @@ export function enqueue(conv, msg, media) {
       media.sourceFile = src.file;
       media.sourceUrl = mediaUrl(src.file);
     }
+    // Pezzo di un video lungo: parte dal pezzo precedente dello stesso messaggio (la coda della GPU è in ordine)
+    if (media.continueOfId && !media.sourceFile) {
+      const src = msg.media.find((x) => x.id === media.continueOfId);
+      if (!src?.file || src.status !== 'done') throw new Error('La parte precedente del video non è riuscita');
+      media.sourceFile = src.file;
+      media.sourceUrl = mediaUrl(src.file);
+    }
     // LoRA del corpo: nello Studio e nelle chat a due quelle del personaggio nella foto, se è uno solo
     const card = conv.studio || conv.group ? store.get(media.characterId || '')?.card : conv.card;
     await renderMedia(media, { ownerId: conv.ownerId, card, signal: ac.signal, onEvent: (e) => emit(conv.id, e) });
@@ -90,14 +113,14 @@ export function enqueue(conv, msg, media) {
  * Usata dalla chat, dallo studio e dalla coda a goccia del social.
  */
 export async function renderMedia(media, { ownerId, card, signal, onEvent = () => {}, noFaces = false }) {
-  const w = getWorkflow(media.workflow, media.type, media.mode);
+  const w = media.mode === 'continue' ? getWorkflow(media.workflow, 'video', 'img2video') : getWorkflow(media.workflow, media.type, media.mode);
   if (!w) throw new Error('Workflow non disponibile su ComfyUI');
   // Immagine di partenza (image to image / image to video / stessa persona): va caricata su ComfyUI
   const upload = async (file) => comfy.uploadImage(await fs.readFile(path.join(config.paths.media, file)), `chatbz_${path.basename(file)}`);
-  const image = media.sourceFile ? await upload(media.sourceFile) : undefined;
+  const image = media.sourceFile && media.mode !== 'continue' ? await upload(media.sourceFile) : undefined;
   const [image2, image3] = await Promise.all((media.extraSources || []).slice(0, 2).map(upload));
 
-  const graph = buildGraph(w, {
+  const graph = media.mode === 'continue' ? await continueGraphFor(w, media) : buildGraph(w, {
     prompt: media.prompt, seed: media.seed,
     width: media.width, height: media.height, frames: media.frames,
     image, image2, image3, denoise: media.denoise,
@@ -139,6 +162,15 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
     media.stack = res.loras;
     media.sampler = res.sampler || undefined;
     if (res.missing.length) console.warn(`[foto] LoRA non installate su ComfyUI, salto: ${res.missing.join(', ')}`);
+  }
+
+  // Video MiniMax H3: LoRA per filtro e per cosa c'è nel video (seno, genitali, bacio), passi e turbo (minimax.js)
+  if (media.type === 'video' && isMinimax(graph)) {
+    const level = media.level || 'neutral';
+    const res = applyVideoStack(graph, { level, needs: media.videoNeeds || videoNeeds(media.prompt, { level, woman: card?.gender !== 'uomo' }), files: await comfyLoras(), variant: media.videoVariant || null });
+    media.stack = res.loras;
+    media.sampler = res.steps || res.shift ? { steps: res.steps, shift: res.shift } : undefined;
+    if (res.missing.length) console.warn(`[video] LoRA non installate su ComfyUI, salto: ${res.missing.join(', ')}`);
   }
 
   let lastPreview = 0;

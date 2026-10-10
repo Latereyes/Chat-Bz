@@ -22,6 +22,7 @@ import * as notify from './src/notify.js';
 import { publicCharacter, draftFromIdea, draftFromPhoto, PHOTO_QUESTION, normalizeCard, RELATIONS, PACES, INTIMACY, STYLES, SOCIAL_HOT } from './src/characters.js';
 import { analyzeBody, BODY, DERIVED, FAMILIES, bodyRange, figureText, installedLoras, normalizeManual, comfyLoras } from './src/body.js';
 import { LORAS, VARIANTS } from './src/krea2.js';
+import { LORAS as VIDEO_LORAS, VARIANTS as VIDEO_VARIANTS } from './src/minimax.js';
 import { updateScene, initialState, DIM_LABEL, intimacyOpen, closeness } from './src/relationship.js';
 
 const app = express();
@@ -121,6 +122,7 @@ app.get('/api/config', wrap(async (req, res) => {
       relations: RELATIONS, paces: PACES, intimacy: INTIMACY, styles: STYLES, socialHot: SOCIAL_HOT, dims: DIM_LABEL,
       // varianti delle LoRA di Krea 2 (banco di prova), scelte anche nello Studio
       kreaVariants: Object.fromEntries(Object.entries(VARIANTS).map(([id, v]) => [id, v.label])),
+      videoVariants: Object.fromEntries(Object.entries(VIDEO_VARIANTS).map(([id, v]) => [id, v.label])),
       body: Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, { label: b.label, short: b.short, hint: b.hint, range: bodyRange(k), sizes: Object.fromEntries(Object.entries(b.sizes).map(([s, [l]]) => [s, l])), strengths: Object.fromEntries(Object.entries(b.sizes).map(([s, [, v]]) => [s, v])) }])),
     },
     models,
@@ -354,6 +356,10 @@ app.post('/api/characters/:id/messages/:messageId/media/:mediaId/animate', wrap(
   const { text, seconds, model } = req.body || {};
   res.json(chat.animateMedia(ownConv(req), req.params.messageId, req.params.mediaId, { text, seconds, model }));
 }));
+app.post('/api/characters/:id/messages/:messageId/media/:mediaId/continue', wrap(async (req, res) => {
+  const { text, seconds, model } = req.body || {};
+  res.json(chat.continueVideo(ownConv(req), req.params.messageId, req.params.mediaId, { text, seconds, model }));
+}));
 app.post('/api/characters/:id/messages/:messageId/media/:mediaId/regenerate', wrap(async (req, res) => {
   res.json(chat.regenerateMedia(ownConv(req), req.params.messageId, req.params.mediaId, { prompt: req.body?.prompt }));
 }));
@@ -374,6 +380,10 @@ app.delete('/api/studio', wrap(async (req, res) => { await studio.clear(store.ge
 app.post('/api/studio/media/:mediaId/cancel', (req, res) => res.json({ ok: store.getStudio(req.user.id).messages.some((m) => m.media?.some((md) => md.id === req.params.mediaId)) && cancel(req.params.mediaId) }));
 app.post('/api/studio/messages/:messageId/media/:mediaId/regenerate', wrap(async (req, res) => {
   res.json(chat.regenerateMedia(store.getStudio(req.user.id), req.params.messageId, req.params.mediaId, { prompt: req.body?.prompt }));
+}));
+app.post('/api/studio/messages/:messageId/media/:mediaId/continue', wrap(async (req, res) => {
+  const { text, seconds, model } = req.body || {};
+  res.json(await studio.continueVideo(store.getStudio(req.user.id), req.params.messageId, req.params.mediaId, { text, seconds, model }));
 }));
 app.post('/api/studio/messages/:messageId/media/:mediaId/animate', wrap(async (req, res) => {
   const { text, seconds, model } = req.body || {};
@@ -473,6 +483,8 @@ const server = app.listen(config.port, config.host, () => {
     const files = (await comfyLoras()) || [];
     const missing = Object.values(LORAS).filter((l) => !files.some((f) => f.replace(/\\/g, '/').split('/').pop() === l.file)).map((l) => l.file);
     if (files.length && missing.length) console.log(`  LoRA di supporto di Krea 2 non trovate su ComfyUI (si saltano): ${missing.join(', ')}`);
+    const missingVideo = Object.values(VIDEO_LORAS).filter((l) => !files.some((f) => f.replace(/\\/g, '/').split('/').pop() === l.file)).map((l) => l.file);
+    if (files.length && missingVideo.length) console.log(`  LoRA dei video MiniMax non trovate su ComfyUI (si saltano): ${missingVideo.join(', ')}`);
   });
   refresh();
   setInterval(refresh, 5 * 60 * 1000);
