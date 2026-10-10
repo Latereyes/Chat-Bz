@@ -233,7 +233,9 @@ test('foto singola con LoRA: ritocco del volto più grande con la stessa LoRA, e
   const prompt = 'A selfie at her desk. She is laughing with her mouth open, eyes squinting. Warm lamp light.';
   assert.equal(applySingleFace(g, CHARACTERS.hitomi, { files: FILES, prompt }), 1);
   const fix = Object.values(g).find((x) => x.class_type === 'DetailerForEach');
-  const filter = g[fix.inputs.segs[0]].inputs;
+  const range = g[fix.inputs.segs[0]];
+  assert.equal(range.class_type, 'ImpactSEGSRangeFilter');   // volti grandi lasciati com'erano
+  const filter = g[range.inputs.segs[0]].inputs;
   assert.deepEqual([filter.target, filter.order], ['area(=w*h)', true]);
   // niente LoRA doppia: il ritocco usa la catena che ha già la LoRA del personaggio
   assert.equal(Object.values(g).filter((x) => x.class_type === 'LoraLoaderModelOnly' && x.inputs.lora_name === 'Krea220Hitomi.safetensors').length, before);
@@ -290,13 +292,13 @@ test('ritocco del volto: senza LoRA del corpo, NSFW e pose (deformano il primo p
   } finally { FACE_CHAIN.full = false; }
 });
 
-test('foto singola: con maxFace un volto già grande non si ritocca', async () => {
+test('foto singola: un volto già grande non si ritocca (maxFace)', async () => {
   const { applySingleFace } = await import('../src/photo.js');
   const { SINGLE_FACE } = await import('../src/krea2.js');
   const g = structuredClone(KREA.graph);
   applyPhotoStack(g, { level: 'neutral', files: FILES, charLoras: [CHARACTERS.hitomi.lora] });
-  SINGLE_FACE.maxFace = 350;
-  try { applySingleFace(g, CHARACTERS.hitomi, { files: FILES }); } finally { SINGLE_FACE.maxFace = 0; }
+  assert.equal(SINGLE_FACE.maxFace, 350);
+  applySingleFace(g, CHARACTERS.hitomi, { files: FILES });
   const fix = Object.values(g).find((x) => x.class_type === 'DetailerForEach');
   const range = g[fix.inputs.segs[0]];
   assert.equal(range.class_type, 'ImpactSEGSRangeFilter');
