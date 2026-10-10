@@ -8,8 +8,8 @@ import * as store from './store.js';
 import { gpu } from './gpu.js';
 import { getWorkflow, buildGraph, workflows } from './workflows.js';
 import { bodyLoras, withDerived, installedLoras, bodyFamily, lenovoLora, comfyLoras } from './body.js';
-import { applyPhotoStack, applyDuoFaces, applySingleFace, faceDenoise } from './photo.js';
-import { DUO_BODY } from './krea2.js';
+import { applyPhotoStack, applyDuoFaces, applySingleFace, faceDenoise, contactOf } from './photo.js';
+import { DUO_BODY, DUO_FACES } from './krea2.js';
 
 /** Sul PC c'è il rilevamento dei volti (Impact Pack + face_yolov8m)? Lo usano già i workflow che lo richiedono. */
 const faceTools = () => workflows().some((w) => w.available !== false && (w.requires || []).some((r) => r.file === 'bbox/face_yolov8m.pt'));
@@ -123,10 +123,12 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
       res.loras.push({ key: 'face', label: 'volto ritoccato', strength: faceDenoise(media.level) });
     }
     if (faces) {
-      const persons = await hasUltralytics(DUO_BODY.model);
-      media.facesFixed = applyDuoFaces(graph, media.duoFaces, { files, seed: media.seed, persons, level: media.level });
+      const found = await hasUltralytics(DUO_BODY.model);
+      // se si toccano la persona non si ritocca (il ritaglio prenderebbe anche l'altra)
+      const persons = found && !(DUO_FACES.contact !== false && contactOf(media.prompt));
+      media.facesFixed = applyDuoFaces(graph, media.duoFaces, { files, seed: media.seed, persons, level: media.level, prompt: media.prompt });
       res.loras.push(...media.duoFaces.map((f, i) => f && { key: 'face', label: `${persons ? 'persona e volto' : 'volto'} ${i + 1}: ${f.file.replace(/\.safetensors?$/i, '')}`, strength: f.strength }).filter(Boolean));
-      if (!persons) console.warn(`[foto] foto a due: manca ultralytics/${DUO_BODY.model}, ritocco solo i volti (il fisico viene dalle parole)`);
+      if (!found) console.warn(`[foto] foto a due: manca ultralytics/${DUO_BODY.model}, ritocco solo i volti (il fisico viene dalle parole)`);
     }
     media.lenovoUsed = res.lenovo;
     media.loras = res.body;

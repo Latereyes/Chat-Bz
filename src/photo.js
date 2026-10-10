@@ -321,7 +321,10 @@ export async function engineerDuoPhoto({ workflow, cards, states, scene, media, 
 /** Tutta la persona per il ritocco con la sua LoRA (fisico della LoRA, vestiti e posa della scena). */
 export const bodyText = (card) => [card.lora?.trigger, `photo of an ${WHO(card)}`, clip(visualSignature(card.look, 'explicit'), 300), figureText(card), 'same pose, same clothes and same place as in the image, natural skin texture, real photo'].filter(Boolean).join(', ');
 // Frasi del prompt che parlano dell'espressione: il ritocco del volto le ripete, così non la appiattisce
-const EXPRESSION = /\b(?:smil\w*|laugh\w*|grin\w*|express\w*|mouth|lips?|bit(?:es|ing) (?:her|his) lip|eyes?|gaz\w*|look(?:s|ing)? (?:at|up|down|away|into)|wink\w*|blush\w*|frown\w*|pout\w*|moan\w*|tongue|teeth|tears?|cry\w*|surpris\w*|shy|teasing|playful|seductive|sleepy|tired|orgasm\w*|pleasure|parted)\b/i;
+const EXPRESSION = /\b(?:smil\w*|laugh\w*|grin\w*|express\w*|mouth|lips?|bit(?:es|ing) (?:her|his) lip|kiss\w*|eyes?|gaz\w*|look(?:s|ing)? (?:at|up|down|away|into)|wink\w*|blush\w*|frown\w*|pout\w*|moan\w*|tongue|teeth|tears?|cry\w*|surpris\w*|shy|teasing|playful|seductive|sleepy|tired|orgasm\w*|pleasure|parted)\b/i;
+// Le due persone si toccano (bacio, abbraccio, sesso): il ritaglio di una prende anche l'altra
+const CONTACT = /\b(?:kiss\w*|hug\w*|embrac\w*|cuddl\w*|snuggl\w*|in each other's arms|arms? around|holding each other|intertwined|straddl\w*|on (?:her|his) lap|sitting on (?:her|his)|on top of (?:her|him)|between (?:her|his) legs|lips? (?:touch\w*|lock\w*|press\w*))\b/i;
+export const contactOf = (prompt) => CONTACT.test(String(prompt || ''));
 export function expressionOf(prompt) {
   return String(prompt || '').split(/(?<=[.;])\s+/).filter((s) => EXPRESSION.test(s)).slice(0, 2).map((s) => clip(s, 200)).join(' ');
 }
@@ -350,8 +353,14 @@ export function duoLoras(cards, family, mode = 'text2img') {
  * senza le LoRA dei volti nella catena principale. faces[i] = volto i-esimo da sinistra (null = lascialo com'è).
  * Restituisce quanti volti ritocca (0 = grafo invariato).
  */
-export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = false, single = false, level = 'neutral' } = {}) {
+export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = false, single = false, level = 'neutral', prompt = '' } = {}) {
   const explicit = level === 'explicit';
+  // prova sul PC 2026-10-10: nel bacio il ritocco della persona cambiava vestiti e posa e quello del volto girava il viso
+  // verso la camera; senza l'espressione nel testo i sorrisi si spegnevano
+  const contact = !single && DUO_FACES.contact !== false && contactOf(prompt);
+  if (contact) persons = false;
+  const expression = single || DUO_FACES.expression === false ? '' : expressionOf(prompt);
+  const faceOf = (f) => (expression && f.text ? `${f.text}, ${expression}, exactly the same facial expression, mouth, eye direction and head angle as in the image` : f.text);
   if (bodyFamily(graph) !== 'krea2' || !faces?.some(Boolean)) return 0;
   const ids = Object.keys(graph);
   const save = ids.find((id) => graph[id].class_type === 'SaveImage');
@@ -399,7 +408,7 @@ export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = 
   const det = node('UltralyticsDetectorProvider', { model_name: 'bbox/face_yolov8m.pt' });
   const segs = node('BboxDetectorSEGS', { bbox_detector: [det, 0], image, threshold: 0.5, dilation: 10, crop_factor: DUO_FACES.cropFactor, drop_size: 10, labels: 'all' });
   let done = 0;
-  faces.forEach((f, i) => { if (loras[i]) { fixOne(i, segs, f.text, { denoise: single ? faceDenoise(level) : explicit ? DUO_FACES.explicitDenoise : DUO_FACES.denoise, label: 'Ritocco volto' }); done++; } });
+  faces.forEach((f, i) => { if (loras[i]) { fixOne(i, segs, faceOf(f), { denoise: single ? faceDenoise(level) : contact ? DUO_FACES.contactDenoise : explicit ? DUO_FACES.explicitDenoise : DUO_FACES.denoise, label: 'Ritocco volto' }); done++; } });
   if (done) graph[save].inputs.images = image;
   return done;
 }

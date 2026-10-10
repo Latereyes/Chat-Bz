@@ -305,3 +305,23 @@ test('foto singola: un volto già grande non si ritocca (maxFace)', async () => 
   assert.equal(range.inputs.max_value, Math.round(350 * 2.5));   // misura il ritaglio, non il volto
   assert.equal(g[range.inputs.segs[0]].class_type, 'ImpactSEGSOrderedFilter');   // prima il più grande, poi il limite
 });
+
+test('foto a due: espressione nel ritocco del volto; se si toccano niente ritocco della persona e volto più leggero', async () => {
+  const { applyDuoFaces, contactOf } = await import('../src/photo.js');
+  const { DUO_FACES } = await import('../src/krea2.js');
+  const run = (prompt) => {
+    const g = structuredClone(KREA.graph);
+    applyPhotoStack(g, { level: 'neutral', files: FILES });
+    applyDuoFaces(g, [{ file: 'Krea220Hitomi.safetensors', text: 'H1t0m1, face', body: 'H1t0m1, body' }, null], { files: FILES, persons: true, prompt });
+    return Object.values(g).filter((x) => x.class_type === 'DetailerForEach').map((x) => ({ denoise: x.inputs.denoise, text: g[x.inputs.positive[0]].inputs.text }));
+  };
+  const bar = run('Two women at a bar. Both are laughing with their mouths open. Warm light.');
+  assert.equal(bar.length, 2);
+  assert.match(bar[1].text, /laughing with their mouths open/);
+  assert.equal(bar[1].denoise, DUO_FACES.denoise);
+  const kiss = run('Two women kissing on a sofa, lips touching, eyes closed.');
+  assert.equal(kiss.length, 1);   // solo il volto
+  assert.equal(kiss[0].denoise, DUO_FACES.contactDenoise);
+  assert.match(kiss[0].text, /kissing/);
+  assert.ok(!contactOf('Two women standing side by side at a bar'));
+});

@@ -40,6 +40,7 @@ const VARIANTI = {
   'denoise-alto': { label: 'Catena pulita, denoise +0.25', set: plus(0.25) },
   'sampler-beta': { label: 'Catena pulita, 12 passi beta (come la foto esplicita)', set: () => { Object.assign(DUO_FACES, { steps: 12, scheduler: 'beta' }); } },
   'senza-maschera': { label: 'Catena pulita, ridisegna tutto il ritaglio (niente maschera)', set: () => { DUO_FACES.noiseMask = false; } },
+  'a-due-come-prima': { label: 'Foto a due: niente espressione nel ritocco, ritocco della persona anche se si toccano', set: () => { Object.assign(DUO_FACES, { expression: false, contact: false }); } },
   'contesto-largo': { label: 'Catena pulita, più contesto (crop 3.5)', set: () => { DUO_FACES.cropFactor = 3.5; } },
 };
 
@@ -85,7 +86,8 @@ await fs.mkdir(dir, { recursive: true });
 const tmpOwner = '_prove-volti';
 
 const saved = JSON.stringify({ SINGLE_FACE, DUO_FACES, FACE_CHAIN });
-const restore = () => { const s = JSON.parse(saved); Object.assign(SINGLE_FACE, s.SINGLE_FACE); Object.assign(DUO_FACES, s.DUO_FACES); Object.assign(FACE_CHAIN, s.FACE_CHAIN); };
+const reset = (obj, from) => { for (const k of Object.keys(obj)) if (!(k in from)) delete obj[k]; Object.assign(obj, from); };
+const restore = () => { const s = JSON.parse(saved); reset(SINGLE_FACE, s.SINGLE_FACE); reset(DUO_FACES, s.DUO_FACES); reset(FACE_CHAIN, s.FACE_CHAIN); };
 // campi decisi da renderMedia: si tolgono, così ogni variante parte dalla stessa richiesta
 const OUTPUT = ['file', 'status', 'finishedAt', 'stack', 'loras', 'lenovoUsed', 'facesFixed', 'facesError', 'error', 'sourceFile', 'sourceUrl'];
 
