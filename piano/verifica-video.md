@@ -94,7 +94,8 @@ Annota qui esiti e valori scelti, un commit per ogni correzione, `npm test` verd
 | 2. verifica dei grafi | OK (2026-10-10) | ComfyUI 0.39.0: nodi nuovi, MiniMaxH3AddGuide, SigmaShift e tutte le LoRA presenti. Lo strumento dava falsi allarmi su SaveVideo (`format.codec…`): corretto, ora capisce i menu annidati |
 | 3. prova tecnica con guida | OK | 5,17 s + 3 s → 8,71 s (107 fotogrammi generati, 85 nuovi: 13 in più per l'arrotondamento a 17k+5). Giunzione senza salti né fotogrammi ripetuti, audio continuo e a tempo. 85 s |
 | 3. prova tecnica senza guida | OK, ma peggio | 5,17 s + 3 s → 8,17 s esatti. Alla giunzione il movimento quasi si ferma per qualche fotogramma e l'audio cala di colpo. 114 s. Si tiene la guida |
-| 4. Studio 20 s / 30 s | | |
-| 4. Continua | | |
-| 4. chat 20 s | | |
+| 4. Studio 20 s / 30 s | 20 s OK, 30 s da rifare | 20 s da una foto allegata: usciva un pezzo solo da 10 s (corretto in `studio.js`); dopo la correzione 2 pezzi, 10,1 s e 20,75 s, giunzione liscia, audio continuo, 142 + 171 s. 30 s (text to video): parte 1 OK, parte 2 «ComfyUI non ha restituito alcun file» anche se ComfyUI l'aveva salvata (la history non era ancora scritta: corretto in `comfy.js`), parte 3 «La parte precedente del video non è riuscita» come previsto. Da rifare con la correzione |
+| 4. Continua | OK | +5 s su un video da 10 s → 15,8 s, giunzione liscia, 108 s. Il prompt della parte nuova parlava di «<Picture 1>» e ridescriveva la scena: corretto (`continuePrompt` e `partLine`) |
+| 4. chat 20 s | OK, giunzione da migliorare | 2 pezzi, 20,75 s, 151 + 185 s; prompt della parte 2 pulito. Alla giunzione (scena con gesti delle mani) circa 1 s di fotogrammi mossi e sfocati con un piccolo scatto dell'inquadratura, poi torna nitido. Da provare `OVERLAP` 39 |
+| 4. telefono, chat a due, esplicito | non fatte | |
 | LoRA (`piano/video.md`) | | |
