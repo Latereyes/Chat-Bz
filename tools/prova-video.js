@@ -4,13 +4,15 @@
  * cambia una cosa alla volta (passi, turbo, risoluzione, LoRA, durata). Serve a trovare il punto giusto tra tempo di
  * generazione e qualità, che qui vuol dire soprattutto niente artefatti nelle zone in movimento (mani, capelli).
  *
- *   node tools/prova-video.js --foto data/media/<id>/<foto>.png [--varianti base,passi12,…] [--secondi 5] [--seed 42]
+ *   node tools/prova-video.js --foto data/media/<id>/<foto>.png | --personaggio Hitomi [--varianti base,passi12,…] [--secondi 5] [--seed 42]
  *     [--filtro neutral|sensual|explicit] [--uomo] [--nome marco] [--prompt "…"]
  *
  * Le varianti sono quelle qui sotto (passi, turbo, risoluzione) oppure quelle del menu «LoRA e passi video» dello Studio
  * (src/minimax.js: senza-hmnsfw, hmnsfw-12, senza-genitali, senza-seno, senza-nuove…). Le LoRA «quando servono»
  * (seno, Vagina, Penis V2, bacio) si agganciano come in chat, da cosa dice il prompt: con --filtro explicit e senza
  * --prompt si usa una scena esplicita di prova (cowgirl POV) che le aggancia tutte.
+ * --personaggio "Nome": invece di --foto, l'ultima foto finita di quel personaggio in chat (con --filtro explicit
+ * preferisce le sue foto esplicite, poi le sensuali). Per l'esplicito usa Hitomi: è un personaggio inventato.
  *
  * I video vanno in data/prova-video/banco/[<nome>-]<variante>[-<filtro>]-<secondi>s.mp4, i tempi in data/prova-video/banco/tempi.json.
  * Con l'agent del PC acceso chiede il permesso della GPU (priorità bassa: chi usa ChatBz passa prima); senza agent
@@ -23,6 +25,7 @@ import * as comfy from '../src/comfy.js';
 import { loadWorkflows, buildGraph } from '../src/workflows.js';
 import { applyVideoStack, videoNeeds, leadPrompt, VARIANTS as VIDEO_VARIANTS } from '../src/minimax.js';
 import * as agent from '../src/gpu-agent.js';
+import * as store from '../src/store.js';
 
 const args = process.argv.slice(2);
 const opt = (name, def) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : def; };
@@ -78,9 +81,21 @@ function applyVariant(graph, v) {
   }
 }
 
+/** Ultima foto finita di un personaggio nelle sue chat; con un filtro preferisce le foto di quel filtro (poi le sensuali). */
+function photoOf(name, level) {
+  const conv = store.list().find((c) => c.card?.name?.toLowerCase().startsWith(String(name).toLowerCase()));
+  if (!conv) return null;
+  const photos = conv.messages.flatMap((m) => m.media || []).filter((md) => md.type === 'image' && md.status === 'done' && md.file)
+    .sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
+  const pick = photos.find((md) => md.level === level) || (level === 'explicit' && photos.find((md) => md.level === 'sensual')) || photos[0];
+  return pick ? path.join(config.paths.media, pick.file) : null;
+}
+
 async function main() {
-  const foto = opt('--foto');
-  if (!foto || !fs.existsSync(foto)) { console.log('Serve --foto <immagine di partenza>'); process.exit(1); }
+  const who = opt('--personaggio');
+  const foto = opt('--foto') || (who && photoOf(who, opt('--filtro', 'neutral')));
+  if (who && !opt('--foto')) console.log(foto ? `Foto di partenza: ${foto}` : `Nessuna foto finita di «${who}» nelle sue chat: fagliene fare una o usa --foto`);
+  if (!foto || !fs.existsSync(foto)) { console.log('Serve --foto <immagine di partenza> oppure --personaggio "Nome"'); process.exit(1); }
   const seconds = Number(opt('--secondi', 5));
   const seed = Number(opt('--seed', 42));
   const level = opt('--filtro', 'neutral');

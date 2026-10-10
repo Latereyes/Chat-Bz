@@ -147,13 +147,14 @@ Sospetti, in ordine:
 3. **La LoRA del seno a 1.3.**
 
 ### Prova (una causa alla volta, stessa foto e stesso seed)
-Con ChatBz fermo, una foto di partenza esplicita o in intimo di un personaggio:
+**Usa Hitomi**: è un personaggio inventato (LoRA `Krea220Hitomi`, parola chiave H1t0m1), non una persona reale. Le prove esplicite si fanno solo con lei. Con ChatBz fermo:
 ```powershell
-node tools/prova-video.js --foto data\media\<id>\<foto>.png --filtro explicit --nome esplicito --varianti base,senza-hmnsfw,hmnsfw-12,senza-genitali,senza-seno,senza-nuove
+node tools/prova-video.js --personaggio Hitomi --filtro explicit --nome hitomi --varianti base,senza-hmnsfw,hmnsfw-12,senza-genitali,senza-seno,senza-nuove
 ```
-Senza `--prompt` usa una scena di prova (cowgirl POV) che aggancia tutte le LoRA, come in chat (anche `HMPenis, front view` in testa). Per ogni variante stampa passi e LoRA usate. I video vanno in `data\prova-video\banco\esplicito-<variante>-explicit-5s.mp4`.
+`--personaggio Hitomi` prende l'ultima sua foto esplicita finita in chat (se non c'è, l'ultima sensuale). Se non ne ha, chiedile prima una foto esplicita in chat, oppure passa una sua foto con `--foto data\media\<id>\<foto>.png`.
+Senza `--prompt` usa una scena di prova (cowgirl POV) che aggancia tutte le LoRA, come in chat (anche `HMPenis, front view` in testa). Per ogni variante stampa passi e LoRA usate. I video vanno in `data\prova-video\banco\hitomi-<variante>-explicit-5s.mp4`.
 
-Le stesse varianti sono anche nello Studio (menu «LoRA e passi video»), per provarle a mano con lo stesso seed.
+Le stesse varianti sono anche nello Studio (menu «LoRA e passi video», «Chi»: Hitomi), per provarle a mano con lo stesso seed.
 
 | Se è buono… | …vuol dire | Correzione in `src/minimax.js` (`PROFILE.explicit`) |
 |---|---|---|
