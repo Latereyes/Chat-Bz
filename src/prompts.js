@@ -145,7 +145,7 @@ export function tools({ canAnimate }) {
         activity: { type: 'string', description: 'What you are doing.' },
         outfit: { type: 'string', description: 'What you are wearing now (English, concrete).' },
         mood: { type: 'string', description: 'Your mood.' },
-        intimacy: { type: 'string', enum: ['none', 'flirt', 'intimate'], description: 'What the moment is: none, flirty, or intimate/sexual.' },
+        intimacy: { type: 'string', enum: ['none', 'flirt', 'intimate'], description: 'What the moment is: none, flirty, or intimate/sexual (only if something sexual is actually happening now, not for an invitation or a plan).' },
       } },
     } },
   ];
@@ -344,7 +344,7 @@ Reply ONLY with JSON: {"memories": [{"from": [numbers of the source memories], "
 /** Controllo di riserva della scena: il modello non ha chiamato update_scene, ma la situazione forse è cambiata. */
 export function sceneCheckPrompt({ card, scene, user, reply }) {
   return [
-    { role: 'system', content: `You track the situation of a roleplay between ${card.name} and the user. Given the current scene and the last exchange, decide whether the situation has ACTUALLY changed in this exchange (not just proposed, planned or wished). Examples of real changes: the user arrived and they are now face to face; someone left; they moved somewhere else; clothes changed; the moment became flirty or intimate, or calmed down. Reply ONLY with JSON:
+    { role: 'system', content: `You track the situation of a roleplay between ${card.name} and the user. Given the current scene and the last exchange, decide whether the situation has ACTUALLY changed in this exchange (not just proposed, planned or wished). Examples of real changes: the user arrived and they are now face to face; someone left; they moved somewhere else; clothes changed; the moment became flirty or intimate, or calmed down. "intimate" means something sexual is actually happening now (undressing, making out, sex), not an invitation or a plan to meet. Reply ONLY with JSON:
 {"changed": true|false, "presence": "apart"|"together", "place": "short, Italian", "activity": "short, Italian", "outfit": "English, concrete, only if it changed", "intimacy": "none"|"flirt"|"intimate"}
 If nothing changed, reply {"changed": false}. Include only the fields that changed.` },
     { role: 'user', content: `Current scene: ${JSON.stringify({ presence: scene.presence, place: scene.place, activity: scene.activity, outfit: scene.outfit, intimacy: scene.intimacy })}

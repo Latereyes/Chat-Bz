@@ -70,6 +70,24 @@ export function recentExchanges(messages, idx, n) {
   return out.filter((e) => e.user || e.reply).slice(-n);
 }
 
+// Vestiti decisi qualche messaggio fa (prova sul PC 2026-10-10: Hitomi col vestito blu scelto in chat usciva col top nero,
+// perché in Normale Gemma vede solo l'ultimo messaggio)
+const CLOTHES = /\b(?:vestit\w*|abit\w*|gonn\w*|top|maglion\w*|magli\w*|camici\w*|jeans|pantalon\w*|shorts?|giacc\w*|cappott\w*|felp\w*|reggiseno|intimo|lingerie|costume|bikini|tacchi|scarpe|stival\w*|calze|collant|tailleur|dress|skirt|shirt|blouse|sweater|jacket|coat|heels|boots|swimsuit|outfit)\b/i;
+export function outfitNotes(messages, idx, n = 12) {
+  if (!messages?.length) return '';
+  // fino all'ultimo messaggio dell'utente escluso: quello e la risposta la richiesta li mostra già
+  let end = idx == null ? messages.length - 1 : idx;
+  while (end >= 0 && messages[end].role !== 'user') end--;
+  const said = [];
+  for (const m of messages.slice(Math.max(0, end - n), Math.max(0, end))) {
+    if (m.role !== 'user' && m.role !== 'assistant') continue;
+    for (const sentence of String(m.content || '').split(/(?<=[.!?\n])\s+/)) if (CLOTHES.test(sentence)) said.push(clip(sentence.replace(/\*+/g, ''), 200));
+  }
+  return said.slice(-3).join(' / ');
+}
+const timeLine = (when) => `Local time: ${when} (if the conversation clearly sets another time of day, follow the conversation).`;
+const outfitLine = (o) => (o ? `Clothes mentioned earlier in the conversation (keep them unless the latest messages change them): ${o}` : null);
+
 const clip = (t, n) => { const x = String(t || '').trim(); return x.length > n ? `${x.slice(0, n)}…` : x; };
 
 /**
@@ -192,7 +210,7 @@ export const LOOK_TAG = 'After the prompt, on a last line of its own, write [loo
  * exchanges: recentExchanges(...) (in Normale solo il messaggio dell'utente); fromText: la foto nasce da una riserva
  * testuale (la descrizione sarebbe il messaggio stesso: non si ripete).
  */
-export function photoRequest({ card, state, media, level, exchanges = [], user, family, hm, fromText = false, now = new Date() }) {
+export function photoRequest({ card, state, media, level, exchanges = [], user, family, hm, fromText = false, outfits = '', now = new Date() }) {
   const s = state.scene || {};
   const together = s.presence === 'together';
   const man = card.gender === 'uomo';
@@ -208,7 +226,8 @@ export function photoRequest({ card, state, media, level, exchanges = [], user, 
   return [
     `Subject: ${WHO(card)}. Appearance (keep it exactly, it defines who this is): ${visualSignature(card.look, level) || '(not specified)'}`,
     fig ? `Figure (keep these proportions exactly and clearly visible${level === 'neutral' ? ', through the clothes' : ''}): ${fig}.` : null,
-    `Situation: ${together ? `in person with the viewer${viewer ? ` (${viewer})` : ''}` : 'apart, texting'}${s.place ? `, at ${s.place}` : ''}${s.activity ? `, ${s.activity}` : ''}. Local time: ${when}.${s.outfit ? ` Currently wearing: ${s.outfit}.` : ''}`,
+    `Situation: ${together ? `in person with the viewer${viewer ? ` (${viewer})` : ''}` : 'apart, texting'}${s.place ? `, at ${s.place}` : ''}${s.activity ? `, ${s.activity}` : ''}. ${timeLine(when)}${s.outfit ? ` Currently wearing: ${s.outfit}.` : ''}`,
+    outfitLine(outfits),
     convo ? `Conversation (most recent last; it may be in Italian):\n${convo}` : null,
     fromText ? 'What the photo should show: what the latest message asks for, in this situation.' : `What the photo should show (written by the character): ${media.description}`,
     rules({ level, together, man, family, hm }),
@@ -230,7 +249,7 @@ export async function engineerPhoto({ workflow, card, state, media, messages, id
   const together = state.scene?.presence === 'together';
   const useHm = level === 'explicit' && family === 'krea2' && 'hmnsfw' in profileFor('explicit', variant).loras;
   const hm = useHm ? hmTokens([...exchanges].reverse().flatMap((e) => [e.user, e.reply]).concat(fromText ? [] : [media.description]), { together }) : null;
-  const request = photoRequest({ card, state, media, level, exchanges, user, family, hm, fromText });
+  const request = photoRequest({ card, state, media, level, exchanges, user, family, hm, fromText, outfits: outfitNotes(messages, idx) });
   const charLora = family === 'krea2' && card.lora?.file ? card.lora : null;
   const result = { level, reason, hm, request, charLora: !!charLora, lenovo: hasLenovo(family) ? true : null, prompt: '' };
   if (dryRun) return { ...result, prompt: finishPrompt('(prompt di Gemma)', { hm, trigger: charLora?.trigger }) };
@@ -263,7 +282,7 @@ export function duoLevel({ cards, states, scene, userText = '', reply = '' }) {
 }
 
 /** Richiesta al prompt engineer per una foto dei due personaggi insieme. fromImage: grafo «due foto profilo» (Qwen). */
-export function duoPhotoRequest({ cards, scene = {}, media, level, exchanges = [], user, family, hm, fromText = false, fromImage = false, now = new Date() }) {
+export function duoPhotoRequest({ cards, scene = {}, media, level, exchanges = [], user, family, hm, fromText = false, fromImage = false, outfits = '', now = new Date() }) {
   const together = scene.presence === 'together';
   const when = now.toLocaleString('en-GB', { weekday: 'long', hour: '2-digit', minute: '2-digit' });
   const name = user?.name || 'User';
@@ -280,7 +299,8 @@ export function duoPhotoRequest({ cards, scene = {}, media, level, exchanges = [
     ...people,
     'Positions: Person 1 is on the LEFT of the frame and Person 2 on the RIGHT (say it explicitly, e.g. "on the left, ...; on the right, ..."). Each one keeps their own clothes, hair and features: never swap or mix them. When the conversation gives someone an outfit or an action by name, give it to that person. Names are only for you: in the prompt describe the people, never write their names.',
     fromImage ? 'The input images are only for identity (faces, hair, bodies): describe outfits and a scene that fit this moment, not the clothes or background of the input images.' : null,
-    `Situation: ${together ? 'in person with the viewer' : 'the two of them together, texting the viewer'}${scene.place ? `, at ${scene.place}` : ''}${scene.activity ? `, ${scene.activity}` : ''}. Local time: ${when}.${scene.outfit ? ` Currently wearing: ${scene.outfit}.` : ''}`,
+    `Situation: ${together ? 'in person with the viewer' : 'the two of them together, texting the viewer'}${scene.place ? `, at ${scene.place}` : ''}${scene.activity ? `, ${scene.activity}` : ''}. ${timeLine(when)}${scene.outfit ? ` Currently wearing: ${scene.outfit}.` : ''}`,
+    outfitLine(outfits),
     convo ? `Conversation (most recent last; it may be in Italian; their replies are labelled with their names):\n${convo}` : null,
     fromText ? 'What the photo should show: what the latest message asks for, in this situation.' : `What the photo should show: ${media.description}`,
     rules({ level, together, family, hm, two: true }),
@@ -301,7 +321,7 @@ export async function engineerDuoPhoto({ workflow, cards, states, scene, media, 
   const exchanges = messages ? recentExchanges(messages, idx, EXCHANGES[level]) : [{ user: userText, reply }].filter((e) => e.user || e.reply);
   const useHm = level === 'explicit' && family === 'krea2' && 'hmnsfw' in profileFor('explicit').loras && workflow.mode === 'text2img';
   const hm = useHm ? hmTokens([...exchanges].reverse().flatMap((e) => [e.user, e.reply]).concat(fromText ? [] : [media.description]), { together: scene?.presence === 'together' }) : null;
-  const request = duoPhotoRequest({ cards, scene, media, level, exchanges, user, family, hm, fromText, fromImage: workflow.mode === 'duo' });
+  const request = duoPhotoRequest({ cards, scene, media, level, exchanges, user, family, hm, fromText, fromImage: workflow.mode === 'duo', outfits: outfitNotes(messages, idx) });
   const { charLoras, duoFaces, trigger } = duoLoras(cards, family, workflow.mode);
   const result = { level, reason: lv.reason, hm, request, charLoras, duoFaces, lenovo: hasLenovo(family) ? true : null, prompt: '' };
   if (dryRun) return { ...result, prompt: finishPrompt('(prompt di Gemma)', { hm, trigger }) };
