@@ -27,7 +27,7 @@ export const LORAS = {
 
 /**
  * Profilo per filtro: { loras: { chiave: forza }, turbo?, steps?, shift? }. IPOTESI da tarare sul PC (Studio, menu
- * «LoRA video»). turbo/steps: con HMNSFW l'autore consiglia turbo 0.5 e 12 passi (il workflow ha turbo 1 e 8 passi).
+ * «LoRA video»). turbo/steps: con HMNSFW l'autore consiglia turbo 0.5 e 12 passi (il workflow ha turbo 1 e 6 passi a 0,7 MP: prova sul PC 2026-10-10, piano/verifica-video.md punto 7).
  * Le LoRA con «when» si usano solo se il video lo richiede (vedi videoNeeds).
  */
 export const PROFILE = {
