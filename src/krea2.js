@@ -81,8 +81,11 @@ export function profileFor(level, variant) {
  */
 // Foto a due: la scena nasce senza le LoRA dei volti, quindi il ritocco non può essere minimo (il volto viene solo da qui);
 // in esplicito un po' più leggero per tenere l'espressione.
+// sceneLoras: true = la scena nasce con le due LoRA insieme (0.8, il fisico e il contatto vengono bene ma i volti si
+// mescolano) e poi si ritoccano solo i volti, ognuno con la sua; false = scena senza LoRA, poi persona e volto.
+// In prova (2026-10-10): Andrea preferiva la foto «senza ritocco» nel bacio e per il fisico di Hitomi.
 // contactDenoise: quando si toccano (bacio, abbraccio) più leggero, per non girare i visi e non staccare le labbra
-export const DUO_FACES = { denoise: 0.5, explicitDenoise: 0.42, contactDenoise: 0.38, steps: 8, cfg: 1, sampler: 'euler', scheduler: 'simple', cropFactor: 2.5, guideSize: 1024, feather: 8 };
+export const DUO_FACES = { sceneLoras: false, denoise: 0.5, explicitDenoise: 0.42, contactDenoise: 0.38, steps: 8, cfg: 1, sampler: 'euler', scheduler: 'simple', cropFactor: 2.5, guideSize: 1024, feather: 8 };
 /**
  * Prima del volto, se sul PC c'è il rilevamento delle persone (segm/person_yolov8m-seg.pt), si ritocca tutta la persona
  * con la sua LoRA: così il fisico viene dalla LoRA e non solo dalle parole della scheda. denoise più basso del volto,

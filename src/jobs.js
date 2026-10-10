@@ -113,7 +113,7 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
     const faces = !noFaces && family === 'krea2' && media.mode === 'text2img' && media.duoFaces?.some(Boolean) && faceTools();
     const res = applyPhotoStack(graph, {
       level: media.level || 'neutral', lenovo, lenovoFile: lenovo ? await lenovoLora(family) : null,
-      bodyLoras: body, charLoras: faces ? [] : media.charLoras || (media.charLora && card?.lora ? [card.lora] : []), prompt: media.prompt, files, variant: media.variant || null,
+      bodyLoras: body, charLoras: faces && !DUO_FACES.sceneLoras ? [] : media.charLoras || (media.charLora && card?.lora ? [card.lora] : []), prompt: media.prompt, files, variant: media.variant || null,
       stack: media.mode === 'text2img' || media.mode === 'img2img', sampler: media.mode === 'text2img',
     });
     // Un solo personaggio con la sua LoRA: ritocco del volto con la stessa LoRA (somiglianza anche da lontano)
@@ -125,7 +125,8 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
     if (faces) {
       const found = await hasUltralytics(DUO_BODY.model);
       // se si toccano la persona non si ritocca (il ritaglio prenderebbe anche l'altra)
-      const persons = found && !(DUO_FACES.contact !== false && contactOf(media.prompt));
+      // con le LoRA già nella scena (sceneLoras) il fisico viene da lì: si ritoccano solo i volti
+      const persons = found && !DUO_FACES.sceneLoras && !(DUO_FACES.contact !== false && contactOf(media.prompt));
       media.facesFixed = applyDuoFaces(graph, media.duoFaces, { files, seed: media.seed, persons, level: media.level, prompt: media.prompt });
       res.loras.push(...media.duoFaces.map((f, i) => f && { key: 'face', label: `${persons ? 'persona e volto' : 'volto'} ${i + 1}: ${f.file.replace(/\.safetensors?$/i, '')}`, strength: f.strength }).filter(Boolean));
       if (!found) console.warn(`[foto] foto a due: manca ultralytics/${DUO_BODY.model}, ritocco solo i volti (il fisico viene dalle parole)`);

@@ -42,6 +42,8 @@ const VARIANTI = {
   'sampler-beta': { label: 'Catena pulita, 12 passi beta (come la foto esplicita)', set: () => { Object.assign(DUO_FACES, { steps: 12, scheduler: 'beta' }); } },
   'senza-maschera': { label: 'Catena pulita, ridisegna tutto il ritaglio (niente maschera)', set: () => { DUO_FACES.noiseMask = false; } },
   'a-due-come-prima': { label: 'Foto a due: niente espressione nel ritocco, ritocco della persona anche se si toccano', set: () => { Object.assign(DUO_FACES, { expression: false, contact: false }); } },
+  'lora-e-volti': { label: 'Foto a due: scena con le due LoRA a 0.8, poi solo i volti', set: () => { DUO_FACES.sceneLoras = true; } },
+  'lora-e-volti-leggero': { label: 'Foto a due: scena con le due LoRA, volti ritoccati più leggeri (-0.1)', set: () => { DUO_FACES.sceneLoras = true; plus(-0.1)(); DUO_FACES.contactDenoise = Math.round((DUO_FACES.contactDenoise - 0.1) * 100) / 100; } },
   'contesto-largo': { label: 'Catena pulita, più contesto (crop 3.5)', set: () => { DUO_FACES.cropFactor = 3.5; } },
 };
 
