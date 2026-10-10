@@ -87,7 +87,9 @@ export function profileFor(level, variant) {
 // quelli preferiti da Andrea e i volti somigliano di più; resta un caso (Hitomi+Alessia) dove il ritocco cambia
 // un po' il viso di Hitomi, che nella scena era già perfetto.
 // contactDenoise: quando si toccano (bacio, abbraccio) più leggero, per non girare i visi e non staccare le labbra
-export const DUO_FACES = { sceneLoras: true, denoise: 0.5, explicitDenoise: 0.42, contactDenoise: 0.38, steps: 8, cfg: 1, sampler: 'euler', scheduler: 'simple', cropFactor: 2.5, guideSize: 1024, feather: 8 };
+// scene: denoise quando la scena ha già le LoRA (il volto va solo corretto, non ridisegnato): scelto da Andrea
+// sulle 4 foto a due («lora-e-volti-leggero», 2026-10-10).
+export const DUO_FACES = { sceneLoras: true, scene: { denoise: 0.4, explicitDenoise: 0.32, contactDenoise: 0.28 }, denoise: 0.5, explicitDenoise: 0.42, contactDenoise: 0.38, steps: 8, cfg: 1, sampler: 'euler', scheduler: 'simple', cropFactor: 2.5, guideSize: 1024, feather: 8 };
 /**
  * Prima del volto, se sul PC c'è il rilevamento delle persone (segm/person_yolov8m-seg.pt), si ritocca tutta la persona
  * con la sua LoRA: così il fisico viene dalla LoRA e non solo dalle parole della scheda. denoise più basso del volto,

@@ -327,3 +327,13 @@ test('foto a due: espressione nel ritocco del volto; se si toccano niente ritocc
   assert.ok(!contactOf('Two women with sun-kissed skin at a bar'));   // falso positivo trovato sul PC
   for (const t of ['holding the breast of the woman on the left in her hands', 'pulling a nipple into her mouth', 'their bodies touching', 'pressed close together on the bed']) assert.ok(contactOf(t), t);
 });
+
+test('foto a due con le LoRA già nella scena: ritocco del volto più leggero', async () => {
+  const { applyDuoFaces } = await import('../src/photo.js');
+  const { DUO_FACES } = await import('../src/krea2.js');
+  const den = (opts) => { const g = structuredClone(KREA.graph); applyPhotoStack(g, { level: 'neutral', files: FILES }); applyDuoFaces(g, [{ file: 'Krea220Hitomi.safetensors', text: 'x' }], { files: FILES, ...opts }); return Object.values(g).find((x) => x.class_type === 'DetailerForEach').inputs.denoise; };
+  assert.equal(den({ scene: true }), DUO_FACES.scene.denoise);
+  assert.equal(den({ scene: true, level: 'explicit' }), DUO_FACES.scene.explicitDenoise);
+  assert.equal(den({ scene: true, prompt: 'Two women kissing.' }), DUO_FACES.scene.contactDenoise);
+  assert.ok(den({ scene: true }) < den({}));
+});

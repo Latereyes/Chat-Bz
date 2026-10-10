@@ -93,7 +93,9 @@ const ANNOUNCE = /\b(?:ti\s+(?:mando|invio|giro|faccio\s+vedere)|eccoti|ecco(?:m
 const ASKS_MEDIA = /\b(?:mand\w*|invi\w*|fa(?:mmi|i)\s+vedere|fammel\w*\s+vedere|scatta\w*|send|show)\b[^.!?\n]{0,40}\b(?:foto\w*|selfie|pic\w*|photo\w*|video\w*|immagin\w*)\b|\b(?:foto|selfie|pic|photo|video)\s*\?/i;
 // Strumenti scritti come testo invece che chiamati: «<tool_call> update_scene{presence="together"} </tool_call>».
 // Si tolgono dal messaggio; update_scene scritto così non si applica (prova sul PC: portava la scena a "insieme" per sbaglio)
-const TOOL_TEXT = /<\s*tool_call\s*>([\s\S]*?)(?:<\s*\/\s*tool_call\s*>|$)|\b(?:update_scene|send_photo|send_video)\s*\{[^{}]*\}/gi;
+// Anche come funzione Python: «send_photo(who="Hitomi", description="…")» (prova sul PC 2026-10-10, chat a due)
+const TOOL_TEXT = /<\s*tool_call\s*>([\s\S]*?)(?:<\s*\/\s*tool_call\s*>|$)|\b(?:update_scene|send_photo|send_video)\s*(?:\{[^{}]*\}|\((?:[^()"]|"[^"]*")*\))/gi;
+const TOOL_ARG = /"?(\w+)"?\s*[:=]\s*"([^"]*)"/g;
 // Il personaggio dice di no al video, o propone di vedersi dal vivo: niente video di ripiego
 const REFUSES_VIDEO = /\b(?:non\s+(?:ti\s+)?(?:mando|faccio|giro|invio|posso|mi\s+va)|niente\s+video|nessun\s+video|dal\s+vivo|di\s+persona|sono\s+qui|siamo\s+qui|guardami)\b/i;
 // Video chiesto a parole: «mandami/fammi/gira un video», «un video?»
@@ -104,14 +106,15 @@ function cut(text, start, len) {
   return `${before}${before ? ' ' : ''}${text.slice(start + len).trimStart()}`.replace(/\n{3,}/g, '\n\n').trim();
 }
 
-function extractTag(text, userText = '') {
+export function extractTag(text, userText = '') {
   let noteCall = null;
   let textCall = null;
   text = text.replace(TOOL_TEXT, (all, inner) => {
     const body = inner ?? all;
     const name = body.match(/\b(send_photo|send_video)\b/i)?.[1].toLowerCase();
-    const desc = body.match(/"?description"?\s*[:=]\s*"([^"]+)"/i)?.[1];
-    if (name && desc && !textCall) textCall = { function: { name, arguments: { description: desc.trim() } } };
+    // tutti gli argomenti scritti (description, e who nelle chat a due)
+    const args = Object.fromEntries([...body.matchAll(TOOL_ARG)].map(([, k, v]) => [k.toLowerCase(), v.trim()]).filter(([, v]) => v));
+    if (name && args.description && !textCall) textCall = { function: { name, arguments: args } };
     return '';
   });
   let clean = text.replace(SENT_NOTE, (all, kind, desc) => {

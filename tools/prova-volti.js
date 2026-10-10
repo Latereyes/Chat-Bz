@@ -43,7 +43,7 @@ const VARIANTI = {
   'senza-maschera': { label: 'Catena pulita, ridisegna tutto il ritaglio (niente maschera)', set: () => { DUO_FACES.noiseMask = false; } },
   'a-due-come-prima': { label: 'Foto a due: niente espressione nel ritocco, ritocco della persona anche se si toccano', set: () => { Object.assign(DUO_FACES, { expression: false, contact: false }); } },
   'scena-senza-lora': { label: 'Foto a due: scena senza LoRA, poi persona e volto (com\'era)', set: () => { DUO_FACES.sceneLoras = false; } },
-  'lora-e-volti-leggero': { label: 'Foto a due: scena con le due LoRA, volti ritoccati più leggeri (-0.1)', set: () => { DUO_FACES.sceneLoras = true; plus(-0.1)(); DUO_FACES.contactDenoise = Math.round((DUO_FACES.contactDenoise - 0.1) * 100) / 100; } },
+  'lora-e-volti-normale': { label: 'Foto a due: scena con le due LoRA, volti ritoccati come senza LoRA nella scena (+0.1)', set: () => { DUO_FACES.scene = null; } },
   'contesto-largo': { label: 'Catena pulita, più contesto (crop 3.5)', set: () => { DUO_FACES.cropFactor = 3.5; } },
 };
 

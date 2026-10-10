@@ -153,7 +153,7 @@ export async function renderMedia(media, { ownerId, card, signal, onEvent = () =
       // se si toccano la persona non si ritocca (il ritaglio prenderebbe anche l'altra)
       // con le LoRA già nella scena (sceneLoras) il fisico viene da lì: si ritoccano solo i volti
       const persons = found && !sceneLoras && !(DUO_FACES.contact !== false && contactOf(media.prompt));
-      media.facesFixed = applyDuoFaces(graph, media.duoFaces, { files, seed: media.seed, persons, level: media.level, prompt: media.prompt });
+      media.facesFixed = applyDuoFaces(graph, media.duoFaces, { files, seed: media.seed, persons, level: media.level, prompt: media.prompt, scene: sceneLoras });
       res.loras.push(...media.duoFaces.map((f, i) => f && { key: 'face', label: `${persons ? 'persona e volto' : 'volto'} ${i + 1}: ${f.file.replace(/\.safetensors?$/i, '')}`, strength: f.strength }).filter(Boolean));
       if (!found) console.warn(`[foto] foto a due: manca ultralytics/${DUO_BODY.model}, ritocco solo i volti (il fisico viene dalle parole)`);
     }

@@ -353,7 +353,7 @@ export function duoLoras(cards, family, mode = 'text2img') {
  * senza le LoRA dei volti nella catena principale. faces[i] = volto i-esimo da sinistra (null = lascialo com'è).
  * Restituisce quanti volti ritocca (0 = grafo invariato).
  */
-export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = false, single = false, level = 'neutral', prompt = '' } = {}) {
+export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = false, single = false, level = 'neutral', prompt = '', scene = false } = {}) {
   const explicit = level === 'explicit';
   // prova sul PC 2026-10-10: nel bacio il ritocco della persona cambiava vestiti e posa e quello del volto girava il viso
   // verso la camera; senza l'espressione nel testo i sorrisi si spegnevano
@@ -408,7 +408,7 @@ export function applyDuoFaces(graph, faces, { files = null, seed = 0, persons = 
   const det = node('UltralyticsDetectorProvider', { model_name: 'bbox/face_yolov8m.pt' });
   const segs = node('BboxDetectorSEGS', { bbox_detector: [det, 0], image, threshold: 0.5, dilation: 10, crop_factor: DUO_FACES.cropFactor, drop_size: 10, labels: 'all' });
   let done = 0;
-  faces.forEach((f, i) => { if (loras[i]) { fixOne(i, segs, faceOf(f), { denoise: single ? faceDenoise(level) : contact ? DUO_FACES.contactDenoise : explicit ? DUO_FACES.explicitDenoise : DUO_FACES.denoise, label: 'Ritocco volto' }); done++; } });
+  faces.forEach((f, i) => { if (loras[i]) { fixOne(i, segs, faceOf(f), { denoise: single ? faceDenoise(level) : duoDenoise({ contact, explicit, scene }), label: 'Ritocco volto' }); done++; } });
   if (done) graph[save].inputs.images = image;
   return done;
 }
@@ -431,6 +431,12 @@ function faceModel(graph, end, node, keepFile = null) {
   let prev = cur;
   for (const id of chain.filter(keep)) prev = node('LoraLoaderModelOnly', { ...graph[id].inputs, model: [prev, 0] }, `Ritocco: ${base(graph[id].inputs.lora_name)}`);
   return prev;
+}
+
+/** Quanto ridisegnare un volto in una foto a due: scene = le LoRA sono già nella scena (DUO_FACES.scene, più leggero). */
+function duoDenoise({ contact, explicit, scene }) {
+  const d = scene && DUO_FACES.scene ? DUO_FACES.scene : DUO_FACES;
+  return contact ? d.contactDenoise : explicit ? d.explicitDenoise : d.denoise;
 }
 
 /** Foto con un solo personaggio con LoRA: ritocco del suo volto con la stessa LoRA (vedi SINGLE_FACE). */
