@@ -31,7 +31,8 @@ test('esplicito con un uomo: HMNSFW, seno, vulva, pene, turbo 0.5 e 12 passi, ca
   assert.deepEqual([needs.penis, needs.vulva, needs.direction], [true, true, 'front']);
   const g = structuredClone(I2V);
   const out = applyVideoStack(g, { level: 'explicit', needs, files: FILES });
-  for (const k of ['hmnsfw', 'breast', 'vagina', 'penis']) assert.ok(has(g, LORAS[k].file), k);
+  for (const k of ['hmnsfw', 'breast', 'vagina', 'hmpussy', 'penis']) assert.ok(has(g, LORAS[k].file), k);
+  assert.equal(loras(g).find(([f]) => f === LORAS.hmpussy.file)[1], 0.35);
   assert.deepEqual(out.missing, []);
   assert.equal(loras(g).find(([f]) => f === LORAS.turbo.file)[1], 0.5);
   assert.equal(Object.values(g).find((n) => n.class_type === 'BasicScheduler').inputs.steps, 12);

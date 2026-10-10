@@ -10,7 +10,8 @@ Per Claude sul PC di Andrea. Stesso branch delle prove a due (`claude/admiring-g
 | LoRA | File | Quando | Forza (ipotesi) |
 |---|---|---|---|
 | Seno (realism slider) | `PlagueKind-tiddies-realismslider.safetensors` | c'è una donna; Sensuale ed Esplicito | 1.0 / 1.3 (autore: 1.0-2.0 sul realistico, oltre 2.0 si rompe) |
-| Vagina | `Vagina_minimax-h3_epoch20.safetensors` | Esplicito, donna, vulva in vista | 1.0 (hmpussy, la sua compagna addestrata su video, sul PC non c'è) |
+| Vagina | `Vagina_minimax-h3_epoch20.safetensors` | Esplicito, donna, vulva in vista | 1.0 |
+| hmpussy | `hmpussy_v6_epoch30.safetensors` | insieme a Vagina (addestrata su video: tiene la forma nel movimento) | 0.35 (variante «Vagina senza hmpussy» per confrontare) |
 | Penis V2 | `PenisV2_minimax-h3_epoch60.safetensors` | Esplicito con un uomo / pene | 1.0; il server mette `HMPenis, front/back/side view.` in testa a `integrated_multimodal_description` |
 | Bacio | `cxy_kiss_lora_h3_v01_step1500.safetensors` | c'è un bacio (sperimentale, V0.1) | 0.8 |
 | HMNSFW AIO 2.5 | `HMNSFW-AIO-V2.5.safetensors` | Esplicito | 0.8, con **turbo 0.5 e 12 passi** (autore: euler, simple, 12 passi, shift 6, turbo 0.5) |

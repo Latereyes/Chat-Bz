@@ -65,6 +65,7 @@ $lora = @(
   @("Krea220Hitomi.safetensors", "volto di Hitomi"),
   @("PlagueKind-tiddies-realismslider.safetensors", "video: seno naturale e realismo"),
   @("Vagina_minimax-h3_epoch20.safetensors", "video: genitali femminili"),
+  @("hmpussy_v6_epoch30.safetensors", "video: genitali femminili in movimento (sotto Vagina)"),
   @("PenisV2_minimax-h3_epoch60.safetensors", "video: genitali maschili (HMPenis)"),
   @("cxy_kiss_lora_h3_v01_step1500.safetensors", "video: bacio"),
   @("HMNSFW-AIO-V2.5.safetensors", "video: NSFW")
