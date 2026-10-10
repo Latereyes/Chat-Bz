@@ -300,6 +300,6 @@ test('foto singola: con maxFace un volto già grande non si ritocca', async () =
   const fix = Object.values(g).find((x) => x.class_type === 'DetailerForEach');
   const range = g[fix.inputs.segs[0]];
   assert.equal(range.class_type, 'ImpactSEGSRangeFilter');
-  assert.equal(range.inputs.max_value, 350);
+  assert.equal(range.inputs.max_value, Math.round(350 * 2.5));   // misura il ritaglio, non il volto
   assert.equal(g[range.inputs.segs[0]].class_type, 'ImpactSEGSOrderedFilter');   // prima il più grande, poi il limite
 });

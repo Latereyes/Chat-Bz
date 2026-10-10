@@ -37,6 +37,9 @@ const VARIANTI = {
   'guida-768': { label: 'Catena pulita, ritaglio a 768', set: () => { DUO_FACES.guideSize = 768; } },
   'senza-lenovo': { label: 'Catena pulita senza Lenovo nel ritocco', set: () => { FACE_CHAIN.lenovo = false; } },
   'solo-piccoli': { label: 'Catena pulita, volti alti più di 350 px lasciati com\'erano', set: () => { SINGLE_FACE.maxFace = 350; } },
+  'denoise-alto': { label: 'Catena pulita, denoise +0.25', set: plus(0.25) },
+  'sampler-beta': { label: 'Catena pulita, 12 passi beta (come la foto esplicita)', set: () => { Object.assign(DUO_FACES, { steps: 12, scheduler: 'beta' }); } },
+  'senza-maschera': { label: 'Catena pulita, ridisegna tutto il ritaglio (niente maschera)', set: () => { DUO_FACES.noiseMask = false; } },
   'contesto-largo': { label: 'Catena pulita, più contesto (crop 3.5)', set: () => { DUO_FACES.cropFactor = 3.5; } },
 };
 
