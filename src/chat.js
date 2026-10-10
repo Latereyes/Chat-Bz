@@ -253,7 +253,7 @@ async function engineerPrompt(conv, msg, media, model, signal, ctx = {}) {
       { role: 'user', content: [characterMediaRequest({ card: conv.card, state: conv.state, media, width: media.width, height: media.height, seconds: media.seconds, sourceDescription: media.sourceFile || media.sourceMediaId || media.continueOfId || media.mode === 'continue' ? media.sourceDescription : undefined, userText: ctx.userText, reply: ctx.reply, user, level }),
         media.mode === 'continue' ? partLine(media.part, media.seconds)
           : media.part?.total > 1 ? `This is part 1 of ${media.part.total} of one continuous video: write only the first ${media.seconds} seconds; the action goes on in the next parts.` : null,
-        videoRules(level, videoNeeds(seen, { level, woman }))].filter(Boolean).join('\n') },
+        videoRules(level, videoNeeds(seen, { level, woman }), media.videoVariant)].filter(Boolean).join('\n') },
     ],
     onChunk: (c) => { if (c.content) { text += c.content; onChunk(c.content); } },
   });
@@ -262,7 +262,7 @@ async function engineerPrompt(conv, msg, media, model, signal, ctx = {}) {
   // LoRA del video (minimax.js): decise dal filtro e da cosa c'è davvero nel video, prompt compreso
   const needs = videoNeeds(`${seen}\n${prompt}`, { level, woman });
   Object.assign(media, { level, levelReason: reason, videoNeeds: needs });
-  return leadPrompt(prompt, needs);
+  return leadPrompt(prompt, needs, media.videoVariant);
 }
 const RANK = { neutral: 0, sensual: 1, explicit: 2 };
 

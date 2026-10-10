@@ -35,7 +35,9 @@ export const PROFILE = {
   sensual: { loras: { breast: 1.0, kiss: 0.8 } },
   // prova sul PC 2026-10-10 (Hitomi, Studio): con 6 passi corpi deformati e ghosting pesante, con 12 (come dice l'autore di HMNSFW)
   // molto meglio; seno e pene più leggeri cambiano poco ma non peggiorano. Più lento: 5 s in ~160 s invece di ~87
-  explicit: { loras: { breast: 0.8, vagina: 0.5, hmpussy: 0.35, penis: 0.6, kiss: 0.8, hmnsfw: 0.8 }, turbo: 0.5, steps: 12 },
+  // secondo giro (2026-10-10): solo HMNSFW molto meglio, deforma poco. Seno, Vagina, hmpussy e Penis V2 deformavano i corpi
+  // nel movimento: restano nel catalogo per le varianti, non nel profilo
+  explicit: { loras: { kiss: 0.8, hmnsfw: 0.8 }, turbo: 0.5, steps: 12 },
 };
 
 /** Varianti da confrontare (Studio: menu «LoRA video»). null toglie una LoRA del profilo. */
@@ -45,19 +47,19 @@ export const VARIANTS = {
   passi8: { label: '8 passi in tutti i filtri', steps: 8 },
   passi6: { label: 'Esplicito a 6 passi (com\'era: ghosting)', explicitSteps: 6 },
   // esplicito ancora un po' deformato a 12 passi (2026-10-10): una causa alla volta tra quelle rimaste
-  'solo-hmnsfw': { label: 'Solo HMNSFW (senza seno, Vagina, Penis)', explicit: { breast: null, vagina: null, hmpussy: null, penis: null } },
-  'senza-genitali': { label: 'Senza Vagina, hmpussy e Penis V2', explicit: { vagina: null, hmpussy: null, penis: null } },
-  'senza-seno': { label: 'Senza la LoRA del seno', sensual: { breast: null }, explicit: { breast: null } },
+  // le LoRA tolte dal profilo esplicito, per riprovarle (leggere) dallo Studio
+  'con-genitali': { label: 'Con Vagina 0.5, hmpussy e Penis V2 0.6 (com\'era)', explicit: { breast: 0.8, vagina: 0.5, hmpussy: 0.35, penis: 0.6 } },
+  'con-seno': { label: 'Con la LoRA del seno 0.8 anche in esplicito', explicit: { breast: 0.8 } },
+  'senza-seno': { label: 'Senza la LoRA del seno (sensuale)', sensual: { breast: null } },
   'senza-mystic-unlocked': { label: 'Senza MysticXXX e Unlocked (solo HMNSFW come LoRA NSFW)', sensual: { mystic: 0, unlocked: 0 }, explicit: { mystic: 0, unlocked: 0 } },
   'senza-hmnsfw': { label: 'Senza HMNSFW (turbo 1, 12 passi)', explicit: { hmnsfw: null }, explicitTurbo: 1 },
   'hmnsfw-forte': { label: 'HMNSFW 1.0', explicit: { hmnsfw: 1 } },
   'hmnsfw-shift6': { label: 'HMNSFW con shift 6 (la ricetta completa dell\'autore)', explicitShift: 6 },
-  'senza-hmpussy': { label: 'Vagina senza hmpussy', explicit: { hmpussy: null } },
-  'seno-forte': { label: 'Seno 1.8', sensual: { breast: 1.8 }, explicit: { breast: 1.8 } },
+  'seno-forte': { label: 'Seno 1.8 (sensuale)', sensual: { breast: 1.8 } },
   'seno-sempre': { label: 'Seno anche nei video normali (1.0, più realismo)', neutral: { breast: 1 } },
   'senza-mystic': { label: 'Senza MysticXXX', sensual: { mystic: 0 }, explicit: { mystic: 0 } },
   'senza-unlocked': { label: 'Senza Unlocked V2', sensual: { unlocked: 0 }, explicit: { unlocked: 0 } },
-  'senza-nuove': { label: 'Solo le LoRA di prima (turbo 1, 12 passi in esplicito)', neutral: { kiss: null }, sensual: { breast: null, kiss: null }, explicit: { breast: null, vagina: null, hmpussy: null, penis: null, kiss: null, hmnsfw: null }, explicitTurbo: 1 },
+  'senza-nuove': { label: 'Solo le LoRA di prima (turbo 1, 12 passi in esplicito)', neutral: { kiss: null }, sensual: { breast: null, kiss: null }, explicit: { kiss: null, hmnsfw: null }, explicitTurbo: 1 },
 };
 
 export function profileFor(level, variant) {
@@ -93,15 +95,15 @@ export function videoNeeds(text, { level = 'neutral', woman = true } = {}) {
   };
 }
 
-/** Parola chiave di Penis V2 con la direzione, da mettere in testa alla descrizione del video. */
-export const penisLead = (needs) => (needs?.penis ? `HMPenis, ${needs.direction} view` : '');
+/** Parola chiave di Penis V2 con la direzione, da mettere in testa alla descrizione del video: solo se la LoRA si usa davvero. */
+export const penisLead = (needs, variant = null) => (needs?.penis && 'penis' in profileFor('explicit', variant).loras ? `HMPenis, ${needs.direction} view` : '');
 
 /**
  * Mette il prefisso HMPenis all'inizio della descrizione: nei prompt di MiniMax H3 il primo campo è
  * «integrated_multimodal_description:», la riga di allineamento all'immagine resta prima.
  */
-export function leadPrompt(prompt, needs) {
-  const lead = penisLead(needs);
+export function leadPrompt(prompt, needs, variant = null) {
+  const lead = penisLead(needs, variant);
   let p = String(prompt || '').replace(/\bHMPenis,\s*(?:front|back|side) view[.,]?\s*/gi, '');
   if (!lead) return p;
   return /integrated_multimodal_description:\s*/i.test(p)
@@ -164,13 +166,13 @@ export function applyVideoStack(graph, { level = 'neutral', needs = {}, files = 
 }
 
 /** Regole per il prompt engineer del video, per filtro (si aggiungono alla richiesta). */
-export function videoRules(level, needs = {}) {
+export function videoRules(level, needs = {}, variant = null) {
   if (level !== 'explicit') return null;
   return [
     'VIDEO RULES (explicit): describe the sexual action and the motion directly, in plain anatomical words, with physically plausible rhythm and body movement (breasts and bodies move naturally with each motion).',
     // ghosting nei movimenti veloci (prova sul PC 2026-10-10): il modello rende meglio un ritmo lento e regolare
     'Keep the motion SLOW and smooth: one steady, gentle, unhurried rhythm for the whole clip, no fast, jerky or frantic movements, no sudden changes of position, a still camera. Fast motion turns into ghosting and deformed bodies.',
-    needs.penis ? `The penis is visible: describe it plainly (size, e.g. large; circumcised or not; glans colour, e.g. pink, pale or brown) and where it is. The server puts "${penisLead(needs)}" at the start of the description: do not write it yourself.` : null,
+    needs.penis ? `The penis is visible: describe it plainly (size, e.g. large; circumcised or not; glans colour, e.g. pink, pale or brown) and where it is.${penisLead(needs, variant) ? ` The server puts "${penisLead(needs, variant)}" at the start of the description: do not write it yourself.` : ''}` : null,
     needs.vulva ? 'The vulva is visible: describe it plainly and where it is in the frame.' : null,
   ].filter(Boolean).join('\n');
 }

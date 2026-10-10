@@ -66,7 +66,7 @@ function request({ text, cards = [], media, sourceDescription, sources }) {
       : media.part?.total > 1 ? `This is part 1 of ${media.part.total} of one continuous video: write only the first ${media.seconds} seconds; the action goes on in the next parts.` : null,
     // filtro scelto a mano nello Studio: vale anche per il prompt, non solo per le LoRA
     media.levelReason === 'scelto nello Studio' ? `CONTENT LEVEL: ${CONTENT[media.level]}` : LEVEL,
-    media.type === 'video' ? videoRules(media.level, videoNeeds([text, sourceDescription].filter(Boolean).join('\n'), { level: media.level, woman: !cards.length || cards.some((c) => c.gender !== 'uomo') })) : null,
+    media.type === 'video' ? videoRules(media.level, videoNeeds([text, sourceDescription].filter(Boolean).join('\n'), { level: media.level, woman: !cards.length || cards.some((c) => c.gender !== 'uomo') }), media.videoVariant) : null,
     `Output format: ${media.width}x${media.height}${media.seconds ? `, duration ${media.seconds} seconds` : ''}.`,
     'Write the final prompt now.',
   ].filter(Boolean).join('\n');
@@ -212,7 +212,7 @@ async function engineer(conv, msg, md, { text, cards = [], model, signal, source
 function videoPrompt(prompt, md, { text, cards = [] }) {
   const woman = cards.length ? cards.some((c) => c.gender !== 'uomo') : !/\b(?:a man|un uomo|ragazzo|guy|male)\b/i.test(text) || /\b(?:woman|girl|donna|ragazza|lei)\b/i.test(text);
   md.videoNeeds = videoNeeds([text, md.sourceDescription, prompt].filter(Boolean).join('\n'), { level: md.level || 'neutral', woman });
-  return leadPrompt(prompt, md.videoNeeds);
+  return leadPrompt(prompt, md.videoNeeds, md.videoVariant);
 }
 
 /**

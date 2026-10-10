@@ -21,6 +21,8 @@ Per Claude sul PC di Andrea. **Prima** fai i controlli di `piano/verifica-video.
 - **Studio**: menu **«LoRA video»** con le varianti. Sotto il video compaiono filtro, motivo, LoRA usate e passi.
 - I test sono in `test/video.test.js`.
 
+> **Aggiornamento 2026-10-10 (prove di Andrea con Hitomi, `piano/verifica-video.md` sezione 8):** in esplicito con 6 passi c'erano corpi deformati e ghosting. Ora l'esplicito usa **solo HMNSFW 0.8, turbo 0.5 e 12 passi**, e Gemma chiede un ritmo lento. Seno, Vagina, hmpussy e Penis V2 sono fuori dal profilo esplicito (varianti `con-genitali` e `con-seno`). La tabella qui sopra descrive il primo profilo.
+
 ## Prove (con lo stesso seed, dallo Studio)
 1. [ ] `tools\prepara-pc.ps1`: controlla che ci siano le LoRA video.
 2. [ ] **Normale**: anima una foto vestita (motore MiniMax image to video, oppure «Anima»). Il video deve uscire come prima: la riga sotto non deve elencare LoRA nuove.

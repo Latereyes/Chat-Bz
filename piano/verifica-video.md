@@ -182,7 +182,11 @@ Vagina e hmpussy non c'erano: il prompt non parlava della vulva. Conclusione: **
 Attenzione: la riga sotto la prima prova riportava le LoRA di Krea 2 (Realism, Hitomi, volto ritoccato), cioè quelle della foto di partenza, non quelle del video. Controlla che sotto un video la riga mostri le LoRA del video (turbo, HMNSFW…).
 
 ### Secondo giro: cosa deforma ancora
-Stessa foto e stesso seed, varianti `base` (il nuovo profilo), `solo-hmnsfw`, `senza-hmnsfw`, `senza-mystic-unlocked`, `hmnsfw-shift6`, `senza-nuove`. Per confronto c'è anche `passi6`, il profilo di prima.
+Stessa foto e stesso seed, varianti `base` (il nuovo profilo), `solo-hmnsfw` (ora è il profilo), `senza-hmnsfw`, `senza-mystic-unlocked`, `hmnsfw-shift6`, `senza-nuove`. Per confronto c'è anche `passi6`, il profilo di prima.
+
+**Esito (Andrea, 2026-10-10):** «Solo HMNSFW» molto meglio, deforma poco. Applicato: in esplicito restano solo HMNSFW 0.8 (e il bacio quando serve), turbo 0.5, 12 passi. Seno, Vagina, hmpussy e Penis V2 escono dal profilo esplicito. Senza Penis V2 il server non scrive più `HMPenis, … view` nel prompt. Per riprovarle, leggere, ci sono le varianti `con-genitali` e `con-seno`. Il sensuale resta con il seno a 1.0: da controllare se anche lì deforma.
+
+Resta da provare, per il «deforma poco»: `senza-mystic-unlocked` (HMNSFW unica LoRA NSFW) e `hmnsfw-shift6`.
 
 Annota anche *come* sono rotti, perché aiuta a capire la causa:
 - scie e corpi doppi nel movimento (ghosting): LoRA addestrate su foto troppo forti, oppure pochi passi;

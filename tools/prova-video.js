@@ -8,7 +8,7 @@
  *     [--filtro neutral|sensual|explicit] [--uomo] [--nome marco] [--prompt "…"]
  *
  * Le varianti sono quelle qui sotto (passi, turbo, risoluzione) oppure quelle del menu «LoRA e passi video» dello Studio
- * (src/minimax.js: passi6, solo-hmnsfw, senza-hmnsfw, senza-genitali, senza-mystic-unlocked, hmnsfw-shift6, senza-nuove…). Le LoRA «quando servono»
+ * (src/minimax.js: passi6, con-genitali, con-seno, senza-hmnsfw, senza-mystic-unlocked, hmnsfw-shift6, senza-nuove…). Le LoRA «quando servono»
  * (seno, Vagina, Penis V2, bacio) si agganciano come in chat, da cosa dice il prompt: con --filtro explicit e senza
  * --prompt si usa una scena esplicita di prova (cowgirl POV) che le aggancia tutte.
  * --personaggio "Nome": invece di --foto, l'ultima foto finita di quel personaggio in chat (con --filtro explicit
@@ -108,8 +108,7 @@ async function main() {
   while ((frames - d.frameOffset) % d.frameStep) frames++;
   const woman = !args.includes('--uomo');
   const needs = videoNeeds(opt('--prompt', level === 'explicit' ? PROMPT_EXPLICIT : PROMPT), { level, woman });
-  // come in chat: HMPenis e la direzione in testa alla descrizione quando c'è il pene
-  const prompt = leadPrompt(opt('--prompt', level === 'explicit' ? PROMPT_EXPLICIT : PROMPT), needs);
+  const scene = opt('--prompt', level === 'explicit' ? PROMPT_EXPLICIT : PROMPT);
   const dir = path.join(config.paths.data, 'prova-video', 'banco');
   fs.mkdirSync(dir, { recursive: true });
   const logFile = path.join(dir, 'tempi.json');
@@ -117,6 +116,8 @@ async function main() {
   const image = await comfy.uploadImage(fs.readFileSync(foto), `chatbz_banco_${path.basename(foto)}`);
   const files = await comfy.listModels('loras').catch(() => null);
   for (const name of names) {
+    // come in chat: HMPenis e la direzione in testa alla descrizione quando c'è il pene e la variante usa Penis V2
+    const prompt = leadPrompt(scene, needs, VARIANTS[name] ? null : name);
     const graph = buildGraph(w, { prompt, seed, frames, image });
     const stack = applyVideoStack(graph, { level, needs, files, variant: VARIANTS[name] ? null : name });
     if (VARIANTS[name]) applyVariant(graph, VARIANTS[name]);
