@@ -590,12 +590,24 @@ function renderModel() {
   const models = state.config?.models || [];
   const cur = models.find((m) => m.name === name);
   el.modelName.textContent = cur?.label || name.replace(/:latest$/, '');
+  // Post, storie e commenti si scrivono in sottofondo: il loro modello sta sul server, non nel browser
+  const social = state.config?.socialModel || state.config?.defaultModel;
   el.modelMenu.innerHTML = models.length
     ? '<div class="menu-note">Modello di chat (vale per i messaggi successivi)</div>' + models.map((m) => `<button class="menu-item" data-model="${esc(m.name)}" title="${esc(m.name)}"><div>${esc(m.label || m.name)}${m.name === state.config.defaultModel ? ' <small class="inline">predefinito</small>' : ''}<small>${esc([m.params, m.quant, m.vision ? 'vede le immagini' : '', m.tools ? '' : 'senza tool: foto e scena a parole'].filter(Boolean).join(' · '))}</small></div>${m.name === name ? `<span class="check">${icon('check', 16)}</span>` : ''}</button>`).join('')
+      + '<div class="menu-sep"></div><div class="menu-note">Post, storie e commenti del social</div>'
+      + models.map((m) => `<button class="menu-item" data-social-model="${esc(m.name)}" title="${esc(m.name)}"><div>${esc(m.label || m.name)}</div>${m.name === social ? `<span class="check">${icon('check', 16)}</span>` : ''}</button>`).join('')
     : '<div class="menu-note">Nessun modello Ollama trovato.</div>';
 }
 $('#model-pill').onclick = (e) => { e.stopPropagation(); el.gpuMenu.hidden = true; el.modelMenu.hidden = !el.modelMenu.hidden; };
-el.modelMenu.onclick = (e) => {
+el.modelMenu.onclick = async (e) => {
+  const s = e.target.closest('[data-social-model]');
+  if (s) {
+    const model = s.dataset.socialModel === state.config.defaultModel ? null : s.dataset.socialModel;
+    const r = await api('/api/social/model', { body: { model } }).catch((err) => alert(err.message));
+    if (r) { state.config.socialModel = r.socialModel; renderModel(); }
+    el.modelMenu.hidden = true;
+    return;
+  }
   const b = e.target.closest('[data-model]'); if (!b) return;
   prefs.model = b.dataset.model; savePrefs(); renderModel(); el.modelMenu.hidden = true;
 };
@@ -1239,8 +1251,8 @@ function renderGpu(s) {
   let label;
   if (s.active) {
     pill.classList.add('busy', s.active.who === 'comfy' ? 'comfy' : 'ollama');
-    label = s.active.phase || (s.active.who === 'comfy' ? 'ComfyUI al lavoro' : 'Gemma al lavoro');
-  } else if (s.owner === 'ollama') { pill.classList.add('ollama'); label = 'Gemma in VRAM'; }
+    label = s.active.phase || (s.active.who === 'comfy' ? 'ComfyUI al lavoro' : `${s.model || 'Ollama'} al lavoro`);
+  } else if (s.owner === 'ollama') { pill.classList.add('ollama'); label = `${s.model || 'Ollama'} in VRAM`; }
   else if (s.owner === 'comfy') { pill.classList.add('comfy'); label = 'ComfyUI in VRAM'; }
   else label = 'GPU libera';
   if (s.queued?.length) label += ` · +${s.queued.length} in coda`;
@@ -1250,7 +1262,7 @@ function renderGpu(s) {
 
 function renderGpuMenu() {
   const s = state.gpu || {};
-  const who = { ollama: 'Ollama (Gemma)', comfy: 'ComfyUI', none: '—' };
+  const who = { ollama: s.model ? `Ollama (${esc(s.model)})` : 'Ollama', comfy: 'ComfyUI', none: '—' };
   el.gpuMenu.innerHTML = `
     <div class="menu-note"><b>VRAM condivisa</b><br>Ollama e ComfyUI si alternano sulla GPU: quando uno serve, l'altro viene scaricato.</div>
     <div class="menu-sep"></div>

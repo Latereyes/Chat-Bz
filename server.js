@@ -118,6 +118,7 @@ app.get('/api/config', wrap(async (req, res) => {
   const loras = ((await Promise.race([comfyLoras(), new Promise((r) => setTimeout(r, 1500, null))])) || []).map((f) => f.replace(/\\/g, '/'));
   res.json({
     defaultModel: config.ollama.model,
+    socialModel: queue.socialModel(req.user.id),
     options: {
       relations: RELATIONS, paces: PACES, intimacy: INTIMACY, styles: STYLES, socialHot: SOCIAL_HOT, dims: DIM_LABEL,
       // varianti delle LoRA di Krea 2 (banco di prova), scelte anche nello Studio
@@ -404,6 +405,12 @@ app.get('/api/social/feed', (req, res) => {
 });
 app.get('/api/social/stories', (req, res) => res.json(social.stories(req.user.id)));
 app.get('/api/social/queue', (req, res) => res.json(social.queueView(req.user.id)));
+app.post('/api/social/model', wrap(async (req, res) => {
+  const model = req.body?.model || null;
+  if (model && !(await ollama.listModels()).some((m) => m.name === model)) throw httpError(400, 'Modello non installato su Ollama');
+  queue.setSocialModel(req.user.id, model);
+  res.json({ socialModel: queue.socialModel(req.user.id) });
+}));
 app.post('/api/social/queue/pause', (req, res) => { queue.setPaused(req.user.id, !!req.body?.paused); res.json(social.queueView(req.user.id)); });
 app.post('/api/social/queue/jobs/:id/retry', (req, res) => res.json({ ok: queue.retry(req.user.id, req.params.id) }));
 app.get('/api/social/profile/:id', wrap(async (req, res) => res.json(social.profileView(ownConv(req)))));

@@ -22,6 +22,10 @@ export default {
     keepAlive: env.OLLAMA_KEEP_ALIVE || '30m',
     // Nomi da mostrare nel menu dei modelli, per nome Ollama senza ":latest" (come in LocalAI)
     labels: {
+      'gemma4-12b-uncensored': 'Gemma 12B',
+      'hf.co/HauhauCS/Gemma4-26B-A4B-Uncensored-HauhauCS-Balanced:IQ4_XS': 'Gemma 26B',
+      'orcarouter/Qwen3.8-27B-Uncensored:iq3_m': 'Qwen 27B',
+      // stesso Qwen 27B, con contesto 40k e temperatura 0.6 nel Modelfile (quello che usa Claude per delegare)
       'qwen3.8-coder': 'Qwen Coder',
       'qwen3.8-aggressive': 'Qwen Aggressive',
     },

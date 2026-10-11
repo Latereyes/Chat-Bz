@@ -1,5 +1,17 @@
 import config from './config.js';
 
+// Modello che Ollama sta usando (o ha appena usato): l'arbitro della GPU lo mostra al posto di «Gemma»
+const watchers = new Set();
+let current = null;
+function use(model) {
+  const label = model ? shortName(model) : null;
+  if (label === current) return;
+  current = label;
+  for (const fn of watchers) fn(label);
+}
+/** fn(nome breve | null) a ogni cambio del modello in uso. */
+export function onModel(fn) { watchers.add(fn); }
+
 const base = config.ollama.url.replace(/\/$/, '');
 
 async function api(path, body, { timeout = 15000 } = {}) {
@@ -49,13 +61,18 @@ async function isHealthy(m) {
   return healthy.get(m.digest);
 }
 
-/** Nome breve da mostrare: quello in config.ollama.labels, altrimenti la famiglia del modello (es. "gemma4" → "Gemma4"). */
-export function displayName(m) {
-  const label = config.ollama.labels[m.name.replace(/:latest$/, '')];
+/**
+ * Nome breve da mostrare: quello in config.ollama.labels, altrimenti famiglia e taglia
+ * (es. "Gemma4 25B"): con due Gemma installati la sola famiglia non bastava a distinguerli.
+ */
+export function shortName(name, details) {
+  const label = config.ollama.labels[name.replace(/:latest$/, '')];
   if (label) return label;
-  const fam = m.details?.family || m.name.split(/[:_-]/)[0];
-  return fam.charAt(0).toUpperCase() + fam.slice(1);
+  const fam = details?.family || name.split('/').pop().split(/[:_-]/)[0];
+  const size = (details?.parameter_size || '').replace(/\.\d+(?=B$)/, '');
+  return [fam.charAt(0).toUpperCase() + fam.slice(1), size].filter(Boolean).join(' ');
 }
+export const displayName = (m) => shortName(m.name, m.details);
 
 /** Modelli installati e funzionanti, con le loro capacità (i tool servono per immagini/video). */
 export async function listModels() {
@@ -84,6 +101,7 @@ export async function loaded() {
 export async function unloadAll({ timeoutMs = 15000 } = {}) {
   let models = await loaded();
   for (const m of models) await api('/api/generate', { model: m.name, keep_alive: 0 }).catch(() => {});
+  use(null);
   const t0 = Date.now();
   while (models.length && Date.now() - t0 < timeoutMs) {
     await new Promise((r) => setTimeout(r, 400));
@@ -97,6 +115,7 @@ export async function unloadAll({ timeoutMs = 15000 } = {}) {
  * Restituisce il messaggio completo.
  */
 export async function chat({ model, messages, tools, think = false, options = {}, signal, onChunk = () => {} }) {
+  use(model || config.ollama.model);
   const res = await fetch(base + '/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -137,6 +156,7 @@ export async function chat({ model, messages, tools, think = false, options = {}
 
 /** Richiesta breve non in streaming (titoli, ecc.). */
 export async function complete({ model, messages, options = {}, format, timeout = 60000 }) {
+  use(model || config.ollama.model);
   const j = await api('/api/chat', {
     model: model || config.ollama.model,
     messages,

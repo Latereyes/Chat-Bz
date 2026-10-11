@@ -35,6 +35,8 @@ const q = {
   all: db.prepare('SELECT * FROM queue_jobs WHERE owner_id = ?'),
   paused: db.prepare('SELECT paused FROM social_settings WHERE owner_id = ?'),
   setPaused: db.prepare(`INSERT INTO social_settings (owner_id, paused) VALUES (?, ?) ON CONFLICT(owner_id) DO UPDATE SET paused = excluded.paused`),
+  model: db.prepare('SELECT model FROM social_settings WHERE owner_id = ?'),
+  setModel: db.prepare(`INSERT INTO social_settings (owner_id, model) VALUES (?, ?) ON CONFLICT(owner_id) DO UPDATE SET model = excluded.model`),
 };
 
 const handlers = new Map();   // kind -> async (job, payload) => void
@@ -85,6 +87,10 @@ export function retry(ownerId, id) {
 }
 
 export const isPaused = (ownerId) => !!q.paused.get(ownerId)?.paused;
+
+/** Modello di Ollama scelto per post, storie e commenti (null: quello predefinito di config). */
+export const socialModel = (ownerId) => q.model.get(ownerId)?.model || null;
+export function setSocialModel(ownerId, model) { q.setModel.run(ownerId, model || null); }
 export function setPaused(ownerId, paused) {
   q.setPaused.run(ownerId, paused ? 1 : 0);
   notify(ownerId);
