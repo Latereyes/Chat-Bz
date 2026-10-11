@@ -13,9 +13,12 @@
   <div class="app" id="app">
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-top">
+        <div class="brand"><span class="brand-mark" data-icon="heart"></span><b>ChatBz</b></div>
         <button class="icon-btn" id="btn-collapse" title="Chiudi barra laterale" data-icon="panel"></button>
-        <button class="new-chat" id="btn-new"><span data-icon="plus"></span>Nuovo personaggio</button>
-        <button class="new-chat" id="btn-new-group"><span data-icon="users"></span>Nuova chat a due</button>
+      </div>
+      <div class="sidebar-actions">
+        <button class="new-chat primary" id="btn-new"><span data-icon="plus"></span>Nuovo personaggio</button>
+        <button class="new-chat" id="btn-new-group" title="Nuova chat a due"><span data-icon="users"></span>Nuova chat a due</button>
       </div>
       <nav class="sidebar-nav">
         <button class="nav-item" id="btn-social"><span data-icon="home"></span>Home</button>
@@ -46,6 +49,7 @@
     <main class="main">
       <header class="topbar">
         <button class="icon-btn" id="btn-open" title="Apri barra laterale" data-icon="panel"></button>
+        <div class="brand top-brand"><span class="brand-mark" data-icon="heart"></span><b>ChatBz</b></div>
         <div class="char-head" id="char-head" hidden>
           <button class="char-who" id="char-who" title="Scheda del personaggio"><span class="char-ava" id="char-ava"></span><span class="char-name" id="char-name"></span></button>
           <div class="scene-wrap">
@@ -92,6 +96,7 @@
         <div class="composer-wrap">
           <form class="composer" id="composer">
             <div class="attachments" id="attachments" hidden></div>
+            <button type="button" class="so-toggle" id="so-toggle" title="Impostazioni dello Studio"><span data-icon="sliders"></span><span class="so-summary" id="so-summary"></span><span class="so-chev" data-icon="chevron"></span></button>
             <div class="studio-opts" id="studio-opts" hidden>
               <label title="Modello che genera l'immagine"><span>Motore</span><select id="so-engine"></select></label>
               <label title="Formato dell'immagine"><span>Formato</span><select id="so-aspect"></select></label>

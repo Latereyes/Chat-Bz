@@ -7,6 +7,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 // ---------- Icone (stile lucide) ----------
 const P = {
   panel: '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 3v18"/>',
+  sliders: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
   edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
   gallery: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
@@ -435,6 +436,9 @@ el.thread.addEventListener('click', async (e) => {
   }
   const act = e.target.closest('[data-media-act]');
   if (act) return mediaAction(act);
+  // riga del filtro e delle LoRA: su una riga sola, un tocco la apre tutta
+  const lv = e.target.closest('.media-level');
+  if (lv) return lv.classList.toggle('open');
   const ui = e.target.closest('.user-images img');
   if (ui) {
     const m = findMsg(ui.closest('.msg').id.slice(2));
@@ -1339,14 +1343,27 @@ function readStudioOpts() {
 so.box.addEventListener('change', () => {
   const { seed, body, ...p } = readStudioOpts();
   prefs.studio = { ...p, bodyOn: so.body.checked, body: bodyValues() };
-  savePrefs(); syncVideoOpt();
+  savePrefs(); syncVideoOpt(); soSummary();
 });
+// Opzioni dello Studio richiudibili: da chiuse resta una riga con le scelte principali (sul telefono partono chiuse)
+const soText = (sel) => sel.options[sel.selectedIndex]?.textContent.replace(/^🎬\s*/, '') || '';
+function soSummary() {
+  const bits = [soText(so.engine), soText(so.aspect).split(' ')[0], so.char.value && soText(so.char) + (so.char2.value ? ` e ${soText(so.char2)}` : ''),
+    so.level.value && soText(so.level), so.seconds.value !== '5' && `${so.seconds.value} s`, so.seed.value.trim() && `seed ${so.seed.value.trim()}`].filter(Boolean);
+  $('#so-summary').textContent = bits.join(' · ');
+}
+function setSoOpen(open) {
+  el.composer.classList.toggle('so-open', open);
+  prefs.soOpen = open; savePrefs();
+}
+$('#so-toggle').onclick = () => setSoOpen(!el.composer.classList.contains('so-open'));
+so.seed.addEventListener('input', soSummary);
 
 function setStudioMode(on) {
   so.box.hidden = !on;
   el.composer.classList.toggle('studio', on);
-  el.input.placeholder = on ? "Descrivi l'immagine o il video che vuoi… (allega una foto per modificarla o animarla)" : 'Scrivi un messaggio…';
-  if (on) fillStudioOpts();
+  el.input.placeholder = on ? (isMobile() ? 'Descrivi la foto o il video…' : "Descrivi l'immagine o il video che vuoi… (allega una foto per modificarla o animarla)") : 'Scrivi un messaggio…';
+  if (on) { fillStudioOpts(); soSummary(); el.composer.classList.toggle('so-open', prefs.soOpen ?? !isMobile()); }
 }
 
 function bodyTag(b) {
@@ -1827,7 +1844,7 @@ async function renderProfile() {
     </div>
     ${pr.bonds.length ? `<div class="bonds">${pr.bonds.map((b) => `<button class="bond" data-profile="${b.id}" title="${esc(b.note)}">${who(b, 'small')}<span><b>${esc(b.name)}</b><small>${esc(b.note)}</small></span></button>`).join('')}</div>` : ''}
     <div class="prof-actions">
-      <button class="btn" data-prof="chat">${icon('comment', 15)}${he ? 'Scrivigli' : 'Scrivile'}</button>
+      <button class="btn primary" data-prof="chat">${icon('comment', 15)}${he ? 'Scrivigli' : 'Scrivile'}</button>
       <button class="btn" data-prof="post">${icon('image', 15)}Nuovo post</button>
       <button class="btn" data-prof="story">${icon('plus', 15)}Nuova storia</button>
       ${state.convs.length > 1 ? `<button class="btn" data-prof="with">${icon('users', 15)}Foto con…</button>` : ''}
