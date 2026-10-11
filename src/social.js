@@ -15,6 +15,7 @@ import { profileFor } from './krea2.js';
 import { profilePrompt, composePrompt, socialPhotoRequest, commentPrompt, catchupPrompt } from './social-prompts.js';
 import * as notify from './notify.js';
 import * as memory from './memory.js';
+import * as models from './models.js';
 
 /**
  * Social dei personaggi: profilo, caroselli curati, storie, mi piace e commenti.
@@ -327,13 +328,16 @@ queue.register('post.plan', async (job, payload) => {
 
 const SUBJECTS = ['both', 'me', 'friend', 'none'];
 
+/** Modello per post, storie e commenti: quello scelto nel menu dei modelli. */
+const modelFor = (ownerId) => models.of(ownerId).social;
+
 async function plan({ postId, hint }) {
   const post = loadPost(postId);
   if (!post || post.status !== 'planned') return;
   const conv = store.get(post.character_id);
   if (!conv) { q.deletePost.run(postId); return; }
   const friend = post.tags[0] ? store.get(post.tags[0]) : null;
-  const model = config.ollama.model;
+  const model = modelFor(post.owner_id);
   const prof = await ensureProfile(conv, model);
   const friendProf = friend ? await ensureProfile(friend, model) : null;
   const note = friend ? bondNote(conv.id, friend.id) : null;
@@ -365,7 +369,8 @@ async function plan({ postId, hint }) {
   if (post.kind === 'post' && Math.random() < ARTSY_POST_CHANCE) for (const md of post.media) md.artsy = true;
   // Prompt delle foto adesso, finché Gemma è in VRAM; le foto vanno in coda una per una
   for (const md of post.media) {
-    md.prompt = await engineer(conv, friend, prof, md, post.kind, model);
+    // il prompt di una foto esplicita lo scrive il modello scelto per le foto esplicite
+    md.prompt = await engineer(conv, friend, prof, md, post.kind, md.level === 'explicit' ? models.of(post.owner_id).explicit : model);
     md.status = 'queued';
   }
   post.status = 'generating';
@@ -527,7 +532,7 @@ queue.register('social.comment', async (job, { postId, characterId, replyTo, for
   const thread = (root ? threadOf(comments, root) : comments).slice(-10);
 
   const out = await ollama.complete({
-    model: config.ollama.model, format: 'json', timeout: 90000, options: { temperature: 0.95, num_predict: 220 },
+    model: modelFor(post.owner_id), format: 'json', timeout: 90000, options: { temperature: 0.95, num_predict: 220 },
     messages: commentPrompt({
       card: { ...conv.card, id: conv.id }, state: conv.state, author: { id: author.id, ...author.card },
       post: { kind: post.kind, caption: post.caption, location: post.location, photos: post.media.map((m) => m.description) },
@@ -630,7 +635,7 @@ queue.onIdle(async (ownerId) => {
 queue.register('life.catchup', async (job, { characterId, from, to }) => {
   const conv = store.get(characterId);
   if (!conv) return;
-  const model = config.ollama.model;
+  const model = modelFor(conv.ownerId);
   const prof = await ensureProfile(conv, model);
   const bonds = bondsOf(conv.id);
   const out = await ollama.complete({

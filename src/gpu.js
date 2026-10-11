@@ -20,11 +20,17 @@ class GpuArbiter extends EventEmitter {
   owner = null;        // 'ollama' | 'comfy' | null (sconosciuto all'avvio)
   shared = false;      // l'ultimo passaggio l'ha fatto l'agent: owner può non essere più vero
   active = null;       // { who, label }
+  model = null;        // nome breve del modello di Ollama in uso (es. "Qwen 27B")
   waiting = [];        // etichette in coda
   tail = Promise.resolve();
 
+  constructor() {
+    super();
+    ollama.onModel((m) => { this.model = m; this.#emit(); });
+  }
+
   state() {
-    return { owner: this.owner, active: this.active, queued: this.waiting.map((w) => w.label) };
+    return { owner: this.owner, model: this.model, active: this.active, queued: this.waiting.map((w) => w.label) };
   }
 
   #emit() { this.emit('state', this.state()); }

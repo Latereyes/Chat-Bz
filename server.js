@@ -19,6 +19,7 @@ import { publicGroup } from './src/group.js';
 import * as social from './src/social.js';
 import * as queue from './src/queue.js';
 import * as notify from './src/notify.js';
+import * as models from './src/models.js';
 import { publicCharacter, draftFromIdea, draftFromPhoto, PHOTO_QUESTION, normalizeCard, RELATIONS, PACES, INTIMACY, STYLES, SOCIAL_HOT } from './src/characters.js';
 import { analyzeBody, BODY, DERIVED, FAMILIES, bodyRange, figureText, installedLoras, normalizeManual, comfyLoras } from './src/body.js';
 import { LORAS, VARIANTS } from './src/krea2.js';
@@ -112,14 +113,16 @@ app.get('/api/status', wrap(async (req, res) => {
 }));
 
 app.get('/api/config', wrap(async (req, res) => {
-  let models = [];
+  let list = [];
   // Anche i modelli senza tool (es. un Qwen da provare): la chat scrive foto e scena a parole e il server le riconosce
-  try { models = (await ollama.listModels()).filter((m) => m.tools || m.completion); } catch {}
+  try { list = (await ollama.listModels()).filter((m) => m.tools || m.completion); models.setInstalled(list.map((m) => m.name)); } catch {}
   // LoRA installate su ComfyUI: la scheda le propone per la LoRA del personaggio
   // (al massimo 1,5 s: con ComfyUI irraggiungibile l'app parte lo stesso)
   const loras = ((await Promise.race([comfyLoras(), new Promise((r) => setTimeout(r, 1500, null))])) || []).map((f) => f.replace(/\\/g, '/'));
   res.json({
     defaultModel: config.ollama.model,
+    roles: models.ROLES,
+    modelFor: models.of(req.user.id),
     options: {
       relations: RELATIONS, paces: PACES, intimacy: INTIMACY, styles: STYLES, socialHot: SOCIAL_HOT, dims: DIM_LABEL,
       // varianti delle LoRA di Krea 2 (banco di prova), scelte anche nello Studio
@@ -127,7 +130,7 @@ app.get('/api/config', wrap(async (req, res) => {
       videoVariants: Object.fromEntries(Object.entries(VIDEO_VARIANTS).map(([id, v]) => [id, v.label])),
       body: Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, { label: b.label, short: b.short, hint: b.hint, range: bodyRange(k), sizes: Object.fromEntries(Object.entries(b.sizes).map(([s, [l]]) => [s, l])), strengths: Object.fromEntries(Object.entries(b.sizes).map(([s, [, v]]) => [s, v])) }])),
     },
-    models,
+    models: list,
     loras,
     workflows: workflows().map(publicInfo),
   });
@@ -406,6 +409,13 @@ app.get('/api/social/feed', (req, res) => {
 });
 app.get('/api/social/stories', (req, res) => res.json(social.stories(req.user.id)));
 app.get('/api/social/queue', (req, res) => res.json(social.queueView(req.user.id)));
+/** Modello per un lavoro (chat, social, foto esplicite), scelto dal menu dei modelli. */
+app.post('/api/models', wrap(async (req, res) => {
+  models.setInstalled((await ollama.listModels()).map((m) => m.name));
+  try { res.json({ modelFor: models.set(req.user.id, req.body?.role, req.body?.model) }); }
+  catch (e) { throw httpError(400, e.message); }
+}));
+app.post('/api/social/queue/force', (req, res) => { queue.force(req.user.id); res.json(social.queueView(req.user.id)); });
 app.post('/api/social/queue/pause', (req, res) => { queue.setPaused(req.user.id, !!req.body?.paused); res.json(social.queueView(req.user.id)); });
 app.post('/api/social/queue/jobs/:id/retry', (req, res) => res.json({ ok: queue.retry(req.user.id, req.params.id) }));
 app.get('/api/social/profile/:id', wrap(async (req, res) => res.json(social.profileView(ownConv(req)))));

@@ -587,21 +587,28 @@ function onEvent(evt) {
   }
 }
 
-// ---------- Modello ----------
-function currentModel() { return prefs.model || state.config?.defaultModel; }
+// ---------- Modelli ----------
+// Ogni lavoro ha il suo modello (chat, social, prompt delle foto esplicite): la scelta sta sul server,
+// così vale anche per i post e le storie che si scrivono in sottofondo
+function currentModel() { return state.config?.modelFor?.chat || state.config?.defaultModel; }
 function renderModel() {
   const name = currentModel() || '';
   const models = state.config?.models || [];
   const cur = models.find((m) => m.name === name);
   el.modelName.textContent = cur?.label || name.replace(/:latest$/, '');
+  const roles = state.config?.roles || { chat: 'Chat' };
+  const chosen = state.config?.modelFor || { chat: name };
+  const item = (role, m) => `<button class="menu-item" data-role="${role}" data-model="${esc(m.name)}" title="${esc(m.name)}"><div>${esc(m.label || m.name)}${role === 'chat' ? `<small>${esc([m.params, m.quant, m.vision ? 'vede le immagini' : '', m.tools ? '' : 'senza tool: foto e scena a parole'].filter(Boolean).join(' · '))}</small>` : ''}</div>${m.name === chosen[role] ? `<span class="check">${icon('check', 16)}</span>` : ''}</button>`;
   el.modelMenu.innerHTML = models.length
-    ? '<div class="menu-note">Modello di chat (vale per i messaggi successivi)</div>' + models.map((m) => `<button class="menu-item" data-model="${esc(m.name)}" title="${esc(m.name)}"><div>${esc(m.label || m.name)}${m.name === state.config.defaultModel ? ' <small class="inline">predefinito</small>' : ''}<small>${esc([m.params, m.quant, m.vision ? 'vede le immagini' : '', m.tools ? '' : 'senza tool: foto e scena a parole'].filter(Boolean).join(' · '))}</small></div>${m.name === name ? `<span class="check">${icon('check', 16)}</span>` : ''}</button>`).join('')
+    ? Object.entries(roles).map(([role, label], i) => `${i ? '<div class="menu-sep"></div>' : ''}<div class="menu-note"><b>${esc(label)}</b></div>${models.map((m) => item(role, m)).join('')}`).join('')
     : '<div class="menu-note">Nessun modello Ollama trovato.</div>';
 }
 $('#model-pill').onclick = (e) => { e.stopPropagation(); el.gpuMenu.hidden = true; el.modelMenu.hidden = !el.modelMenu.hidden; };
-el.modelMenu.onclick = (e) => {
+el.modelMenu.onclick = async (e) => {
   const b = e.target.closest('[data-model]'); if (!b) return;
-  prefs.model = b.dataset.model; savePrefs(); renderModel(); el.modelMenu.hidden = true;
+  const r = await api('/api/models', { body: { role: b.dataset.role, model: b.dataset.model } }).catch((err) => alert(err.message));
+  if (r) { state.config.modelFor = r.modelFor; renderModel(); }
+  el.modelMenu.hidden = true;
 };
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#model-menu')) el.modelMenu.hidden = true;
@@ -1243,8 +1250,8 @@ function renderGpu(s) {
   let label;
   if (s.active) {
     pill.classList.add('busy', s.active.who === 'comfy' ? 'comfy' : 'ollama');
-    label = s.active.phase || (s.active.who === 'comfy' ? 'ComfyUI al lavoro' : 'Gemma al lavoro');
-  } else if (s.owner === 'ollama') { pill.classList.add('ollama'); label = 'Gemma in VRAM'; }
+    label = s.active.phase || (s.active.who === 'comfy' ? 'ComfyUI al lavoro' : `${s.model || 'Ollama'} al lavoro`);
+  } else if (s.owner === 'ollama') { pill.classList.add('ollama'); label = `${s.model || 'Ollama'} in VRAM`; }
   else if (s.owner === 'comfy') { pill.classList.add('comfy'); label = 'ComfyUI in VRAM'; }
   else label = 'GPU libera';
   if (s.queued?.length) label += ` · +${s.queued.length} in coda`;
@@ -1254,7 +1261,7 @@ function renderGpu(s) {
 
 function renderGpuMenu() {
   const s = state.gpu || {};
-  const who = { ollama: 'Ollama (Gemma)', comfy: 'ComfyUI', none: '—' };
+  const who = { ollama: s.model ? `Ollama (${esc(s.model)})` : 'Ollama', comfy: 'ComfyUI', none: '—' };
   el.gpuMenu.innerHTML = `
     <div class="menu-note"><b>VRAM condivisa</b><br>Ollama e ComfyUI si alternano sulla GPU: quando uno serve, l'altro viene scaricato.</div>
     <div class="menu-sep"></div>
@@ -1930,7 +1937,10 @@ function renderQueue() {
   queuePanel.innerHTML = `
     <div class="qp-head">
       <p>I contenuti si generano un pezzo alla volta, solo quando la GPU è libera e non stai chattando${qv.waitingForYou ? ' (ora aspetta: hai scritto da poco)' : ''}. Nelle ultime 24 ore: <b>${qv.counters.posts}/${qv.limits.posts}</b> post e <b>${qv.counters.stories}/${qv.limits.stories}</b> storie automatiche; quelli che chiedi tu non contano.${qv.night ? ` Dalle ${qv.night.from} alle ${qv.night.to} i personaggi dormono${qv.asleep ? ' (adesso dormono)' : ''}.` : ''}</p>
-      <button class="btn" id="qp-pause">${icon(qv.paused ? 'play' : 'pause', 15)}${qv.paused ? 'Riprendi' : 'Metti in pausa'}</button>
+      <div class="qp-btns">
+        <button class="btn" id="qp-pause">${icon(qv.paused ? 'play' : 'pause', 15)}${qv.paused ? 'Riprendi' : 'Metti in pausa'}</button>
+        <button class="btn" id="qp-force" title="Riprova i lavori non riusciti e parte subito, senza aspettare la pausa dalla chat">${icon('refresh', 15)}Sblocca la coda</button>
+      </div>
     </div>
     ${qv.jobs.length ? `<ul class="qp-jobs">${qv.jobs.map((j) => `<li><span>${esc(j.label || j.kind)}</span><small>${when(j)}</small></li>`).join('')}</ul>` : '<p class="hint">Niente in coda.</p>'}`;
 }
@@ -1938,6 +1948,10 @@ $('#btn-queue').onclick = () => { queuePanel.hidden = !queuePanel.hidden; render
 queuePanel.addEventListener('click', async (e) => {
   if (e.target.closest('#qp-pause')) {
     soc.queue = await api('/api/social/queue/pause', { body: { paused: !soc.queue.paused } }).catch(() => soc.queue);
+    return refreshQueue();
+  }
+  if (e.target.closest('#qp-force')) {
+    soc.queue = await api('/api/social/queue/force', { method: 'POST' }).catch(() => soc.queue);
     return refreshQueue();
   }
   const r = e.target.closest('[data-retry-job]');
@@ -2206,7 +2220,7 @@ async function startApp() {
   pollStatus();
   setInterval(pollStatus, 20000);
   state.config = await api('/api/config').catch(() => ({ models: [], workflows: [], options: {} }));
-  if (prefs.model && !state.config.models.some((m) => m.name === prefs.model)) delete prefs.model;
+  delete prefs.model;   // il modello della chat ora si sceglie sul server (menu dei modelli)
   renderModel();
   await loadConvs();
   loadNotifs();

@@ -16,6 +16,7 @@ import { planSegments, secondsFrom, partLine, continuePrompt, addParts, PART } f
 import { updateScene } from './relationship.js';
 import * as queue from './queue.js';
 import * as social from './social.js';
+import * as models from './models.js';
 
 const running = new Map(); // characterId -> AbortController
 
@@ -171,6 +172,22 @@ const parseArgs = (a) => {
   try { return JSON.parse(a); } catch { return { description: a }; }
 };
 
+/** Foto o video chiesti senza descrizione: si ricava dal messaggio (prova sul PC 2026-10-11, chat a due:
+ *  Gemma chiama send_photo con solo {"who":"both"} 3 volte su 4 e la foto spariva senza errori). */
+export function fillMediaDescription(calls, userText = '', reply = '') {
+  for (const c of calls) {
+    if (!/^send_(?:photo|video)$/.test(c.function?.name || '')) continue;
+    const args = parseArgs(c.function.arguments);
+    if (String(args.description || '').trim()) continue;
+    const ut = String(userText || '').trim();
+    const description = !ut ? 'a casual selfie' : reply.trim() ? `${ut}
+
+(reply: ${reply.trim()})` : ut;
+    c.function.arguments = { ...args, description, fromText: !!ut };
+  }
+  return calls;
+}
+
 /** Video che parte da una foto già fatta (image to video). */
 function videoFromPhoto(base, photo, duration) {
   const w = getWorkflow(null, 'video', 'img2video');
@@ -233,7 +250,7 @@ async function engineerPrompt(conv, msg, media, model, signal, ctx = {}) {
   const onChunk = (delta) => emit(conv.id, { type: 'prompt_delta', messageId: msg.id, mediaId: media.id, delta });
   if (media.type === 'image') {
     const r = await engineerPhoto({ workflow: w, card: conv.card, state: conv.state, media, messages: conv.messages, idx: conv.messages.indexOf(msg),
-      userText: ctx.userText, reply: ctx.reply, user, model, signal, onChunk, fromText: !!media.args?.fromText });
+      userText: ctx.userText, reply: ctx.reply, user, model, explicitModel: models.of(conv.ownerId).explicit, signal, onChunk, fromText: !!media.args?.fromText });
     Object.assign(media, { level: r.level, levelReason: r.reason, hm: r.hm || undefined, charLora: r.charLora || undefined });
     if (r.lenovo !== null) media.lenovo = r.lenovo;
     return r.prompt;
@@ -348,7 +365,7 @@ function settleScene(conv, initiative) {
 }
 
 function startTurn(conv, { tool, model, initiative = false }) {
-  model = model || config.ollama.model;
+  model = model || models.of(conv.ownerId).chat;
   settleScene(conv, initiative);
   const msg = { id: store.newId(), role: 'assistant', content: '', media: [], steps: [], model, status: 'pending', createdAt: Date.now(),
     sceneBefore: structuredClone(conv.state.scene), presence: conv.state.scene.presence, ...(initiative ? { initiative: true } : {}) };
@@ -434,6 +451,16 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
         convo.push({ role: 'assistant', content: result.content || '', tool_calls: sceneCalls.map((c) => ({ function: { name: 'update_scene', arguments: parseArgs(c.function.arguments) } })) });
         convo.push({ role: 'tool', tool_name: 'update_scene', content: JSON.stringify({ ok: true, scene: conv.state.scene, note: 'Scene updated. Now write your reply in the new situation.' }) });
       }
+      // Ha mandato la foto senza scrivere niente (prova sul PC 2026-10-11, chat a due: 3 volte su 4): due parole insieme alla foto
+      if (calls.length && !msg.content.trim() && !signal.aborted) {
+        convo.push({ role: 'assistant', content: '', tool_calls: calls.map((c) => ({ function: { name: c.function?.name, arguments: parseArgs(c.function?.arguments) } })) });
+        for (const c of calls) convo.push({ role: 'tool', tool_name: c.function?.name, content: JSON.stringify({ ok: true, note: 'Sent. Now write your short reply to the user, in character, without tool calls.' }) });
+        const result = await ollama.chat({
+          model, signal, messages: convo, options: { temperature: 0.85, repeat_penalty: 1.08 },
+          onChunk: (c) => { if (c.content) { msg.content += c.content; emit(conv.id, { type: 'delta', messageId: msg.id, content: c.content }); } },
+        });
+        if (result.stats) msg.stats = result.stats;
+      }
 
       // Riserva: tag o descrizione nel testo, o strumento chiesto con il pulsante e ignorato dal modello
       const tag = extractTag(msg.content, userMsg?.content || '');
@@ -462,6 +489,7 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       if (!calls.length && (tool === 'photo' || tool === 'video')) {
         calls.push({ function: { name: tool === 'photo' ? 'send_photo' : 'send_video', arguments: { description: userMsg?.content || 'a casual selfie', fromText: !!userMsg?.content } } });
       }
+      fillMediaDescription(calls, userMsg?.content, msg.content);
       calls.slice(0, 2).forEach((c, i) => { const md = G ? G.mediaFromCall(c, i, { userText: userMsg?.content }) : mediaFromCall(conv, c, i); if (md) msg.media.push(...[md].flat()); });
       for (const md of msg.media) emitMedia(conv, msg, md);
 
@@ -473,7 +501,7 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
         const prev = md.continueOfId && msg.media.find((x) => x.id === md.continueOfId);
         if (prev) Object.assign(md, { sourceDescription: `the previous part of the video: ${prev.prompt || prev.description}`, sourceLevel: prev.level });
         md.prompt = G
-          ? await G.engineer(msg, md, { model, signal, user, userText: userMsg?.content, reply: msg.content, onChunk: (delta) => emit(conv.id, { type: 'prompt_delta', messageId: msg.id, mediaId: md.id, delta }) })
+          ? await G.engineer(msg, md, { model, explicitModel: models.of(conv.ownerId).explicit, signal, user, userText: userMsg?.content, reply: msg.content, onChunk: (delta) => emit(conv.id, { type: 'prompt_delta', messageId: msg.id, mediaId: md.id, delta }) })
           : await engineerPrompt(conv, msg, md, model, signal, { userText: userMsg?.content, reply: msg.content });
         emitMedia(conv, msg, md);
       }
@@ -514,7 +542,7 @@ export function animateMedia(conv, messageId, mediaId, { text, seconds, model } 
   const ac = new AbortController();
   running.set(conv.id, ac);
   gpu.run('ollama', 'Scrivo il prompt del video', async () => {
-    md.prompt = await engineerPrompt(conv, msg, md, model || config.ollama.model, ac.signal);
+    md.prompt = await engineerPrompt(conv, msg, md, model || models.of(conv.ownerId).chat, ac.signal);
     emitMedia(conv, msg, md);
   }).then(() => enqueue(conv, msg, md)).catch((e) => {
     md.status = ac.signal.aborted ? 'cancelled' : 'error';
@@ -544,7 +572,7 @@ export function continueVideo(conv, messageId, mediaId, { text, seconds, model }
   const ac = new AbortController();
   running.set(conv.id, ac);
   gpu.run('ollama', 'Scrivo il prompt del video', async () => {
-    md.prompt = await engineerPrompt(conv, msg, md, model || config.ollama.model, ac.signal, { userText: text });
+    md.prompt = await engineerPrompt(conv, msg, md, model || models.of(conv.ownerId).chat, ac.signal, { userText: text });
     emitMedia(conv, msg, md);
   }).then(() => enqueue(conv, msg, md)).catch((e) => {
     md.status = ac.signal.aborted ? 'cancelled' : 'error';

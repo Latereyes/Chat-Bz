@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractTag } from '../src/chat.js';
+import { extractTag, fillMediaDescription } from '../src/chat.js';
 
 test('strumento scritto come funzione Python: foto con «who», testo ripulito', () => {
   const text = 'Eccoci qui! 😊\nsend_photo(who="both", description="A selfie of Hitomi and Alessia together on a terrace (Milan at night)")\nTi piace?';
@@ -52,4 +52,14 @@ test('foto chiesta a parole: anche «fatevi una foto» e «una foto di voi due»
     assert.ok(extractTag('Eccoci, guarda qui: ', t).call, t);
   }
   assert.ok(!extractTag('Ciao, tutto bene', 'Che fate stasera?').call);
+});
+
+test('send_photo senza descrizione (solo «who»): la foto si ricava dal messaggio invece di sparire', () => {
+  const calls = [{ function: { name: 'send_photo', arguments: { who: 'both' } } }, { function: { name: 'update_scene', arguments: {} } }];
+  fillMediaDescription(calls, 'Siete carine insieme', 'Grazie! 😊');
+  assert.deepEqual(calls[0].function.arguments, { who: 'both', description: 'Siete carine insieme\n\n(reply: Grazie! 😊)', fromText: true });
+  assert.deepEqual(calls[1].function.arguments, {});
+  const ok = [{ function: { name: 'send_photo', arguments: '{"description":"a selfie at the beach"}' } }];
+  fillMediaDescription(ok, 'ciao');
+  assert.equal(ok[0].function.arguments, '{"description":"a selfie at the beach"}');
 });

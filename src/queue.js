@@ -33,6 +33,9 @@ const q = {
   oldErrors: db.prepare(`DELETE FROM queue_jobs WHERE status = 'error' AND updated_at < ?`),
   byCharacter: db.prepare('DELETE FROM queue_jobs WHERE character_id = ?'),
   all: db.prepare('SELECT * FROM queue_jobs WHERE owner_id = ?'),
+  // «Sblocca»: i lavori non riusciti o in attesa ripartono subito, con i tentativi azzerati
+  wake: db.prepare(`UPDATE queue_jobs SET status = 'pending', run_after = ?, attempts = 0, error = NULL, updated_at = ? WHERE owner_id = ? AND status IN ('pending', 'error')`),
+  unstick: db.prepare(`UPDATE queue_jobs SET status = 'pending', run_after = ?, updated_at = ? WHERE id = ? AND status = 'running'`),
   paused: db.prepare('SELECT paused FROM social_settings WHERE owner_id = ?'),
   setPaused: db.prepare(`INSERT INTO social_settings (owner_id, paused) VALUES (?, ?) ON CONFLICT(owner_id) DO UPDATE SET paused = excluded.paused`),
 };
@@ -42,6 +45,8 @@ const planners = [];          // async (ownerId) => void: aggiungono contenuti n
 let lastActivity = 0;
 let busy = false;
 let timer = null;
+let current = null;           // { id, since }: il lavoro in corso
+let forced = false;           // il prossimo giro non aspetta che tu smetta di chattare
 
 export const channel = (ownerId) => `social-${ownerId}`;
 const notify = (ownerId) => emit(channel(ownerId), { type: 'social', what: 'queue' });
@@ -97,6 +102,8 @@ async function execute(job) {
   const fn = handlers.get(job.kind);
   if (!fn) { q.remove.run(job.id); return; }
   q.setRunning.run(Date.now(), job.id);
+  const mine = { id: job.id, since: Date.now() };
+  current = mine;
   job.attempts += 1;
   job.lastAttempt = job.attempts >= MAX_ATTEMPTS;
   notify(job.owner_id);
@@ -109,8 +116,31 @@ async function execute(job) {
     if (job.lastAttempt) q.setError.run(String(e.message).slice(0, 300), Date.now(), job.id);
     else q.setPending.run(Date.now() + 2 * 60 * 1000 * job.attempts, String(e.message).slice(0, 300), Date.now(), job.id);
   } finally {
+    if (current === mine) current = null;
     notify(job.owner_id);
   }
+}
+
+// Un lavoro in corso da più di così si considera bloccato (una foto lunga sta sotto i 10 minuti)
+const STUCK_MS = 15 * 60 * 1000;
+
+/**
+ * Pulsante «Sblocca la coda»: rimette in fila i lavori non riusciti, fa partire subito quelli in attesa
+ * e, se un lavoro è fermo da troppo, lo lascia perdere e riparte. Non aspetta la pausa dalla chat.
+ */
+export function force(ownerId) {
+  const now = Date.now();
+  q.wake.run(now, now, ownerId);
+  if (busy && current && now - current.since > STUCK_MS) {
+    console.warn('[coda] lavoro bloccato da troppo: riparto');
+    q.unstick.run(now, now, current.id);
+    current = null;
+    busy = false;
+  }
+  if (isPaused(ownerId)) setPaused(ownerId, false);
+  forced = true;
+  notify(ownerId);
+  kick(100);
 }
 
 async function tick() {
@@ -122,7 +152,9 @@ async function tick() {
     // Senza GPU: subito
     for (const j of due.filter((x) => x.gpu === 'none')) await execute(j);
 
-    if (!userIdle() || !(await gpu.idle())) return;
+    const force = forced;
+    forced = false;
+    if ((!force && !userIdle()) || !(await gpu.idle())) return;
     let ready = due.filter((x) => x.gpu !== 'none');
     if (!ready.length) {
       for (const { owner_id: owner } of q.owners.all()) {

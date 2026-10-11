@@ -216,10 +216,10 @@ export function groupTurn(conv) {
     },
 
     /** Prompt della foto: di uno dei due (come in chat, con il suo rapporto e la sua LoRA) o di tutti e due. */
-    async engineer(msg, media, { model, signal, onChunk, userText: ut, reply, user }) {
+    async engineer(msg, media, { model, explicitModel, signal, onChunk, userText: ut, reply, user }) {
       const idx = conv.messages.indexOf(msg);
       const people = (media.characterIds || []).map((id) => members.find((m) => m.id === id)).filter(Boolean);
-      const common = { media, messages: conv.messages, idx, userText: ut, reply, user, model, signal, onChunk, fromText: !!media.args?.fromText };
+      const common = { media, messages: conv.messages, idx, userText: ut, reply, user, model, explicitModel, signal, onChunk, fromText: !!media.args?.fromText };
       if (people.length === 1) {
         const p = people[0];
         const r = await engineerPhoto({ ...common, workflow: getWorkflow(media.workflow, 'image'), card: p.card, state: { ...p.state, scene: conv.state.scene } });

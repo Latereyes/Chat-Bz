@@ -642,6 +642,7 @@ body:not(.is-admin) .admin-only { display: none; }
 .qp-head { display: flex; gap: 12px; align-items: flex-start; }
 .qp-head p { margin: 0; color: var(--muted); flex: 1; }
 .qp-head .btn { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.qp-btns { display: flex; flex-direction: column; gap: 6px; }
 .qp-jobs { list-style: none; margin: 10px 0 0; padding: 0; }
 .qp-jobs li { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); }
 .qp-jobs small { color: var(--faint); white-space: nowrap; }
