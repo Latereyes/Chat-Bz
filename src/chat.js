@@ -171,6 +171,22 @@ const parseArgs = (a) => {
   try { return JSON.parse(a); } catch { return { description: a }; }
 };
 
+/** Foto o video chiesti senza descrizione: si ricava dal messaggio (prova sul PC 2026-10-11, chat a due:
+ *  Gemma chiama send_photo con solo {"who":"both"} 3 volte su 4 e la foto spariva senza errori). */
+export function fillMediaDescription(calls, userText = '', reply = '') {
+  for (const c of calls) {
+    if (!/^send_(?:photo|video)$/.test(c.function?.name || '')) continue;
+    const args = parseArgs(c.function.arguments);
+    if (String(args.description || '').trim()) continue;
+    const ut = String(userText || '').trim();
+    const description = !ut ? 'a casual selfie' : reply.trim() ? `${ut}
+
+(reply: ${reply.trim()})` : ut;
+    c.function.arguments = { ...args, description, fromText: !!ut };
+  }
+  return calls;
+}
+
 /** Video che parte da una foto già fatta (image to video). */
 function videoFromPhoto(base, photo, duration) {
   const w = getWorkflow(null, 'video', 'img2video');
@@ -434,6 +450,16 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
         convo.push({ role: 'assistant', content: result.content || '', tool_calls: sceneCalls.map((c) => ({ function: { name: 'update_scene', arguments: parseArgs(c.function.arguments) } })) });
         convo.push({ role: 'tool', tool_name: 'update_scene', content: JSON.stringify({ ok: true, scene: conv.state.scene, note: 'Scene updated. Now write your reply in the new situation.' }) });
       }
+      // Ha mandato la foto senza scrivere niente (prova sul PC 2026-10-11, chat a due: 3 volte su 4): due parole insieme alla foto
+      if (calls.length && !msg.content.trim() && !signal.aborted) {
+        convo.push({ role: 'assistant', content: '', tool_calls: calls.map((c) => ({ function: { name: c.function?.name, arguments: parseArgs(c.function?.arguments) } })) });
+        for (const c of calls) convo.push({ role: 'tool', tool_name: c.function?.name, content: JSON.stringify({ ok: true, note: 'Sent. Now write your short reply to the user, in character, without tool calls.' }) });
+        const result = await ollama.chat({
+          model, signal, messages: convo, options: { temperature: 0.85, repeat_penalty: 1.08 },
+          onChunk: (c) => { if (c.content) { msg.content += c.content; emit(conv.id, { type: 'delta', messageId: msg.id, content: c.content }); } },
+        });
+        if (result.stats) msg.stats = result.stats;
+      }
 
       // Riserva: tag o descrizione nel testo, o strumento chiesto con il pulsante e ignorato dal modello
       const tag = extractTag(msg.content, userMsg?.content || '');
@@ -462,6 +488,7 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
       if (!calls.length && (tool === 'photo' || tool === 'video')) {
         calls.push({ function: { name: tool === 'photo' ? 'send_photo' : 'send_video', arguments: { description: userMsg?.content || 'a casual selfie', fromText: !!userMsg?.content } } });
       }
+      fillMediaDescription(calls, userMsg?.content, msg.content);
       calls.slice(0, 2).forEach((c, i) => { const md = G ? G.mediaFromCall(c, i, { userText: userMsg?.content }) : mediaFromCall(conv, c, i); if (md) msg.media.push(...[md].flat()); });
       for (const md of msg.media) emitMedia(conv, msg, md);
 
