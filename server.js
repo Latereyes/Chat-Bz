@@ -28,7 +28,9 @@ import { updateScene, initialState, DIM_LABEL, intimacyOpen, closeness } from '.
 const app = express();
 app.set('trust proxy', false);
 app.use(express.json({ limit: '2mb' }));
-app.use(express.static(config.paths.public, { index: 'index.html' }));
+// grafica e codice dell'app: il browser li ricontrolla a ogni apertura (prova sul PC 2026-10-11: dopo un aggiornamento
+// restava la grafica vecchia, perché senza indicazioni il browser teneva la sua copia anche per giorni)
+app.use(express.static(config.paths.public, { index: 'index.html', setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
 app.use('/vendor', express.static(path.join(config.root, 'node_modules', 'marked', 'lib')));
 app.use('/vendor', express.static(path.join(config.root, 'node_modules', 'dompurify', 'dist')));
 app.use(auth.session);
@@ -454,7 +456,7 @@ app.get('/media/:owner/:file', (req, res) => {
   });
 });
 
-app.get('/{*path}', (req, res) => res.sendFile(path.join(config.paths.public, 'index.html')));
+app.get('/{*path}', (req, res) => res.sendFile(path.join(config.paths.public, 'index.html'), { headers: { 'Cache-Control': 'no-cache' } }));
 
 recoverInterrupted();
 life.start();
