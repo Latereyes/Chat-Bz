@@ -16,6 +16,7 @@ import { planSegments, secondsFrom, partLine, continuePrompt, addParts, PART } f
 import { updateScene } from './relationship.js';
 import * as queue from './queue.js';
 import * as social from './social.js';
+import * as models from './models.js';
 
 const running = new Map(); // characterId -> AbortController
 
@@ -249,7 +250,7 @@ async function engineerPrompt(conv, msg, media, model, signal, ctx = {}) {
   const onChunk = (delta) => emit(conv.id, { type: 'prompt_delta', messageId: msg.id, mediaId: media.id, delta });
   if (media.type === 'image') {
     const r = await engineerPhoto({ workflow: w, card: conv.card, state: conv.state, media, messages: conv.messages, idx: conv.messages.indexOf(msg),
-      userText: ctx.userText, reply: ctx.reply, user, model, signal, onChunk, fromText: !!media.args?.fromText });
+      userText: ctx.userText, reply: ctx.reply, user, model, explicitModel: models.of(conv.ownerId).explicit, signal, onChunk, fromText: !!media.args?.fromText });
     Object.assign(media, { level: r.level, levelReason: r.reason, hm: r.hm || undefined, charLora: r.charLora || undefined });
     if (r.lenovo !== null) media.lenovo = r.lenovo;
     return r.prompt;
@@ -364,7 +365,7 @@ function settleScene(conv, initiative) {
 }
 
 function startTurn(conv, { tool, model, initiative = false }) {
-  model = model || config.ollama.model;
+  model = model || models.of(conv.ownerId).chat;
   settleScene(conv, initiative);
   const msg = { id: store.newId(), role: 'assistant', content: '', media: [], steps: [], model, status: 'pending', createdAt: Date.now(),
     sceneBefore: structuredClone(conv.state.scene), presence: conv.state.scene.presence, ...(initiative ? { initiative: true } : {}) };
@@ -500,7 +501,7 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
         const prev = md.continueOfId && msg.media.find((x) => x.id === md.continueOfId);
         if (prev) Object.assign(md, { sourceDescription: `the previous part of the video: ${prev.prompt || prev.description}`, sourceLevel: prev.level });
         md.prompt = G
-          ? await G.engineer(msg, md, { model, signal, user, userText: userMsg?.content, reply: msg.content, onChunk: (delta) => emit(conv.id, { type: 'prompt_delta', messageId: msg.id, mediaId: md.id, delta }) })
+          ? await G.engineer(msg, md, { model, explicitModel: models.of(conv.ownerId).explicit, signal, user, userText: userMsg?.content, reply: msg.content, onChunk: (delta) => emit(conv.id, { type: 'prompt_delta', messageId: msg.id, mediaId: md.id, delta }) })
           : await engineerPrompt(conv, msg, md, model, signal, { userText: userMsg?.content, reply: msg.content });
         emitMedia(conv, msg, md);
       }
@@ -541,7 +542,7 @@ export function animateMedia(conv, messageId, mediaId, { text, seconds, model } 
   const ac = new AbortController();
   running.set(conv.id, ac);
   gpu.run('ollama', 'Scrivo il prompt del video', async () => {
-    md.prompt = await engineerPrompt(conv, msg, md, model || config.ollama.model, ac.signal);
+    md.prompt = await engineerPrompt(conv, msg, md, model || models.of(conv.ownerId).chat, ac.signal);
     emitMedia(conv, msg, md);
   }).then(() => enqueue(conv, msg, md)).catch((e) => {
     md.status = ac.signal.aborted ? 'cancelled' : 'error';
@@ -571,7 +572,7 @@ export function continueVideo(conv, messageId, mediaId, { text, seconds, model }
   const ac = new AbortController();
   running.set(conv.id, ac);
   gpu.run('ollama', 'Scrivo il prompt del video', async () => {
-    md.prompt = await engineerPrompt(conv, msg, md, model || config.ollama.model, ac.signal, { userText: text });
+    md.prompt = await engineerPrompt(conv, msg, md, model || models.of(conv.ownerId).chat, ac.signal, { userText: text });
     emitMedia(conv, msg, md);
   }).then(() => enqueue(conv, msg, md)).catch((e) => {
     md.status = ac.signal.aborted ? 'cancelled' : 'error';

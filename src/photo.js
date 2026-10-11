@@ -242,7 +242,7 @@ export function photoRequest({ card, state, media, level, exchanges = [], user, 
  * messages/idx: la conversazione fino alla risposta in corso; senza, si usa solo userText/reply.
  * variant: variante del profilo di Krea 2 (banco di prova). Restituisce anche la richiesta, per stamparla.
  */
-export async function engineerPhoto({ workflow, card, state, media, messages, idx, userText = '', reply = '', user, model, signal, onChunk, fromText = false, variant = null, dryRun = false }) {
+export async function engineerPhoto({ workflow, card, state, media, messages, idx, userText = '', reply = '', user, model, explicitModel, signal, onChunk, fromText = false, variant = null, dryRun = false }) {
   const family = bodyFamily(workflow.graph);
   const { level, reason } = photoLevel({ card, state, userText, reply });
   const exchanges = messages ? recentExchanges(messages, idx, EXCHANGES[level]) : [{ user: userText, reply }].filter((e) => e.user || e.reply);
@@ -255,7 +255,8 @@ export async function engineerPhoto({ workflow, card, state, media, messages, id
   if (dryRun) return { ...result, prompt: finishPrompt('(prompt di Gemma)', { hm, trigger: charLora?.trigger }) };
   let text = '';
   const out = await ollama.chat({
-    model, signal, think: false,
+    // in esplicito il prompt lo scrive il modello scelto apposta (Qwen 27B: descrizioni più ricche)
+    model: level === 'explicit' && explicitModel ? explicitModel : model, signal, think: false,
     options: { temperature: TEMPERATURE[level] },
     messages: [{ role: 'system', content: promptEngineerSystem(workflow) }, { role: 'user', content: request }],
     onChunk: (c) => { if (c.content) { text += c.content; onChunk?.(c.content); } },
@@ -314,7 +315,7 @@ export function duoPhotoRequest({ cards, scene = {}, media, level, exchanges = [
  * Filtro, richiesta e prompt per una foto dei due personaggi. Con Krea 2 le LoRA dei due personaggi vanno insieme
  * nel grafo (charLoras) e le loro parole chiave in testa al prompt.
  */
-export async function engineerDuoPhoto({ workflow, cards, states, scene, media, messages, idx, userText = '', reply = '', user, model, signal, onChunk, fromText = false, level: forced = null, dryRun = false }) {
+export async function engineerDuoPhoto({ workflow, cards, states, scene, media, messages, idx, userText = '', reply = '', user, model, explicitModel, signal, onChunk, fromText = false, level: forced = null, dryRun = false }) {
   const family = bodyFamily(workflow.graph);
   const lv = forced ? { level: forced.level, reason: forced.reason } : duoLevel({ cards, states, scene, userText, reply });
   const level = lv.level;
@@ -327,7 +328,7 @@ export async function engineerDuoPhoto({ workflow, cards, states, scene, media, 
   if (dryRun) return { ...result, prompt: finishPrompt('(prompt di Gemma)', { hm, trigger }) };
   let text = '';
   const out = await ollama.chat({
-    model, signal, think: false,
+    model: level === 'explicit' && explicitModel ? explicitModel : model, signal, think: false,
     options: { temperature: TEMPERATURE[level] },
     messages: [{ role: 'system', content: promptEngineerSystem(workflow) }, { role: 'user', content: request }],
     onChunk: (c) => { if (c.content) { text += c.content; onChunk?.(c.content); } },

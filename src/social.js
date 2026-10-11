@@ -15,6 +15,7 @@ import { profileFor } from './krea2.js';
 import { profilePrompt, composePrompt, socialPhotoRequest, commentPrompt, catchupPrompt } from './social-prompts.js';
 import * as notify from './notify.js';
 import * as memory from './memory.js';
+import * as models from './models.js';
 
 /**
  * Social dei personaggi: profilo, caroselli curati, storie, mi piace e commenti.
@@ -327,8 +328,8 @@ queue.register('post.plan', async (job, payload) => {
 
 const SUBJECTS = ['both', 'me', 'friend', 'none'];
 
-/** Modello per post, storie e commenti: quello scelto nel menu dei modelli, altrimenti il predefinito. */
-const modelFor = (ownerId) => queue.socialModel(ownerId) || config.ollama.model;
+/** Modello per post, storie e commenti: quello scelto nel menu dei modelli. */
+const modelFor = (ownerId) => models.of(ownerId).social;
 
 async function plan({ postId, hint }) {
   const post = loadPost(postId);
@@ -368,7 +369,8 @@ async function plan({ postId, hint }) {
   if (post.kind === 'post' && Math.random() < ARTSY_POST_CHANCE) for (const md of post.media) md.artsy = true;
   // Prompt delle foto adesso, finché Gemma è in VRAM; le foto vanno in coda una per una
   for (const md of post.media) {
-    md.prompt = await engineer(conv, friend, prof, md, post.kind, model);
+    // il prompt di una foto esplicita lo scrive il modello scelto per le foto esplicite
+    md.prompt = await engineer(conv, friend, prof, md, post.kind, md.level === 'explicit' ? models.of(post.owner_id).explicit : model);
     md.status = 'queued';
   }
   post.status = 'generating';

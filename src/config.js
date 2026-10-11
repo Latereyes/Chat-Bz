@@ -21,6 +21,14 @@ export default {
     // Tempo per cui Ollama tiene il modello in VRAM tra un messaggio e l'altro
     keepAlive: env.OLLAMA_KEEP_ALIVE || '30m',
     // Nomi da mostrare nel menu dei modelli, per nome Ollama senza ":latest" (come in LocalAI)
+    // Modelli predefiniti per lavoro (si cambiano dal menu dei modelli; se mancano si usa `model`)
+    roles: {
+      chat: 'gemma4-12b-uncensored:latest',
+      social: 'hf.co/HauhauCS/Gemma4-26B-A4B-Uncensored-HauhauCS-Balanced:IQ4_XS',
+      explicit: 'orcarouter/Qwen3.8-27B-Uncensored:iq3_m',
+    },
+    // Modelli installati che l'app non mostra (Qwen Coder serve a Claude per il codice)
+    hidden: ['qwen3.8-coder'],
     labels: {
       'gemma4-12b-uncensored': 'Gemma 12B',
       'hf.co/HauhauCS/Gemma4-26B-A4B-Uncensored-HauhauCS-Balanced:IQ4_XS': 'Gemma 26B',

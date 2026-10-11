@@ -78,7 +78,8 @@ export const displayName = (m) => shortName(m.name, m.details);
 export async function listModels() {
   const { models: all = [] } = await api('/api/tags');
   const ok = await Promise.all(all.map(isHealthy));
-  const models = all.filter((_, i) => ok[i]);
+  const hidden = new Set(config.ollama.hidden.map((n) => n.replace(/:latest$/, '')));
+  const models = all.filter((m, i) => ok[i] && !hidden.has(m.name.replace(/:latest$/, '')));
   return models.map((m) => ({
     name: m.name,
     label: displayName(m),

@@ -201,7 +201,7 @@ db.exec(`
 // Colonne aggiunte dopo la prima versione delle tabelle
 const hasColumn = (table, col) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col);
 if (!hasColumn('posts', 'tags')) db.exec(`ALTER TABLE posts ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'`);   // personaggi taggati (foto insieme)
-if (!hasColumn('social_settings', 'model')) db.exec('ALTER TABLE social_settings ADD COLUMN model TEXT');   // modello per post e storie (vuoto: il predefinito)
+if (!hasColumn('social_settings', 'models')) db.exec('ALTER TABLE social_settings ADD COLUMN models TEXT');   // modelli scelti per chat, social e foto esplicite (models.js)
 
 /** Esegue fn in una transazione. */
 export function tx(fn) {
