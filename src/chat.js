@@ -337,6 +337,14 @@ export function initiate(conv, { model } = {}) {
  * se si allunga o chiude sempre con una domanda, lo si riporta a variare. Più efficace di una regola generale.
  */
 const visible = (t) => String(t || '').replace(/\[[^\]]*\]/g, '').trim();
+// L'utente racconta cosa gli fa il personaggio: «le tue mani che mi accarezzano», «mi baci il collo», "your hands on me".
+// Prova sul PC 2026-10-12 con Gemma 12B: con «sento le tue mani…» scriveva quasi sempre lui che accarezzava lei, anche con
+// una regola nel prompt di sistema o una nota nel <now>; una nota subito dopo la frase, solo per il modello, 3 volte su 3
+const youDoNote = (text, card, user) => {
+  const hit = String(text || '').match(YOU_DO)?.[0]?.trim();
+  return hit ? ` [nota: «${hit}» vuol dire che sei TU, ${card.name}, a farlo a ${user?.name || 'lui'}]` : '';
+};
+const YOU_DO = /\b(?:(?:le\s+tue|la\s+tua|il\s+tuo|i\s+tuoi)\s+\p{L}+\s+(?:che\s+)?(?:mi|sul\s+mio|sulla\s+mia|sui\s+miei|sulle\s+mie|addosso)\b[^.!?*\n]{0,40}|mi\s+(?:accarezzi|baci|tocchi|stringi|abbracci|lecchi|mordi|spogli|sfiori|sbottoni|prendi)\b[^.!?*\n]{0,30}|your\s+(?:hands?|lips|fingers|mouth)\s+(?:on|against|touching|caressing)\s+(?:me|my)\b[^.!?*\n]{0,30})/iu;
 function styleNotes(conv, idx, userText, user) {
   const mine = conv.messages.slice(0, idx).filter((m) => m.role === 'assistant' && m.status === 'done' && visible(m.content)).slice(-3).map((m) => visible(m.content));
   const notes = [];
@@ -426,7 +434,7 @@ async function runTurn(conv, msg, { tool, model, initiative, signal }) {
         : nowBlock({ card: conv.card, state: conv.state, memories: memory.forPrompt(conv.id, 14, userMsg?.content), lastGapMs, trimmed, initiative, social: social.chatContext(conv), user, style });
       const convo = [{ role: 'system', content: G ? G.system(user) : systemPrompt(conv.card, { user }) }, ...msgs.map(({ role, content }) => ({ role, content }))];
       if (initiative || convo.at(-1).role !== 'user') convo.push({ role: 'user', content: block });
-      else convo.at(-1).content = `${block}\n\n${convo.at(-1).content}${FORCE_NOTE[tool] || ''}`;
+      else convo.at(-1).content = `${block}\n\n${convo.at(-1).content}${G ? '' : youDoNote(userMsg?.content, conv.card, user)}${FORCE_NOTE[tool] || ''}`;
       // Le immagini dell'utente vanno al modello solo se le vede davvero
       if (visionModel && userMsg?.attachments?.length) {
         convo.at(-1).images = userMsg.attachments.map((a) => { try { return fs.readFileSync(path.join(config.paths.media, a.file)).toString('base64'); } catch { return null; } }).filter(Boolean);
