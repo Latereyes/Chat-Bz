@@ -2,7 +2,9 @@
 // e la LoRA del personaggio, per vedere quanto restano uguali vestiti, tavolo e sfondo da una foto all'altra.
 // I prompt li scrive il modello della chat (come per le foto in chat): qui ci sono solo descrizioni brevi in italiano.
 //
-//   node tools/prova-scene.js [--personaggio Hitomi] [--seed 123] [--solo-prompt]
+//   node tools/prova-scene.js [--personaggio Hitomi] [--seed 123] [--solo-prompt] [--solo-volti] [--slider 0,1,1.5]
+//
+// --slider: forze della LoRA Expression Slider (solo nel ritocco del volto, 0 = senza); --solo-volti salta le pose
 //
 // Tre modi di modificare una foto:
 //  - base:  testo → immagine (krea2-real), come una foto in chat, ritocco del volto compreso
@@ -34,6 +36,9 @@ if (!conv?.card.lora?.file) { console.error('Personaggio non trovato o senza LoR
 const card = conv.card;
 const seed = Number(opt('seed')) || randomSeed();
 const model = models.of(conv.ownerId).chat;
+// LoRA in prova (2026-10-12), non ancora nell'app: spinge l'espressione senza cambiare il volto (autore: 1.0-1.5)
+const SLIDER = 'expression_slider_0ts-krea2-V1.safetensors';
+const sliders = (opt('slider') || '0').split(',').map(Number).filter((n) => Number.isFinite(n));
 
 // Le scene: descrizioni brevi, come le scriverebbe chi chatta. from = foto da cui parte la modifica.
 const DRESS = 'un vestito da sera blu';
@@ -96,7 +101,7 @@ async function facePrompt(step) {
 }
 
 /** Ritocco del solo volto sulla foto di partenza: il grafo image to image senza il suo sampler (la foto non si ridisegna). */
-async function faceEdit(id, srcFile, prompt, denoise, s) {
+async function faceEdit(id, srcFile, prompt, denoise, s, slider = 0) {
   const graph = buildGraph(i2i, { prompt, seed: s, image: await comfy.uploadImage(await fs.readFile(path.join(config.paths.media, srcFile)), `chatbz_${path.basename(srcFile)}`), denoise: 0.5 });
   const files = await comfyLoras();
   applyPhotoStack(graph, { level: 'neutral', lenovo: true, lenovoFile: await lenovoLora('krea2'), charLora: card.lora, files, stack: true, sampler: false });
@@ -109,9 +114,19 @@ async function faceEdit(id, srcFile, prompt, denoise, s) {
   const n = applyDuoFaces(graph, [{ file: card.lora.file, text: prompt }], { files, seed: s, single: true, level: 'neutral' });
   Object.assign(SINGLE_FACE, keep);
   if (!n) throw new Error('ritocco del volto non disponibile (Impact Pack o face_yolov8m mancanti)');
+  if (slider) {
+    const file = (files || []).find((x) => x.replace(/\\/g, '/').split('/').pop() === SLIDER);
+    if (!file) throw new Error(`${SLIDER} non installata su ComfyUI`);
+    // solo nel ritocco: tra il modello del ritocco e il DetailerForEach
+    for (const [nid, node] of Object.entries(graph)) if (node.class_type === 'DetailerForEach') {
+      const lid = `${nid}9`;
+      graph[lid] = { class_type: 'LoraLoaderModelOnly', _meta: { title: 'Expression Slider' }, inputs: { model: node.inputs.model, lora_name: file, strength_model: slider } };
+      node.inputs.model = [lid, 0];
+    }
+  }
   const { files: outFiles } = await comfy.run(graph);
   const buf = await comfy.fetchFile(outFiles[0]);
-  const name = `${tmpOwner}/${id}-d${denoise}.png`;
+  const name = `${tmpOwner}/${id}-d${denoise}-s${slider}.png`;
   await fs.writeFile(path.join(config.paths.media, name), buf);
   return name;
 }
@@ -119,6 +134,7 @@ async function faceEdit(id, srcFile, prompt, denoise, s) {
 const out = new Map();   // id → { file, prompt, place, activity }
 const rows = [];
 for (const step of STEPS) {
+  if (has('solo-volti') && step.kind === 'posa') continue;
   const row = { ...step, shots: [], promptSeconds: 0 };
   console.log(`\n━━ ${step.id} (${step.kind}) · ${step.ask}`);
   const t0 = Date.now();
@@ -133,12 +149,13 @@ for (const step of STEPS) {
   if (has('solo-prompt')) { rows.push(row); out.set(step.id, { prompt: row.prompt, place: step.place, activity: step.activity }); continue; }
 
   const from = out.get(step.from);
-  for (const d of step.kind === 'base' ? [null] : step.denoise) {
-    const shot = { denoise: d, file: null, seconds: 0 };
+  const tries = step.kind === 'base' ? [[null, 0]] : step.denoise.flatMap((d) => (step.kind === 'volto' ? sliders : [0]).map((sl) => [d, sl]));
+  for (const [d, sl] of tries) {
+    const shot = { denoise: d, slider: sl, file: null, seconds: 0 };
     const t1 = Date.now();
     try {
       let file;
-      if (step.kind === 'volto') file = await gpu.run('comfy', `Scena ${step.id} volto ${d}`, () => faceEdit(step.id, from.file, row.prompt, d, seed + 1));
+      if (step.kind === 'volto') file = await gpu.run('comfy', `Scena ${step.id} volto ${d}`, () => faceEdit(step.id, from.file, row.prompt, d, seed + 1, sl));
       else {
         const media = {
           id: `${step.id}${d ? `-d${d}` : ''}`, type: 'image', seed: step.kind === 'base' ? seed : seed + 2, prompt: row.prompt, level: row.level || 'neutral',
@@ -153,7 +170,7 @@ for (const step of STEPS) {
       }
       shot.file = file;
       shot.seconds = secs(t1);
-      console.log(`  [${d ?? 'base'}] ${file} · ${shot.seconds} s${shot.facesError ? ` · ERRORE ritocco: ${shot.facesError}` : ''}`);
+      console.log(`  [${d ?? 'base'}${sl ? ` slider ${sl}` : ''}] ${file} · ${shot.seconds} s${shot.facesError ? ` · ERRORE ritocco: ${shot.facesError}` : ''}`);
     } catch (e) { shot.error = e.message; console.log(`  [${d ?? 'base'}] ✗ ${e.message}`); }
     row.shots.push(shot);
   }
@@ -165,7 +182,7 @@ for (const step of STEPS) {
 
 // copia nella cartella della prova, con nomi leggibili
 for (const r of rows) for (const s of r.shots) if (s.file) {
-  const name = `${r.id}${s.denoise ? `-denoise-${s.denoise}` : ''}.png`;
+  const name = `${r.id}${s.denoise ? `-denoise-${s.denoise}` : ''}${s.slider ? `-slider-${s.slider}` : ''}.png`;
   await fs.copyFile(path.join(config.paths.media, s.file), path.join(dir, name));
   s.file = name;
 }
@@ -182,7 +199,7 @@ function page(list) {
     <p>${esc(r.ask)} <small>(prompt in ${r.promptSeconds} s)</small></p>
     <details><summary>Prompt</summary><pre>${esc(r.prompt || r.error)}</pre></details>
     <div class="row">${r.shots.map((s) => `<figure>${s.file ? `<a href="${esc(s.file)}" target="_blank"><img src="${esc(s.file)}" loading="lazy"></a>` : `<div class="err">${esc(s.error)}</div>`}
-      <figcaption><b>${s.denoise ? `denoise ${s.denoise}` : 'base'}</b> · ${s.seconds} s</figcaption></figure>`).join('')}</div></section>`).join('');
+      <figcaption><b>${s.denoise ? `denoise ${s.denoise}` : 'base'}${s.slider ? ` · slider ${s.slider}` : ''}</b> · ${s.seconds} s</figcaption></figure>`).join('')}</div></section>`).join('');
   return `<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Prova scene ${stamp}</title>
 <style>
 :root { color-scheme: light dark; --bg: #faf9f7; --fg: #1d1c1a; --muted: #6b6a66; --line: #e4e2dd; }
