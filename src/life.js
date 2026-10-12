@@ -18,9 +18,11 @@ let busy = false;
 async function tick() {
   if (busy || !(await gpu.idle())) return;
   const now = Date.now();
+  // anche durante la chat, ogni tot messaggi: la confidenza cresceva solo a chat ferma, e intanto la scena andava
+  // avanti con il tetto dell'intimità ancora chiuso (scelta di Andrea, 2026-10-12: ogni 5 messaggi suoi)
   const due = store.list()
     .filter((c) => !chat.isRunning(c.id) && memory.needsReflection(c)
-      && now - (c.state.lastActivityAt || c.updatedAt || 0) > config.reflect.idleMs);
+      && (now - (c.state.lastActivityAt || c.updatedAt || 0) > config.reflect.idleMs || memory.needsReflection(c, config.reflect.activeMessages)));
   const conv = due[0];
   if (!conv) return;
   busy = true;

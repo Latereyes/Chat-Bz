@@ -57,6 +57,8 @@ export default {
   reflect: {
     idleMs: Number(env.REFLECT_IDLE_MIN || 3) * 60 * 1000,
     minMessages: Number(env.REFLECT_MIN_MESSAGES || 4),
+    // Anche con la chat in corso, ogni tanti messaggi (10 = 5 tuoi e 5 risposte), senza aspettare la pausa
+    activeMessages: Number(env.REFLECT_ACTIVE_MESSAGES || 10),
   },
 
   // Iniziativa: alla riaccensione un personaggio può scriverti per primo (max un messaggio).

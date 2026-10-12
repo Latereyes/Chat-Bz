@@ -66,9 +66,9 @@ function transcript(conv, fromIndex) {
     .join('\n');
 }
 
-export function needsReflection(conv) {
+export function needsReflection(conv, min = config.reflect.minMessages) {
   const done = conv.messages.filter((m) => m.status !== 'pending' && m.status !== 'streaming').length;
-  return done - (conv.state.lastReflectedCount || 0) >= config.reflect.minMessages;
+  return done - (conv.state.lastReflectedCount || 0) >= min;
 }
 
 /** Il personaggio ripensa agli ultimi messaggi: rapporto, umore, memorie, pensieri, riassunto. */
