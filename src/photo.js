@@ -1,5 +1,5 @@
 import * as ollama from './ollama.js';
-import { intimacyOpen, explicitWord, closeness } from './relationship.js';
+import { intimacyOpen, explicitWord } from './relationship.js';
 import { visualSignature, promptEngineerSystem, cleanPrompt, splitLook } from './prompts.js';
 import { figureText, bodyFamily, hasBodyLoras, hasLenovo, applyLenovo, applyBodyLoras, chainEnds, insertAfter, removeLora, FAMILIES } from './body.js';
 import { LORAS, profileFor, DUO_FACES, DUO_BODY, SINGLE_FACE, FACE_CHAIN } from './krea2.js';
@@ -25,7 +25,7 @@ export const sensualWord = (text) => String(text || '').match(SENSUAL_WORDS)?.[0
  * 1. Filtro della foto: mai oltre il tetto del personaggio (intimità chiusa → sempre Normale).
  * userText: il messaggio dell'utente; reply: la risposta del personaggio (conta solo se la scena è già almeno di flirt).
  */
-export function photoLevel({ card, state, userText = '', reply = '', followScene = true }) {
+export function photoLevel({ card, state, userText = '', reply = '' }) {
   const scene = state.scene || {};
   const ex = explicitWord(userText) || (scene.intimacy !== 'none' ? explicitWord(reply) : null);
   const sw = sensualWord(userText);
@@ -36,14 +36,6 @@ export function photoLevel({ card, state, userText = '', reply = '', followScene
   else if (sw) { want = 'sensual'; reason = `parola sensuale: «${sw}»`; }
   if (!want) return { level: 'neutral', reason: 'base' };
   if (!intimacyOpen(card, state.rel)) {
-    // La confidenza sale solo con la riflessione a chat ferma, la scena invece cambia a ogni messaggio: se in chat il
-    // momento è già diventato flirt o intimo, il personaggio ci sta, e la foto segue la scena fino al suo livello
-    // (prova sul PC 2026-10-12: Hitomi in scena intima, confidenza 32 su 55, foto sempre Normali)
-    const byScene = card.intimacy === 'mai' || !followScene ? null : scene.intimacy === 'intimate' ? 'explicit' : scene.intimacy === 'flirt' ? 'sensual' : null;
-    if (byScene) {
-      const level = ORDER[want] <= ORDER[byScene] ? want : byScene;
-      return { level, reason: `${reason}, la scena è andata avanti (confidenza ${closeness(state.rel)})` };
-    }
     return { level: 'neutral', reason: `tetto: intimità ${card.intimacy === 'mai' ? 'mai' : 'non ancora aperta'} (sarebbe ${LEVEL_LABEL[want].toLowerCase()}, ${reason})` };
   }
   return { level: want, reason };
@@ -325,11 +317,10 @@ const ORDER = { neutral: 0, sensual: 1, explicit: 2 };
 
 /**
  * Filtro di una foto con due personaggi: vale il più basso dei due (ognuno ha il suo tetto e il suo rapporto con te).
- * Qui il tetto non segue la scena: la scena è di tutti e tre, e può essere intima con uno solo dei due.
  * states: lo stato di ciascuno; scene: la scena condivisa.
  */
 export function duoLevel({ cards, states, scene, userText = '', reply = '' }) {
-  const all = cards.map((card, i) => ({ card, ...photoLevel({ card, state: { ...states[i], scene }, userText, reply, followScene: false }) }));
+  const all = cards.map((card, i) => ({ card, ...photoLevel({ card, state: { ...states[i], scene }, userText, reply }) }));
   const low = all.reduce((a, b) => (ORDER[b.level] < ORDER[a.level] ? b : a));
   const capped = all.some((x) => x.level !== low.level);
   return { level: low.level, reason: capped ? `${low.card.name}: ${low.reason}` : low.reason };

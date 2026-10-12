@@ -37,18 +37,6 @@ test('tetto chiuso: dice cosa sarebbe stata', () => {
   assert.match(r.reason, /esplicito/);
 });
 
-test('tetto chiuso ma scena andata avanti in chat: la foto segue la scena, fino al suo livello', () => {
-  const sc = SCENARIOS.find((s) => s.id === 'tetto-chiuso');
-  const { card, state } = scenarioState(sc);
-  const at = (intimacy, userText = '') => photoLevel({ card, state: { ...state, scene: { ...state.scene, intimacy } }, userText });
-  assert.equal(at('intimate').level, 'explicit');
-  assert.match(at('intimate').reason, /la scena è andata avanti/);
-  assert.equal(at('flirt', 'mandami una foto nuda').level, 'sensual');   // la parola esplicita non supera la scena
-  assert.equal(at('flirt').level, 'sensual');
-  assert.equal(at('none', 'mandami una foto nuda').level, 'neutral');
-  assert.equal(photoLevel({ card: { ...card, intimacy: 'mai' }, state: { ...state, scene: { ...state.scene, intimacy: 'intimate' } } }).level, 'neutral');
-});
-
 test('in esplicito Gemma vede gli ultimi 3 scambi, in normale solo il messaggio', async () => {
   const sc = SCENARIOS.find((s) => s.id === 'esplicito-pov-prima');
   const { card, state } = scenarioState(sc);
