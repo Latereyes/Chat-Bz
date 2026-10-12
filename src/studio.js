@@ -7,7 +7,7 @@ import { emit, emitMedia, enqueue, mediaUrl } from './jobs.js';
 import { workflows, getWorkflow, dimensions, dimensionsForRatio, frameCount, randomSeed, ASPECTS } from './workflows.js';
 import { promptEngineerSystem, visualSignature, cleanPrompt, LOOK_CHOICE, splitLook } from './prompts.js';
 import { figureText, manualBodyLoras, bodyFamily, hasLenovo } from './body.js';
-import { studioLevel, hmTokens, finishPrompt, duoLoras, lactationOn, lactationOf, LEVELS, CONTENT } from './photo.js';
+import { studioLevel, hmTokens, finishPrompt, duoLoras, sceneLorasOf, SCENE_LORAS, LEVELS, CONTENT } from './photo.js';
 import { profileFor, VARIANTS } from './krea2.js';
 import { VARIANTS as VIDEO_VARIANTS, videoNeeds, videoRules, leadPrompt } from './minimax.js';
 import { planSegments, addParts, partLine, continuePrompt, PART } from './videochain.js';
@@ -221,7 +221,9 @@ function videoPrompt(prompt, md, { text, cards = [] }) {
  */
 function studioPrompt(prompt, md, family, { text, cards = [], raw = false }) {
   if (family !== 'krea2' || md.mode !== 'text2img' && md.mode !== 'img2img') return prompt;
-  const hm = !raw && md.level === 'explicit' && 'hmnsfw' in profileFor('explicit', md.variant).loras ? hmTokens([text], { together: false }) : null;
+  // LoRA di scena (lattazione, allattamento con sega): una con la parola chiave in testa prende il posto di HMNSFW
+  const scenes = raw ? [] : sceneLorasOf([text, prompt], { level: md.level, family, variant: md.variant });
+  const hm = !raw && !scenes.some((k) => SCENE_LORAS[k].first) && md.level === 'explicit' && 'hmnsfw' in profileFor('explicit', md.variant).loras ? hmTokens([text], { together: false }) : null;
   if (hm) md.hm = hm;
   // un personaggio: la sua LoRA nel grafo e la parola chiave in testa; due: scena senza LoRA dei volti e poi ogni
   // volto ritoccato con la sua (duoFaces, vedi applyDuoFaces), così non si fondono e non si scambiano i vestiti
@@ -232,8 +234,7 @@ function studioPrompt(prompt, md, family, { text, cards = [], raw = false }) {
   const trigger = loras.map((l) => l.trigger).filter(Boolean).filter((t) => !prompt.toLowerCase().includes(t.toLowerCase())).join(', ');
   // prompt diretto: resta com'è (anche con i token HMNSFW scritti a mano), si aggiungono solo le parole chiave
   if (raw) return trigger ? `${trigger}, ${prompt}` : prompt;
-  const lactation = lactationOn(md.level, family, md.variant) && lactationOf([text, prompt]);
-  return finishPrompt(prompt, { hm, trigger, lactation }) || prompt;
+  return finishPrompt(prompt, { hm, trigger, scenes }) || prompt;
 }
 
 async function run(conv, msg, { text, cards, raw, model, sources }) {

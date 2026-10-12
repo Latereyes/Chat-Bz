@@ -10,7 +10,7 @@ import { emit, mediaUrl, renderMedia } from './jobs.js';
 import { getWorkflow, dimensions, dimensionsForRatio, randomSeed } from './workflows.js';
 import { promptEngineerSystem, cleanPrompt, LOOK_CHOICE, splitLook, ARTSY_POST_CHANCE } from './prompts.js';
 import { bodyFamily, hasLenovo } from './body.js';
-import { finishPrompt, hmTokens, studioLevel, duoLoras, lactationOn, lactationOf } from './photo.js';
+import { finishPrompt, hmTokens, studioLevel, duoLoras, sceneLorasOf, SCENE_LORAS } from './photo.js';
 import { profileFor } from './krea2.js';
 import { profilePrompt, composePrompt, socialPhotoRequest, commentPrompt, catchupPrompt } from './social-prompts.js';
 import * as notify from './notify.js';
@@ -310,10 +310,12 @@ async function engineer(conv, friend, prof, md, kind, model) {
     if (d.duoFaces) Object.assign(md, { duoFaces: d.duoFaces, charLoras: d.charLoras });
   }
   // post esplicito con una posizione nella descrizione: token di HMNSFW, come in chat
-  const hm = md.level === 'explicit' && family === 'krea2' && md.mode === 'text2img' && 'hmnsfw' in profileFor('explicit').loras ? hmTokens([md.description], { together: false }) : null;
+  // LoRA di scena (lattazione, allattamento con sega): una con la parola chiave in testa prende il posto di HMNSFW
+  const scenes = md.mode === 'text2img' ? sceneLorasOf([md.description, prompt], { level: md.level, family }) : [];
+  const lead = scenes.some((k) => SCENE_LORAS[k].first);
+  const hm = !lead && md.level === 'explicit' && family === 'krea2' && md.mode === 'text2img' && 'hmnsfw' in profileFor('explicit').loras ? hmTokens([md.description], { together: false }) : null;
   if (hm) md.hm = hm;
-  const lactation = md.mode === 'text2img' && lactationOn(md.level, family) && lactationOf([md.description, prompt]);
-  return finishPrompt(cleanPrompt(prompt) || md.description, { hm, trigger: charLora?.trigger, lactation });
+  return finishPrompt(cleanPrompt(prompt) || md.description, { hm, trigger: charLora?.trigger, scenes });
 }
 
 queue.register('post.plan', async (job, payload) => {

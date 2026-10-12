@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { photoLevel, engineerPhoto, applyPhotoStack, hmTokens, finishPrompt, recentExchanges, normalizeCharLora, studioLevel, lactationOf, LACTATION_TRIGGER } from '../src/photo.js';
+import { photoLevel, engineerPhoto, applyPhotoStack, hmTokens, finishPrompt, recentExchanges, normalizeCharLora, studioLevel, sceneLorasOf, LACTATION_TRIGGER } from '../src/photo.js';
 import { LORAS, PROFILE, VARIANTS, profileFor } from '../src/krea2.js';
 import { SCENARIOS, CHARACTERS, USER, scenarioState, scenarioMessages } from '../tools/prova-foto/scenari.js';
 
@@ -101,29 +101,51 @@ test('Krea esplicito: HMNSFW solo con i token, sampler e corpo scalato', () => {
   assert.equal(Object.keys(g).filter((id) => g[id].class_type === 'LoraLoaderModelOnly' && !used.has(id)).length, 0, 'una LoRA non porta da nessuna parte');
 });
 
-test('Lattazione: LoRA solo in esplicito e con le parole chiave nel prompt', async () => {
-  assert.ok(lactationOf('voglio vedere il latte che schizza dalle tette'));
-  assert.ok(lactationOf('milk spraying out of her breasts'));
-  assert.ok(lactationOf('lattazione'));
-  assert.ok(!lactationOf('a glass of milk on the table'));
-  assert.ok(!lactationOf('beviamo un latte macchiato'));
+const ex = (texts) => sceneLorasOf(texts, { level: 'explicit', family: 'krea2' });
+
+test('LoRA di scena: lattazione solo in esplicito e con le parole chiave nel prompt', async () => {
+  assert.deepEqual(ex(['voglio vedere il latte che schizza dalle tette']), ['lactation']);
+  assert.deepEqual(ex(['milk spraying out of her breasts']), ['lactation']);
+  assert.deepEqual(ex(['lattazione']), ['lactation']);
+  assert.deepEqual(ex(['a glass of milk on the table']), []);
+  assert.deepEqual(ex(['beviamo un latte macchiato']), []);
+  assert.deepEqual(sceneLorasOf(['lattazione'], { level: 'sensual', family: 'krea2' }), []);
   const g = structuredClone(KREA.graph);
-  applyPhotoStack(g, { level: 'explicit', files: FILES, prompt: finishPrompt('a woman on a bed', { lactation: true }) });
+  applyPhotoStack(g, { level: 'explicit', files: FILES, prompt: finishPrompt('a woman on a bed', { scenes: ['lactation'] }) });
   assert.equal(strength(g, LORAS.lactation.file), 0.8);
   const off = structuredClone(KREA.graph);
   const out = applyPhotoStack(off, { level: 'explicit', files: FILES, prompt: 'a woman on a bed' });
-  assert.ok(!loraNames(off).includes(LORAS.lactation.file));
-  assert.ok(!out.missing.includes(LORAS.lactation.file));
+  assert.ok(!loraNames(off).includes(LORAS.lactation.file) && !loraNames(off).includes(LORAS.nursing.file));
+  assert.ok(!out.missing.includes(LORAS.lactation.file) && !out.missing.includes(LORAS.nursing.file));
   const neutral = structuredClone(KREA.graph);
   applyPhotoStack(neutral, { level: 'neutral', files: FILES, prompt: `${LACTATION_TRIGGER}, a woman` });
   assert.ok(!loraNames(neutral).includes(LORAS.lactation.file));
-  assert.equal(finishPrompt('HMNSFW cowgirl, a woman', { hm: { position: 'cowgirl' }, trigger: 'H1t0m1', lactation: true }), `HMNSFW cowgirl, H1t0m1, ${LACTATION_TRIGGER}, a woman`);
+  assert.equal(finishPrompt('HMNSFW cowgirl, a woman', { hm: { position: 'cowgirl' }, trigger: 'H1t0m1', scenes: ['lactation'] }), `HMNSFW cowgirl, H1t0m1, ${LACTATION_TRIGGER}, a woman`);
   // la richiesta in chat accende la lattazione solo in esplicito
   const { card, state } = scenarioState(SCENARIOS.find((s) => s.expect.level === 'explicit'));
   const r = await engineerPhoto({ workflow: KREA, card, state, media, userText: 'scopami e fammi vedere il latte che schizza dalle tette', user: USER, dryRun: true });
   assert.equal(r.level, 'explicit');
-  assert.equal(r.lactation, true);
+  assert.deepEqual(r.scenes, ['lactation']);
   assert.ok(r.prompt.includes(LACTATION_TRIGGER));
+});
+
+test('LoRA di scena: allattamento con sega, parola chiave in testa al posto di HMNSFW', async () => {
+  assert.deepEqual(ex(['ti succhio le tette e tu me lo meni']), ['nursing']);
+  assert.deepEqual(ex(['she is nursing him while giving a handjob']), ['nursing']);
+  assert.deepEqual(ex(['fammi una sega']), []);
+  assert.deepEqual(ex(['allattami']), ['lactation']);   // senza sega: solo latte
+  assert.equal(finishPrompt('HMNSFW handjob, a woman', { trigger: 'H1t0m1', scenes: ['nursing'] }), 'nrsnghndjb, H1t0m1, a woman');
+  const g = structuredClone(KREA.graph);
+  applyPhotoStack(g, { level: 'explicit', files: FILES, prompt: finishPrompt('a woman', { scenes: ['nursing', 'lactation'] }) });
+  assert.equal(strength(g, LORAS.nursing.file), 0.9);
+  assert.equal(strength(g, LORAS.lactation.file), 0.8);
+  assert.ok(!loraNames(g).includes(LORAS.hmnsfw.file));
+  const { card, state } = scenarioState(SCENARIOS.find((s) => s.expect.level === 'explicit'));
+  const r = await engineerPhoto({ workflow: KREA, card, state, media, userText: 'sdraiato sul divano ti succhio il seno mentre mi fai una sega', user: USER, dryRun: true });
+  assert.deepEqual(r.scenes, ['nursing']);
+  assert.equal(r.hm, null);
+  assert.ok(/^nrsnghndjb, /.test(r.prompt));
+  assert.ok(r.request.includes('leans over him'));
 });
 
 test('variante Realism V2: sostituisce la 3.1; se non è installata resta la 3.1', () => {

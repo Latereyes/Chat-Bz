@@ -137,25 +137,46 @@ export function hmTokens(texts, { together = true } = {}) {
 }
 
 /**
- * Lattazione (LoRA k_lactationshot, solo in esplicito su Krea 2): si accende se la conversazione o il prompt la chiedono,
- * e allora le sue parole chiave vanno nel prompt. Senza le parole chiave la LoRA non si aggancia.
+ * LoRA di scena (solo in esplicito su Krea 2): si accendono se la conversazione o il prompt chiedono quella scena,
+ * e allora le loro parole chiave vanno nel prompt. Senza le parole chiave nel prompt la LoRA non si aggancia.
+ *  - lactation: latte dal seno (k_lactationshot)
+ *  - nursing:   lei, chinata su di lui sdraiato, lo allatta e gli fa una sega (nrsnghndjb). La parola chiave va in testa
+ *               al prompt, al posto dei token di HMNSFW (anche HMNSFW vuole stare in testa: vince la scena più precisa)
  */
 export const LACTATION_TRIGGER = 'lactation from breasts, squeezing breasts, milk shooting from breasts, liquid milk shooting from nipples';
 // latte dal seno, a parole (italiano e inglese): «milk» da solo no (un bicchiere di latte)
 const LACTATION = /\b(?:lattazion\w*|allatt\w*|lactat\w*|breast\s*milk|latte\s+(?:materno|dal\s+seno|dalle\s+tette|dai\s+(?:seni|capezzol\w*)|che\s+(?:esce|schizza|cola|spruzza))|(?:schizz\w*|spruzz\w*|esce|cola|gocciola)\s+(?:il\s+)?latte|milk\w*\s+(?:from|out\s+of|shooting|spraying|squirting|leaking|dripping)\b[^.]{0,30}\b(?:breasts?|nipples?|tits?|boobs?)|(?:breasts?|nipples?|tits?|boobs?)\s+(?:leak\w*|spray\w*|squirt\w*|shoot\w*|drip\w*)\s+milk)\b/i;
-export const lactationOf = (texts) => [].concat(texts).some((t) => LACTATION.test(String(t || '')));
-const hasLactationTrigger = (prompt) => /\blactation from breasts\b/i.test(String(prompt || ''));
-/** La LoRA di lattazione è nel profilo esplicito (o nella variante del banco di prova)? */
-export const lactationOn = (level, family, variant = null) => level === 'explicit' && family === 'krea2' && 'lactation' in profileFor('explicit', variant).loras;
+// lui le succhia il seno (o lei lo allatta): con una sega fa la scena della LoRA
+const SUCKLE = /\b(?:allatt\w*|attaccat[oa]\s+al\s+seno|succhi\w*\s+(?:il\s+|i\s+|le\s+)?(?:seno|seni|capezzol\w*|tett\w*)|ciucci\w*\s+(?:il\s+|i\s+|le\s+)?(?:seno|capezzol\w*|tett\w*)|nursing|breastfe\w*|suck\w*\s+(?:on\s+)?(?:her\s+|your\s+|my\s+)?(?:breasts?|nipples?|tits?|boobs?))\b/i;
+const HANDJOB = HM_POSITIONS.find(([p]) => p === 'handjob')[1];
+const NURSING_POSE = "Pose (it must be clear): the man reclines or lies back (on a bed, sofa or chair) and the woman leans over him, cradling him: he sucks on her exposed breast while she strokes his penis with her hand. Describe both body positions explicitly.";
+export const SCENE_LORAS = {
+  lactation: { trigger: LACTATION_TRIGGER, inPrompt: /\blactation from breasts\b/i, asked: (texts) => texts.some((t) => LACTATION.test(t)) },
+  nursing: { trigger: 'nrsnghndjb', first: true, inPrompt: /^\s*nrsnghndjb\b/i, pose: NURSING_POSE,
+    asked: (texts) => texts.some((t) => /\bnursing\s+hand\s*job\b/i.test(t)) || (texts.some((t) => SUCKLE.test(t)) && texts.some((t) => HANDJOB.test(t))) },
+};
+/** Scene chieste (chiavi di SCENE_LORAS) tra quelle del profilo esplicito di Krea 2 (o della variante del banco di prova). */
+export function sceneLorasOf(texts, { level, family, variant = null } = {}) {
+  if (level !== 'explicit' || family !== 'krea2') return [];
+  const list = [].concat(texts).map((t) => String(t || '')).filter(Boolean);
+  const loras = profileFor('explicit', variant).loras;
+  return Object.keys(SCENE_LORAS).filter((k) => k in loras && SCENE_LORAS[k].asked(list));
+}
+const scenePose = (scenes) => (scenes || []).map((k) => SCENE_LORAS[k]?.pose).filter(Boolean);
 
 export const hmPrefix = (hm) => (hm ? `HMNSFW ${hm.position}, ${hm.angle ? `ANGLE_${hm.angle}, ` : ''}` : '');
 
-/** Prompt finale: token di HMNSFW in testa, poi la parola chiave della LoRA del personaggio e quelle della lattazione. */
-export function finishPrompt(prompt, { hm, trigger, lactation = false } = {}) {
+/**
+ * Prompt finale: token di HMNSFW in testa (o la parola chiave di una scena che vuole stare in testa), poi la parola
+ * chiave della LoRA del personaggio e quelle delle altre scene.
+ */
+export function finishPrompt(prompt, { hm, trigger, scenes = [] } = {}) {
   let p = String(prompt || '').trim().replace(/^HMNSFW\b[^,]*,\s*(?:ANGLE_\w+,\s*)?/i, '');
-  if (lactation && !hasLactationTrigger(p)) p = `${LACTATION_TRIGGER}, ${p}`;
+  const lead = scenes.map((k) => SCENE_LORAS[k]).find((s) => s?.first);
+  if (lead) p = p.replace(lead.inPrompt, '').replace(/^\s*,\s*/, '');
+  for (const s of scenes.map((k) => SCENE_LORAS[k]).filter((s) => s && !s.first)) if (!s.inPrompt.test(p)) p = `${s.trigger}, ${p}`;
   if (trigger && !p.toLowerCase().includes(trigger.toLowerCase())) p = `${trigger}, ${p}`;
-  return `${hmPrefix(hm)}${p}`;
+  return `${lead ? `${lead.trigger}, ` : hmPrefix(hm)}${p}`;
 }
 
 const WHO = (card) => `${card.gender === 'uomo' ? 'adult man' : card.gender === 'altro' ? 'adult person' : 'adult woman'}, ${card.age} years old`;
@@ -186,7 +207,7 @@ function framing({ together, man, level, two }) {
 }
 
 /** Il blocco di regole del filtro, scritto per intero (niente regole impilate da più parti). */
-function rules({ level, together, man, family, hm, two = false }) {
+function rules({ level, together, man, family, hm, scenes = [], two = false }) {
   const body = two ? 'their bodies' : man ? 'his body' : 'her body';
   if (level === 'explicit') {
     return [
@@ -194,6 +215,7 @@ function rules({ level, together, man, family, hm, two = false }) {
       `- ${CONTENT.explicit}`,
       "- The USER's directions lead: the position, point of view, framing and what is visible, as said in the conversation above, even if said a few messages ago. Translate them literally; never replace a requested position or point of view with a different or softer one. The character's description only fills the gaps.",
       '- Position names are fine and help (cowgirl, reverse cowgirl, missionary, doggystyle, blowjob, handjob...).',
+      ...scenePose(scenes).map((p) => `- ${p}`),
       `- Structure, overriding the guide: shot type and point of view first, then the position and the sexual action${two ? ' (who does what with whom)' : ''}, then ${body} and what is exposed, then the place in one short sentence, then the light. Every sentence describes something visible: no mood words, no metaphors, no poetic adjectives.`,
       two ? '- Keep the two people clearly distinct: say for each one where they are in the frame and what they look like, so their faces and bodies do not blend.' : null,
       `- ${framing({ together, man, level, two })}`,
@@ -223,7 +245,7 @@ export const LOOK_TAG = 'After the prompt, on a last line of its own, write [loo
  * exchanges: recentExchanges(...) (in Normale solo il messaggio dell'utente); fromText: la foto nasce da una riserva
  * testuale (la descrizione sarebbe il messaggio stesso: non si ripete).
  */
-export function photoRequest({ card, state, media, level, exchanges = [], user, family, hm, fromText = false, outfits = '', now = new Date() }) {
+export function photoRequest({ card, state, media, level, exchanges = [], user, family, hm, scenes = [], fromText = false, outfits = '', now = new Date() }) {
   const s = state.scene || {};
   const together = s.presence === 'together';
   const man = card.gender === 'uomo';
@@ -243,7 +265,7 @@ export function photoRequest({ card, state, media, level, exchanges = [], user, 
     outfitLine(outfits),
     convo ? `Conversation (most recent last; it may be in Italian):\n${convo}` : null,
     fromText ? 'What the photo should show: what the latest message asks for, in this situation.' : `What the photo should show (written by the character): ${media.description}`,
-    rules({ level, together, man, family, hm }),
+    rules({ level, together, man, family, hm, scenes }),
     `Output format: ${media.width}x${media.height}.`,
     family && hasLenovo(family) ? LOOK_TAG : null,
     'Write the final prompt now.',
@@ -261,13 +283,15 @@ export async function engineerPhoto({ workflow, card, state, media, messages, id
   const exchanges = messages ? recentExchanges(messages, idx, EXCHANGES[level]) : [{ user: userText, reply }].filter((e) => e.user || e.reply);
   const together = state.scene?.presence === 'together';
   const useHm = level === 'explicit' && family === 'krea2' && 'hmnsfw' in profileFor('explicit', variant).loras;
-  const hm = useHm ? hmTokens([...exchanges].reverse().flatMap((e) => [e.user, e.reply]).concat(fromText ? [] : [media.description]), { together }) : null;
-  const request = photoRequest({ card, state, media, level, exchanges, user, family, hm, fromText, outfits: outfitNotes(messages, idx) });
-  const charLora = family === 'krea2' && card.lora?.file ? card.lora : null;
   const asked = [...exchanges.flatMap((e) => [e.user, e.reply]), fromText ? '' : media.description];
-  const lact = lactationOn(level, family, variant);
-  const result = { level, reason, hm, request, charLora: !!charLora, lenovo: hasLenovo(family) ? true : null, lactation: lact && lactationOf(asked), prompt: '' };
-  if (dryRun) return { ...result, prompt: finishPrompt('(prompt di Gemma)', { hm, trigger: charLora?.trigger, lactation: result.lactation }) };
+  const scenes = sceneLorasOf(asked, { level, family, variant });
+  // una scena con la parola chiave in testa prende il posto di HMNSFW
+  const lead = scenes.some((k) => SCENE_LORAS[k].first);
+  const hm = useHm && !lead ? hmTokens([...exchanges].reverse().flatMap((e) => [e.user, e.reply]).concat(fromText ? [] : [media.description]), { together }) : null;
+  const request = photoRequest({ card, state, media, level, exchanges, user, family, hm, scenes, fromText, outfits: outfitNotes(messages, idx) });
+  const charLora = family === 'krea2' && card.lora?.file ? card.lora : null;
+  const result = { level, reason, hm, request, charLora: !!charLora, lenovo: hasLenovo(family) ? true : null, scenes, prompt: '' };
+  if (dryRun) return { ...result, prompt: finishPrompt('(prompt di Gemma)', { hm, trigger: charLora?.trigger, scenes }) };
   let text = '';
   const out = await ollama.chat({
     // in esplicito il prompt lo scrive il modello scelto apposta (Qwen 27B: descrizioni più ricche)
@@ -278,9 +302,9 @@ export async function engineerPhoto({ workflow, card, state, media, messages, id
   });
   const { prompt, lenovo } = splitLook(out.content || text);
   if (hasLenovo(family) && lenovo !== null) result.lenovo = lenovo;
-  // anche se l'ha scritto Gemma da sola (la richiesta in italiano diceva altro)
-  result.lactation = lact && lactationOf([...asked, prompt]);
-  result.prompt = finishPrompt(cleanPrompt(prompt) || media.description, { hm, trigger: charLora?.trigger, lactation: result.lactation });
+  // anche se l'ha scritto Gemma da sola (la richiesta in italiano diceva altro); niente scena in testa se c'è già HMNSFW
+  result.scenes = [...new Set([...scenes, ...sceneLorasOf([prompt], { level, family, variant }).filter((k) => !hm || !SCENE_LORAS[k].first)])];
+  result.prompt = finishPrompt(cleanPrompt(prompt) || media.description, { hm, trigger: charLora?.trigger, scenes: result.scenes });
   return result;
 }
 
@@ -300,7 +324,7 @@ export function duoLevel({ cards, states, scene, userText = '', reply = '' }) {
 }
 
 /** Richiesta al prompt engineer per una foto dei due personaggi insieme. fromImage: grafo «due foto profilo» (Qwen). */
-export function duoPhotoRequest({ cards, scene = {}, media, level, exchanges = [], user, family, hm, fromText = false, fromImage = false, outfits = '', now = new Date() }) {
+export function duoPhotoRequest({ cards, scene = {}, media, level, exchanges = [], user, family, hm, scenes = [], fromText = false, fromImage = false, outfits = '', now = new Date() }) {
   const together = scene.presence === 'together';
   const when = now.toLocaleString('en-GB', { weekday: 'long', hour: '2-digit', minute: '2-digit' });
   const name = user?.name || 'User';
@@ -321,7 +345,7 @@ export function duoPhotoRequest({ cards, scene = {}, media, level, exchanges = [
     outfitLine(outfits),
     convo ? `Conversation (most recent last; it may be in Italian; their replies are labelled with their names):\n${convo}` : null,
     fromText ? 'What the photo should show: what the latest message asks for, in this situation.' : `What the photo should show: ${media.description}`,
-    rules({ level, together, family, hm, two: true }),
+    rules({ level, together, family, hm, scenes, two: true }),
     `Output format: ${media.width}x${media.height}.`,
     family && hasLenovo(family) ? LOOK_TAG : null,
     'Write the final prompt now.',
@@ -338,13 +362,14 @@ export async function engineerDuoPhoto({ workflow, cards, states, scene, media, 
   const level = lv.level;
   const exchanges = messages ? recentExchanges(messages, idx, EXCHANGES[level]) : [{ user: userText, reply }].filter((e) => e.user || e.reply);
   const useHm = level === 'explicit' && family === 'krea2' && 'hmnsfw' in profileFor('explicit').loras && workflow.mode === 'text2img';
-  const hm = useHm ? hmTokens([...exchanges].reverse().flatMap((e) => [e.user, e.reply]).concat(fromText ? [] : [media.description]), { together: scene?.presence === 'together' }) : null;
-  const request = duoPhotoRequest({ cards, scene, media, level, exchanges, user, family, hm, fromText, fromImage: workflow.mode === 'duo', outfits: outfitNotes(messages, idx) });
-  const { charLoras, duoFaces, trigger } = duoLoras(cards, family, workflow.mode);
   const asked = [...exchanges.flatMap((e) => [e.user, e.reply]), fromText ? '' : media.description];
-  const lact = lactationOn(level, family) && workflow.mode === 'text2img';
-  const result = { level, reason: lv.reason, hm, request, charLoras, duoFaces, lenovo: hasLenovo(family) ? true : null, lactation: lact && lactationOf(asked), prompt: '' };
-  if (dryRun) return { ...result, prompt: finishPrompt('(prompt di Gemma)', { hm, trigger, lactation: result.lactation }) };
+  const scenes = workflow.mode === 'text2img' ? sceneLorasOf(asked, { level, family }) : [];
+  const lead = scenes.some((k) => SCENE_LORAS[k].first);
+  const hm = useHm && !lead ? hmTokens([...exchanges].reverse().flatMap((e) => [e.user, e.reply]).concat(fromText ? [] : [media.description]), { together: scene?.presence === 'together' }) : null;
+  const request = duoPhotoRequest({ cards, scene, media, level, exchanges, user, family, hm, scenes, fromText, fromImage: workflow.mode === 'duo', outfits: outfitNotes(messages, idx) });
+  const { charLoras, duoFaces, trigger } = duoLoras(cards, family, workflow.mode);
+  const result = { level, reason: lv.reason, hm, request, charLoras, duoFaces, lenovo: hasLenovo(family) ? true : null, scenes, prompt: '' };
+  if (dryRun) return { ...result, prompt: finishPrompt('(prompt di Gemma)', { hm, trigger, scenes }) };
   let text = '';
   const out = await ollama.chat({
     model: level === 'explicit' && explicitModel ? explicitModel : model, signal, think: false,
@@ -354,8 +379,8 @@ export async function engineerDuoPhoto({ workflow, cards, states, scene, media, 
   });
   const { prompt, lenovo } = splitLook(out.content || text);
   if (hasLenovo(family) && lenovo !== null) result.lenovo = lenovo;
-  result.lactation = lact && lactationOf([...asked, prompt]);
-  result.prompt = finishPrompt(cleanPrompt(prompt) || media.description, { hm, trigger, lactation: result.lactation });
+  if (workflow.mode === 'text2img') result.scenes = [...new Set([...scenes, ...sceneLorasOf([prompt], { level, family }).filter((k) => !hm || !SCENE_LORAS[k].first)])];
+  result.prompt = finishPrompt(cleanPrompt(prompt) || media.description, { hm, trigger, scenes: result.scenes });
   return result;
 }
 
@@ -527,8 +552,8 @@ export function applyPhotoStack(graph, { level = 'neutral', lenovo = null, lenov
 
   if (stack) {
     const want = Object.entries(profile.loras).filter(([key]) => LORAS[key]);
-    // HMNSFW solo se il prompt comincia con i suoi token, la lattazione solo con le sue parole chiave
-    const usable = want.filter(([key]) => (key !== 'hmnsfw' || /^\s*HMNSFW\b/.test(prompt)) && (key !== 'lactation' || hasLactationTrigger(prompt)));
+    // HMNSFW solo se il prompt comincia con i suoi token, le LoRA di scena solo con le loro parole chiave
+    const usable = want.filter(([key]) => (key !== 'hmnsfw' || /^\s*HMNSFW\b/.test(prompt)) && (!SCENE_LORAS[key] || SCENE_LORAS[key].inPrompt.test(prompt)));
     // Realismo: una sola, al posto di quella del workflow (che resta se quella del profilo non è installata)
     const realism = usable.find(([key]) => LORAS[key].role === 'realism');
     const realismNodes = Object.keys(graph).filter((id) => isLora(graph[id]) && REALISM_FILES.includes(base(graph[id].inputs.lora_name)));
