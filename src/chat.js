@@ -151,8 +151,10 @@ export function extractTag(text, userText = '') {
 // Indizi che la situazione potrebbe essere cambiata: solo in quel caso si controlla la scena
 const MOVE_HINT = /\b(?:arriv\w*|pass(?:o|i|a)\s+(?:da|a\s+prender)|veng(?:o|hi)|sono\s+(?:qui|qua|fuori|sotto|davanti|arrivat\w)|sotto\s+casa|campanell\w*|suon\w*|buss\w*|citofon\w*|apr\w*\s+(?:la\s+)?porta|entr\w*|ci\s+vediamo|raggiung\w*|incontr\w*|vado\s+via|me\s+ne\s+vado|torn\w*\s+a\s+casa|esc\w*|usc\w*|mi\s+cambi\w*|mi\s+spogli\w*|vesti\w*|doccia|letto|camera|divano|bac\w*|abbracc\w*|knock\w*|doorbell|come\s+over|on\s+my\s+way|i'?m\s+here|outside|leav\w*|kiss\w*|hug\w*)\b/i;
 const ACTION = /\*[^*\n]{3,}\*/;
+// Con il momento flirt o intimo si controlla sempre, così si può anche calmare: prova sul PC 2026-10-12, Hitomi restava
+// in scena «intima» al ristorante mentre parlavano, e le foto la seguivano
 const needsSceneCheck = (scene, user, reply) =>
-  MOVE_HINT.test(user || '') || MOVE_HINT.test(reply || '') || (scene.presence === 'apart' && ACTION.test(reply || ''));
+  MOVE_HINT.test(user || '') || MOVE_HINT.test(reply || '') || (scene.presence === 'apart' && ACTION.test(reply || '')) || (scene.intimacy || 'none') !== 'none';
 
 async function sceneCheck(conv, user, reply, model) {
   const out = await ollama.complete({
@@ -162,9 +164,11 @@ async function sceneCheck(conv, user, reply, model) {
   });
   let j;
   try { j = JSON.parse(out); } catch { return null; }
-  if (!j?.changed) return null;
+  // l'intimità arriva sempre: se è cambiata conta anche con changed: false (Gemma 12B non segnava mai il calo)
+  const calmer = j?.intimacy && j.intimacy !== (conv.state.scene.intimacy || 'none');
+  if (!j?.changed && !calmer) return null;
   const { changed, ...patch } = j;
-  return patch;
+  return changed ? patch : { intimacy: j.intimacy };
 }
 
 const parseArgs = (a) => {
