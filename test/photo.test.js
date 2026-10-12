@@ -133,6 +133,10 @@ test('LoRA di scena: allattamento con sega, parola chiave in testa al posto di H
   assert.deepEqual(ex(['ti succhio le tette e tu me lo meni']), ['nursing']);
   assert.deepEqual(ex(['she is nursing him while giving a handjob']), ['nursing']);
   assert.deepEqual(ex(['fammi una sega']), []);
+  // prove nello Studio (2026-10-12): «nursing» da solo e scritto male accendono la LoRA; un'infermiera no
+  assert.deepEqual(ex(['nursing']), ['nursing']);
+  assert.deepEqual(ex(['nursuring hand job lactating']), ['lactation', 'nursing']);
+  assert.deepEqual(ex(['nurse outfit, handjob']), []);
   assert.deepEqual(ex(['allattami']), ['lactation']);   // senza sega: solo latte
   assert.equal(finishPrompt('HMNSFW handjob, a woman', { trigger: 'H1t0m1', scenes: ['nursing'] }), 'nrsnghndjb, H1t0m1, a woman');
   const g = structuredClone(KREA.graph);

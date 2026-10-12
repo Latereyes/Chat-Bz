@@ -153,8 +153,11 @@ const NURSING_POSE = "Pose (it must be clear): the man reclines or lies back (on
 export const SCENE_LORAS = {
   lactation: { trigger: LACTATION_TRIGGER, inPrompt: /\blactation from breasts\b/i, asked: (texts) => texts.some((t) => LACTATION.test(t)) },
   nursing: { trigger: 'nrsnghndjb', first: true, inPrompt: /^\s*nrsnghndjb\b/i, pose: NURSING_POSE,
-    asked: (texts) => texts.some((t) => /\bnursing\s+hand\s*job\b/i.test(t)) || (texts.some((t) => SUCKLE.test(t)) && texts.some((t) => HANDJOB.test(t))) },
+    asked: (texts) => texts.some((t) => NURSING.test(t)) || (texts.some((t) => SUCKLE.test(t)) && texts.some((t) => HANDJOB.test(t))) },
 };
+// «nursing» da solo basta (anche scritto male, o la parola chiave stessa): prova nello Studio 2026-10-12, «nursing»
+// e «nursuring hand job lactating» non accendevano la LoRA
+const NURSING = /\b(?:nrsnghndjb|nurs(?:ing|uring|ning)|breastfeed\w*)\b/i;
 /** Scene chieste (chiavi di SCENE_LORAS) tra quelle del profilo esplicito di Krea 2 (o della variante del banco di prova). */
 export function sceneLorasOf(texts, { level, family, variant = null } = {}) {
   if (level !== 'explicit' || family !== 'krea2') return [];
@@ -162,7 +165,7 @@ export function sceneLorasOf(texts, { level, family, variant = null } = {}) {
   const loras = profileFor('explicit', variant).loras;
   return Object.keys(SCENE_LORAS).filter((k) => k in loras && SCENE_LORAS[k].asked(list));
 }
-const scenePose = (scenes) => (scenes || []).map((k) => SCENE_LORAS[k]?.pose).filter(Boolean);
+export const scenePose = (scenes) => (scenes || []).map((k) => SCENE_LORAS[k]?.pose).filter(Boolean);
 
 export const hmPrefix = (hm) => (hm ? `HMNSFW ${hm.position}, ${hm.angle ? `ANGLE_${hm.angle}, ` : ''}` : '');
 

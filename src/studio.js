@@ -7,7 +7,7 @@ import { emit, emitMedia, enqueue, mediaUrl } from './jobs.js';
 import { workflows, getWorkflow, dimensions, dimensionsForRatio, frameCount, randomSeed, ASPECTS } from './workflows.js';
 import { promptEngineerSystem, visualSignature, cleanPrompt, LOOK_CHOICE, splitLook } from './prompts.js';
 import { figureText, manualBodyLoras, bodyFamily, hasLenovo } from './body.js';
-import { studioLevel, hmTokens, finishPrompt, duoLoras, sceneLorasOf, SCENE_LORAS, LEVELS, CONTENT } from './photo.js';
+import { studioLevel, hmTokens, finishPrompt, duoLoras, sceneLorasOf, scenePose, SCENE_LORAS, LEVELS, CONTENT } from './photo.js';
 import { profileFor, VARIANTS } from './krea2.js';
 import { VARIANTS as VIDEO_VARIANTS, videoNeeds, videoRules, leadPrompt } from './minimax.js';
 import { planSegments, addParts, partLine, continuePrompt, PART } from './videochain.js';
@@ -188,13 +188,15 @@ async function engineer(conv, msg, md, { text, cards = [], model, signal, source
   const w = getWorkflow(md.workflow, md.type, md.mode === 'continue' ? 'img2video' : md.mode);
   const family = md.type === 'image' ? bodyFamily(w.graph) : null;
   const look = typeof md.lenovo !== 'boolean' && hasLenovo(family);   // Lenovo non forzato: lo sceglie Gemma (solo Krea 2)
+  // scena con una posa precisa (allattamento con sega): Gemma deve descriverla, se no la LoRA non lega i due corpi
+  const pose = md.mode === 'text2img' ? scenePose(sceneLorasOf([text], { level: md.level, family, variant: md.variant })) : [];
   let out = '';
   const res = await ollama.chat({
     model, signal, think: false,
     options: { temperature: 0.7 },
     messages: [
       { role: 'system', content: `${promptEngineerSystem(w)}\n\n${STUDIO_RULES}` },
-      { role: 'user', content: request({ text, cards, media: md, sources, sourceDescription: md.mode === 'img2video' || md.mode === 'continue' ? md.sourceDescription : undefined }) + (look ? `\n${LOOK_CHOICE}` : '') },
+      { role: 'user', content: request({ text, cards, media: md, sources, sourceDescription: md.mode === 'img2video' || md.mode === 'continue' ? md.sourceDescription : undefined }) + pose.map((p) => `\n${p}`).join('') + (look ? `\n${LOOK_CHOICE}` : '') },
     ],
     onChunk: (c) => {
       if (!c.content) return;
