@@ -8,6 +8,7 @@
  *  - nsfw:    atti sessuali e anatomia esplicita
  *  - pose:    HMNSFW, posizioni con token (vedi hmTokens in photo.js): solo se si riconosce la posizione
  *  - detail:  dettaglio e texture
+ * La LoRA di lattazione si aggancia solo se il prompt ha le sue parole chiave (vedi lactationOf in photo.js).
  * Una LoRA che non è installata su ComfyUI viene saltata (si vede nella foto, sotto «LoRA»).
  */
 export const LORAS = {
@@ -22,6 +23,8 @@ export const LORAS = {
   // Prompt: «HMNSFW <posizione>, ANGLE_<angolo>, <descrizione 60-120 parole>»
   hmnsfw: { file: 'Krea2_HMNSFW_AIO.safetensors', label: 'HMNSFW AIO', role: 'pose' },
   detailer: { file: 'Detailer-KREA2.safetensors', label: 'Detailer', role: 'detail' },
+  // Autore: 0.8 basta. Parole chiave in LACTATION_TRIGGER (photo.js), solo quando la scena la chiede (2026-10-12)
+  lactation: { file: 'k_lactationshot.safetensors', label: 'Lactation Shot', role: 'nsfw' },
 };
 
 /**
@@ -34,7 +37,7 @@ export const LORAS = {
 export const PROFILE = {
   neutral: { loras: { realism31: 0.7 } },
   sensual: { loras: { realism31: 0.7 } },
-  explicit: { loras: { realism31: 0.7, refusal: 1, unlocked: 0.6, mystic: 0.5, hmnsfw: 0.8 }, sampler: { steps: 12, scheduler: 'beta' }, bodyScale: 0.8 },
+  explicit: { loras: { realism31: 0.7, refusal: 1, unlocked: 0.6, mystic: 0.5, hmnsfw: 0.8, lactation: 0.8 }, sampler: { steps: 12, scheduler: 'beta' }, bodyScale: 0.8 },
 };
 
 /**

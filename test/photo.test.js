@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { photoLevel, engineerPhoto, applyPhotoStack, hmTokens, finishPrompt, recentExchanges, normalizeCharLora, studioLevel } from '../src/photo.js';
+import { photoLevel, engineerPhoto, applyPhotoStack, hmTokens, finishPrompt, recentExchanges, normalizeCharLora, studioLevel, lactationOf, LACTATION_TRIGGER } from '../src/photo.js';
 import { LORAS, PROFILE, VARIANTS, profileFor } from '../src/krea2.js';
 import { SCENARIOS, CHARACTERS, USER, scenarioState, scenarioMessages } from '../tools/prova-foto/scenari.js';
 
@@ -99,6 +99,31 @@ test('Krea esplicito: HMNSFW solo con i token, sampler e corpo scalato', () => {
   for (const n of Object.values(g)) if (Array.isArray(n.inputs?.model)) assert.ok(g[n.inputs.model[0]], `nodo ${n.inputs.model[0]} mancante`);
   const used = new Set(Object.values(g).map((n) => Array.isArray(n.inputs?.model) && String(n.inputs.model[0])).filter(Boolean));
   assert.equal(Object.keys(g).filter((id) => g[id].class_type === 'LoraLoaderModelOnly' && !used.has(id)).length, 0, 'una LoRA non porta da nessuna parte');
+});
+
+test('Lattazione: LoRA solo in esplicito e con le parole chiave nel prompt', async () => {
+  assert.ok(lactationOf('voglio vedere il latte che schizza dalle tette'));
+  assert.ok(lactationOf('milk spraying out of her breasts'));
+  assert.ok(lactationOf('lattazione'));
+  assert.ok(!lactationOf('a glass of milk on the table'));
+  assert.ok(!lactationOf('beviamo un latte macchiato'));
+  const g = structuredClone(KREA.graph);
+  applyPhotoStack(g, { level: 'explicit', files: FILES, prompt: finishPrompt('a woman on a bed', { lactation: true }) });
+  assert.equal(strength(g, LORAS.lactation.file), 0.8);
+  const off = structuredClone(KREA.graph);
+  const out = applyPhotoStack(off, { level: 'explicit', files: FILES, prompt: 'a woman on a bed' });
+  assert.ok(!loraNames(off).includes(LORAS.lactation.file));
+  assert.ok(!out.missing.includes(LORAS.lactation.file));
+  const neutral = structuredClone(KREA.graph);
+  applyPhotoStack(neutral, { level: 'neutral', files: FILES, prompt: `${LACTATION_TRIGGER}, a woman` });
+  assert.ok(!loraNames(neutral).includes(LORAS.lactation.file));
+  assert.equal(finishPrompt('HMNSFW cowgirl, a woman', { hm: { position: 'cowgirl' }, trigger: 'H1t0m1', lactation: true }), `HMNSFW cowgirl, H1t0m1, ${LACTATION_TRIGGER}, a woman`);
+  // la richiesta in chat accende la lattazione solo in esplicito
+  const { card, state } = scenarioState(SCENARIOS.find((s) => s.expect.level === 'explicit'));
+  const r = await engineerPhoto({ workflow: KREA, card, state, media, userText: 'scopami e fammi vedere il latte che schizza dalle tette', user: USER, dryRun: true });
+  assert.equal(r.level, 'explicit');
+  assert.equal(r.lactation, true);
+  assert.ok(r.prompt.includes(LACTATION_TRIGGER));
 });
 
 test('variante Realism V2: sostituisce la 3.1; se non è installata resta la 3.1', () => {

@@ -136,11 +136,24 @@ export function hmTokens(texts, { together = true } = {}) {
   return { position: position || 'cum', angle, cum };
 }
 
+/**
+ * Lattazione (LoRA k_lactationshot, solo in esplicito su Krea 2): si accende se la conversazione o il prompt la chiedono,
+ * e allora le sue parole chiave vanno nel prompt. Senza le parole chiave la LoRA non si aggancia.
+ */
+export const LACTATION_TRIGGER = 'lactation from breasts, squeezing breasts, milk shooting from breasts, liquid milk shooting from nipples';
+// latte dal seno, a parole (italiano e inglese): «milk» da solo no (un bicchiere di latte)
+const LACTATION = /\b(?:lattazion\w*|allatt\w*|lactat\w*|breast\s*milk|latte\s+(?:materno|dal\s+seno|dalle\s+tette|dai\s+(?:seni|capezzol\w*)|che\s+(?:esce|schizza|cola|spruzza))|(?:schizz\w*|spruzz\w*|esce|cola|gocciola)\s+(?:il\s+)?latte|milk\w*\s+(?:from|out\s+of|shooting|spraying|squirting|leaking|dripping)\b[^.]{0,30}\b(?:breasts?|nipples?|tits?|boobs?)|(?:breasts?|nipples?|tits?|boobs?)\s+(?:leak\w*|spray\w*|squirt\w*|shoot\w*|drip\w*)\s+milk)\b/i;
+export const lactationOf = (texts) => [].concat(texts).some((t) => LACTATION.test(String(t || '')));
+const hasLactationTrigger = (prompt) => /\blactation from breasts\b/i.test(String(prompt || ''));
+/** La LoRA di lattazione è nel profilo esplicito (o nella variante del banco di prova)? */
+export const lactationOn = (level, family, variant = null) => level === 'explicit' && family === 'krea2' && 'lactation' in profileFor('explicit', variant).loras;
+
 export const hmPrefix = (hm) => (hm ? `HMNSFW ${hm.position}, ${hm.angle ? `ANGLE_${hm.angle}, ` : ''}` : '');
 
-/** Prompt finale: token di HMNSFW in testa, poi la parola chiave della LoRA del personaggio. */
-export function finishPrompt(prompt, { hm, trigger } = {}) {
+/** Prompt finale: token di HMNSFW in testa, poi la parola chiave della LoRA del personaggio e quelle della lattazione. */
+export function finishPrompt(prompt, { hm, trigger, lactation = false } = {}) {
   let p = String(prompt || '').trim().replace(/^HMNSFW\b[^,]*,\s*(?:ANGLE_\w+,\s*)?/i, '');
+  if (lactation && !hasLactationTrigger(p)) p = `${LACTATION_TRIGGER}, ${p}`;
   if (trigger && !p.toLowerCase().includes(trigger.toLowerCase())) p = `${trigger}, ${p}`;
   return `${hmPrefix(hm)}${p}`;
 }
@@ -251,8 +264,10 @@ export async function engineerPhoto({ workflow, card, state, media, messages, id
   const hm = useHm ? hmTokens([...exchanges].reverse().flatMap((e) => [e.user, e.reply]).concat(fromText ? [] : [media.description]), { together }) : null;
   const request = photoRequest({ card, state, media, level, exchanges, user, family, hm, fromText, outfits: outfitNotes(messages, idx) });
   const charLora = family === 'krea2' && card.lora?.file ? card.lora : null;
-  const result = { level, reason, hm, request, charLora: !!charLora, lenovo: hasLenovo(family) ? true : null, prompt: '' };
-  if (dryRun) return { ...result, prompt: finishPrompt('(prompt di Gemma)', { hm, trigger: charLora?.trigger }) };
+  const asked = [...exchanges.flatMap((e) => [e.user, e.reply]), fromText ? '' : media.description];
+  const lact = lactationOn(level, family, variant);
+  const result = { level, reason, hm, request, charLora: !!charLora, lenovo: hasLenovo(family) ? true : null, lactation: lact && lactationOf(asked), prompt: '' };
+  if (dryRun) return { ...result, prompt: finishPrompt('(prompt di Gemma)', { hm, trigger: charLora?.trigger, lactation: result.lactation }) };
   let text = '';
   const out = await ollama.chat({
     // in esplicito il prompt lo scrive il modello scelto apposta (Qwen 27B: descrizioni più ricche)
@@ -263,7 +278,9 @@ export async function engineerPhoto({ workflow, card, state, media, messages, id
   });
   const { prompt, lenovo } = splitLook(out.content || text);
   if (hasLenovo(family) && lenovo !== null) result.lenovo = lenovo;
-  result.prompt = finishPrompt(cleanPrompt(prompt) || media.description, { hm, trigger: charLora?.trigger });
+  // anche se l'ha scritto Gemma da sola (la richiesta in italiano diceva altro)
+  result.lactation = lact && lactationOf([...asked, prompt]);
+  result.prompt = finishPrompt(cleanPrompt(prompt) || media.description, { hm, trigger: charLora?.trigger, lactation: result.lactation });
   return result;
 }
 
@@ -324,8 +341,10 @@ export async function engineerDuoPhoto({ workflow, cards, states, scene, media, 
   const hm = useHm ? hmTokens([...exchanges].reverse().flatMap((e) => [e.user, e.reply]).concat(fromText ? [] : [media.description]), { together: scene?.presence === 'together' }) : null;
   const request = duoPhotoRequest({ cards, scene, media, level, exchanges, user, family, hm, fromText, fromImage: workflow.mode === 'duo', outfits: outfitNotes(messages, idx) });
   const { charLoras, duoFaces, trigger } = duoLoras(cards, family, workflow.mode);
-  const result = { level, reason: lv.reason, hm, request, charLoras, duoFaces, lenovo: hasLenovo(family) ? true : null, prompt: '' };
-  if (dryRun) return { ...result, prompt: finishPrompt('(prompt di Gemma)', { hm, trigger }) };
+  const asked = [...exchanges.flatMap((e) => [e.user, e.reply]), fromText ? '' : media.description];
+  const lact = lactationOn(level, family) && workflow.mode === 'text2img';
+  const result = { level, reason: lv.reason, hm, request, charLoras, duoFaces, lenovo: hasLenovo(family) ? true : null, lactation: lact && lactationOf(asked), prompt: '' };
+  if (dryRun) return { ...result, prompt: finishPrompt('(prompt di Gemma)', { hm, trigger, lactation: result.lactation }) };
   let text = '';
   const out = await ollama.chat({
     model: level === 'explicit' && explicitModel ? explicitModel : model, signal, think: false,
@@ -335,7 +354,8 @@ export async function engineerDuoPhoto({ workflow, cards, states, scene, media, 
   });
   const { prompt, lenovo } = splitLook(out.content || text);
   if (hasLenovo(family) && lenovo !== null) result.lenovo = lenovo;
-  result.prompt = finishPrompt(cleanPrompt(prompt) || media.description, { hm, trigger });
+  result.lactation = lact && lactationOf([...asked, prompt]);
+  result.prompt = finishPrompt(cleanPrompt(prompt) || media.description, { hm, trigger, lactation: result.lactation });
   return result;
 }
 
@@ -507,8 +527,8 @@ export function applyPhotoStack(graph, { level = 'neutral', lenovo = null, lenov
 
   if (stack) {
     const want = Object.entries(profile.loras).filter(([key]) => LORAS[key]);
-    // HMNSFW solo se il prompt comincia con i suoi token
-    const usable = want.filter(([key]) => key !== 'hmnsfw' || /^\s*HMNSFW\b/.test(prompt));
+    // HMNSFW solo se il prompt comincia con i suoi token, la lattazione solo con le sue parole chiave
+    const usable = want.filter(([key]) => (key !== 'hmnsfw' || /^\s*HMNSFW\b/.test(prompt)) && (key !== 'lactation' || hasLactationTrigger(prompt)));
     // Realismo: una sola, al posto di quella del workflow (che resta se quella del profilo non è installata)
     const realism = usable.find(([key]) => LORAS[key].role === 'realism');
     const realismNodes = Object.keys(graph).filter((id) => isLora(graph[id]) && REALISM_FILES.includes(base(graph[id].inputs.lora_name)));

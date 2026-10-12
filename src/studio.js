@@ -7,7 +7,7 @@ import { emit, emitMedia, enqueue, mediaUrl } from './jobs.js';
 import { workflows, getWorkflow, dimensions, dimensionsForRatio, frameCount, randomSeed, ASPECTS } from './workflows.js';
 import { promptEngineerSystem, visualSignature, cleanPrompt, LOOK_CHOICE, splitLook } from './prompts.js';
 import { figureText, manualBodyLoras, bodyFamily, hasLenovo } from './body.js';
-import { studioLevel, hmTokens, finishPrompt, duoLoras, LEVELS, CONTENT } from './photo.js';
+import { studioLevel, hmTokens, finishPrompt, duoLoras, lactationOn, lactationOf, LEVELS, CONTENT } from './photo.js';
 import { profileFor, VARIANTS } from './krea2.js';
 import { VARIANTS as VIDEO_VARIANTS, videoNeeds, videoRules, leadPrompt } from './minimax.js';
 import { planSegments, addParts, partLine, continuePrompt, PART } from './videochain.js';
@@ -232,7 +232,8 @@ function studioPrompt(prompt, md, family, { text, cards = [], raw = false }) {
   const trigger = loras.map((l) => l.trigger).filter(Boolean).filter((t) => !prompt.toLowerCase().includes(t.toLowerCase())).join(', ');
   // prompt diretto: resta com'è (anche con i token HMNSFW scritti a mano), si aggiungono solo le parole chiave
   if (raw) return trigger ? `${trigger}, ${prompt}` : prompt;
-  return finishPrompt(prompt, { hm, trigger }) || prompt;
+  const lactation = lactationOn(md.level, family, md.variant) && lactationOf([text, prompt]);
+  return finishPrompt(prompt, { hm, trigger, lactation }) || prompt;
 }
 
 async function run(conv, msg, { text, cards, raw, model, sources }) {
