@@ -171,7 +171,7 @@ export function tools({ canAnimate }) {
       : 'Send a short video clip of yourself (a few seconds, with sound). ONLY when the user explicitly asks for a video.',
     parameters: { type: 'object', properties: {
       description: { type: 'string', description: 'ENGLISH: what happens in the clip (movement, expression, camera), sounds, and an optional short line you say (write it in the user language).' },
-      duration: { type: 'integer', minimum: 2, maximum: 30, description: 'Seconds, default 5. Over 15 seconds the clip is made of parts that continue each other.' },
+      duration: { type: 'integer', minimum: 2, maximum: 45, description: 'Seconds, default 5. Over 15 seconds the clip is made of parts that continue each other.' },
     }, required: ['description'] },
   } });
   return out;

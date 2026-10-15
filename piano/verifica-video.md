@@ -206,3 +206,13 @@ Mostra i video ad Andrea, poi cambia `PROFILE.explicit` e lancia `npm test` (il 
 | `hmnsfw-shift6` | 151 s | 4,8 (7,5) | 35 | il peggiore: più slavato, volto che si scioglie |
 
 Applicato: in esplicito MysticXXX e Unlocked a 0 (`PROFILE.explicit`), HMNSFW unica LoRA NSFW. Per riprovarle c'è la variante `con-mystic-unlocked`. Da controllare: il sensuale ha ancora Mystic e Unlocked a 0.6.
+
+## 9. Video normali pieni di artefatti, «Continua» più lungo (2026-10-15)
+- **Video normali**: MysticXXX e Unlocked (LoRA NSFW del workflow) erano ancora a 0.6, perché erano state tolte solo dall'esplicito. Nel terzo giro della sezione 8 toglierle aveva dato pelle e volto puliti (errore moto 5,0 → 3,9, nitidezza 55 → 129). Ora sono a 0 anche nei filtri Normale e Sensuale (`PROFILE.neutral`, `PROFILE.sensual`: Andrea vedeva artefatti anche lì); la variante `con-mystic-unlocked` le rimette per confrontare.
+- **Da confermare** con un video normale, stesso seed (a 8 s si vede meglio):
+  ```powershell
+  node tools/prova-video.js --personaggio "Nome" --secondi 8 --varianti base,con-mystic-unlocked
+  ```
+  Se anche `base` resta pieno di artefatti nei gesti veloci, la causa è il movimento (sezione 7: mani «a rete» anche a 0,7 MP); allora si prova `passi8` o un ritmo più lento nel prompt.
+- **Durata**: «Continua» aggiunge fino a 14 s per volta (era 10) e il video intero arriva a 45 s (era 30, anche in chat e nello Studio). Il tetto è la RAM, non la GPU: per incollare i pezzi ComfyUI tiene tutti i fotogrammi in memoria due volte (~19 GB a 45 s sui 32 del PC). Prova da fare: un video da 45 s, guardando la RAM nel Task Manager.
+- **Turbo e passi** (Andrea, 2026-10-15: «sensuale e normale devono girare come esplicito»): anche Normale e Sensuale ora hanno turbo 0.5 e 12 passi. Più lenti (5 s in ~160 s invece di ~98). La variante `come-prima` rimette turbo 1 e 6 passi per confrontare.

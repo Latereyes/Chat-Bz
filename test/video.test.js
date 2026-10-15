@@ -13,11 +13,16 @@ const loras = (g) => Object.values(g).filter((n) => n.class_type === 'LoraLoader
 const has = (g, file) => loras(g).some(([f]) => f === file);
 const guiderModel = (g) => Object.values(g).find((n) => n.class_type === 'BasicGuider').inputs.model[0];
 
-test('video normale: grafo come prima (niente LoRA nuove senza motivo)', () => {
+test('video normale: niente LoRA nuove senza motivo, MysticXXX e Unlocked spente (con la variante tornano a 0.6)', () => {
   const g = structuredClone(I2V);
   const out = applyVideoStack(g, { level: 'neutral', needs: videoNeeds('she turns her head and smiles', { level: 'neutral' }), files: FILES });
-  assert.deepEqual(loras(g), loras(I2V));
-  assert.equal(out.steps, null);
+  const off = new Set([LORAS.mystic.file, LORAS.unlocked.file]);
+  assert.deepEqual(loras(g), loras(I2V).map(([f, s]) => [f, off.has(f) ? 0 : f === LORAS.turbo.file ? 0.5 : s]));
+  assert.ok(!out.loras.some((l) => l.key === 'mystic' || l.key === 'unlocked'));
+  assert.equal(out.steps, 12);
+  const v = structuredClone(I2V);
+  applyVideoStack(v, { level: 'neutral', needs: { woman: true }, files: FILES, variant: 'con-mystic-unlocked' });
+  for (const f of off) assert.equal(loras(v).find(([x]) => x === f)[1], 0.6);
 });
 
 test('bacio: la LoRA del bacio solo quando c\'è un bacio', () => {
@@ -85,11 +90,21 @@ test('varianti video: valide; shift 6 aggiunge il nodo dello shift', () => {
   assert.deepEqual(loras(s), loras(I2V));
 });
 
-test('passi dei video: 6 di base (12 in esplicito), 8 con la variante «passi8» in tutti i filtri', () => {
+test('passi dei video: 12 e turbo 0.5 in tutti i filtri, 8 con «passi8», 6 e turbo 1 con «come-prima»', () => {
   const steps = (g) => Object.values(g).find((n) => n.class_type === 'BasicScheduler').inputs.steps;
   const g = structuredClone(I2V);
   applyVideoStack(g, { level: 'neutral', needs: { woman: true }, files: FILES });
-  assert.equal(steps(g), 6);
+  assert.equal(steps(g), 12);
+  assert.equal(loras(g).find(([f]) => f === LORAS.turbo.file)[1], 0.5);
+  for (const level of ['neutral', 'sensual']) {
+    const p = structuredClone(I2V);
+    applyVideoStack(p, { level, needs: { woman: true }, files: FILES, variant: 'come-prima' });
+    assert.equal(steps(p), 6);
+    assert.equal(loras(p).find(([f]) => f === LORAS.turbo.file)[1], 1);
+  }
+  const e = structuredClone(I2V);
+  applyVideoStack(e, { level: 'explicit', needs: { woman: true }, files: FILES, variant: 'come-prima' });
+  assert.equal(steps(e), 12);
   for (const level of ['neutral', 'explicit']) {
     const v = structuredClone(I2V);
     const out = applyVideoStack(v, { level, needs: { woman: true }, files: FILES, variant: 'passi8' });
@@ -112,6 +127,9 @@ test('video espliciti: varianti per riprovare (6 passi, con genitali, con seno, 
   const sen = structuredClone(I2V);
   applyVideoStack(sen, { level: 'sensual', needs: { woman: true }, files: FILES });
   assert.equal(loras(sen).find(([f]) => f === LORAS.breast.file)[1], 1);
+  // anche in sensuale MysticXXX e Unlocked spente (2026-10-15)
+  assert.equal(loras(sen).find(([f]) => f === LORAS.mystic.file)[1], 0);
+  assert.equal(loras(sen).find(([f]) => f === LORAS.unlocked.file)[1], 0);
   // ritmo lento chiesto a Gemma in esplicito
   assert.match(videoRules('explicit', needs), /SLOW/);
 });
