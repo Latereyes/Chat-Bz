@@ -12,7 +12,7 @@ import { systemPrompt, nowBlock, tools, promptEngineerSystem, characterMediaRequ
 import { engineerPhoto, photoLevel } from './photo.js';
 import { groupTurn } from './group.js';
 import { videoNeeds, videoRules, leadPrompt } from './minimax.js';
-import { planSegments, secondsFrom, partLine, continuePrompt, addParts, PART } from './videochain.js';
+import { planSegments, secondsFrom, partLine, continuePrompt, addParts, continueSeconds, continueError } from './videochain.js';
 import { updateScene } from './relationship.js';
 import * as queue from './queue.js';
 import * as social from './social.js';
@@ -562,9 +562,12 @@ export function continueVideo(conv, messageId, mediaId, { text, seconds, model }
   if (!src) throw new Error('Video non trovato');
   const wi = getWorkflow(null, 'video', 'img2video');
   if (!wi) throw new Error('Nessun workflow video disponibile su ComfyUI');
+  const total = src.totalSeconds || src.seconds || 0;
+  const secs = continueSeconds(seconds, total);
+  if (secs < 2) throw new Error(continueError(total));
   const md = { id: store.newId(), toolName: 'send_video', type: 'video', mode: 'continue', workflow: wi.id, workflowName: wi.name,
     description: String(text || '').trim() || 'the scene goes on naturally', prompt: '', seed: randomSeed(), status: 'engineering', createdAt: Date.now(),
-    seconds: Math.max(2, Math.min(PART, Number(seconds) || 5)), totalSeconds: (src.totalSeconds || src.seconds || 0) + Math.max(2, Math.min(PART, Number(seconds) || 5)), aspect: src.aspect, width: src.width, height: src.height,
+    seconds: secs, totalSeconds: total + secs, aspect: src.aspect, width: src.width, height: src.height,
     sourceFile: src.file, sourceUrl: mediaUrl(src.file), sourceDescription: `the video so far: ${src.prompt || src.description}`, sourceLevel: src.level };
   msg.media.push(md);
   emitMedia(conv, msg, md);

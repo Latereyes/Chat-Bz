@@ -13,11 +13,16 @@ const loras = (g) => Object.values(g).filter((n) => n.class_type === 'LoraLoader
 const has = (g, file) => loras(g).some(([f]) => f === file);
 const guiderModel = (g) => Object.values(g).find((n) => n.class_type === 'BasicGuider').inputs.model[0];
 
-test('video normale: grafo come prima (niente LoRA nuove senza motivo)', () => {
+test('video normale: niente LoRA nuove senza motivo, MysticXXX e Unlocked spente (con la variante tornano a 0.6)', () => {
   const g = structuredClone(I2V);
   const out = applyVideoStack(g, { level: 'neutral', needs: videoNeeds('she turns her head and smiles', { level: 'neutral' }), files: FILES });
-  assert.deepEqual(loras(g), loras(I2V));
+  const off = new Set([LORAS.mystic.file, LORAS.unlocked.file]);
+  assert.deepEqual(loras(g), loras(I2V).map(([f, s]) => [f, off.has(f) ? 0 : s]));
+  assert.ok(!out.loras.some((l) => l.key === 'mystic' || l.key === 'unlocked'));
   assert.equal(out.steps, null);
+  const v = structuredClone(I2V);
+  applyVideoStack(v, { level: 'neutral', needs: { woman: true }, files: FILES, variant: 'con-mystic-unlocked' });
+  assert.deepEqual(loras(v), loras(I2V));
 });
 
 test('bacio: la LoRA del bacio solo quando c\'è un bacio', () => {

@@ -1196,7 +1196,7 @@ async function mediaAction(btn) {
   if (act === 'continue') {
     const text = prompt('Cosa succede dopo? (facoltativo: lascia vuoto e decide Gemma)', '');
     if (text === null) return;
-    const secs = prompt('Quanti secondi in più? (da 2 a 10)', '5');
+    const secs = prompt('Quanti secondi in più? (da 2 a 14; in tutto al massimo 45)', '5');
     if (secs === null) return;
     return api(`${base}/messages/${msg.id}/media/${md.id}/continue`, { body: { text, seconds: Number(secs) || 5, model: currentModel() } }).catch((e) => alert(e.message));
   }
@@ -1311,7 +1311,7 @@ function fillStudioOpts() {
   const vv = state.config?.options?.videoVariants || {};
   so.variantVideo.innerHTML = Object.entries(vv).map(([v, l]) => `<option value="${esc(v)}">${v === 'base' ? 'LoRA video: profilo' : esc(l)}</option>`).join('');
   so.variantVideo.value = vv[p.videoVariant] ? p.videoVariant : 'base';
-  so.seconds.value = ['5', '10', '15', '20', '30'].includes(String(p.seconds)) ? String(p.seconds) : '5';
+  so.seconds.value = ['5', '10', '15', '20', '30', '45'].includes(String(p.seconds)) ? String(p.seconds) : '5';
   so.video.checked = !!p.video;
   so.body.checked = !!p.bodyOn;
   // Cursori delle LoRA del corpo: limiti dalle taglie (stesse forze delle schede), 0 = LoRA spenta

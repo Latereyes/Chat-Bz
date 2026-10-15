@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { planSegments, secondsFrom, continueGraph, continueFrames, addParts, continuePrompt, OVERLAP } from '../src/videochain.js';
+import { planSegments, secondsFrom, continueGraph, continueFrames, addParts, continuePrompt, continueSeconds, OVERLAP } from '../src/videochain.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const load = (id) => ({ id, ...JSON.parse(fs.readFileSync(path.join(root, 'workflows', id, 'manifest.json'), 'utf8')), graph: JSON.parse(fs.readFileSync(path.join(root, 'workflows', id, 'workflow.json'), 'utf8')) });
@@ -17,10 +17,16 @@ test('pezzi: fino a 15 s uno solo, poi da 10 s; durata detta a parole', () => {
   assert.deepEqual(planSegments(20), [10, 10]);
   assert.deepEqual(planSegments(30), [10, 10, 10]);
   assert.deepEqual(planSegments(22), [10, 12]);
-  assert.deepEqual(planSegments(99), [10, 10, 10]);
+  assert.deepEqual(planSegments(45), [10, 10, 10, 10, 5]);
+  assert.deepEqual(planSegments(99), [10, 10, 10, 10, 5]);
   assert.equal(secondsFrom('mandami un video di 20 secondi'), 20);
   assert.equal(secondsFrom('un video di mezzo minuto'), 30);
   assert.equal(secondsFrom('un video'), null);
+  // «Continua»: fino a 14 s per volta, il video intero al massimo 45 s
+  assert.equal(continueSeconds(20, 10), 14);
+  assert.equal(continueSeconds(10, 40), 5);
+  assert.ok(continueSeconds(5, 44) < 2);
+  assert.equal(continueSeconds(1, 0), 2);
 });
 
 test('continua con la clip guida: video precedente caricato, coda come guida, parte nuova incollata con l\'audio', () => {

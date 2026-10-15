@@ -8,15 +8,23 @@ import { buildGraph } from './workflows.js';
  *   fotogrammi del precedente (MiniMaxH3AddGuide con una clip di OVERLAP fotogrammi, audio compreso; se il nodo
  *   non c'è, solo dall'ultimo fotogramma come first_frame) e viene incollato in coda: immagini (ImageBatch) e audio
  *   (AudioConcat), togliendo i fotogrammi ripetuti. Ogni pezzo salva il video intero fin lì.
- * - «Continua» sotto un video fa la stessa cosa a partire da quel video.
+ * - «Continua» sotto un video fa la stessa cosa a partire da quel video (fino a CONTINUE_MAX secondi per volta, MAX in tutto).
  */
 export const SINGLE = 15;
 export const PART = 10;
-export const MAX = 30;
+// Tetto del video intero, anche con «Continua». Non lo decide la GPU (ogni pezzo è
+// un video corto) ma la RAM: per incollare i pezzi ComfyUI tiene in memoria tutti i fotogrammi, due volte (video di
+// prima e video intero), ~8,6 MB l'uno a 0,7 MP. 45 s = 1080 fotogrammi, ~19 GB sui 32 del PC; 60 s non ci starebbe
+export const MAX = 45;
+// «Continua»: al massimo 14 s per volta, così con i fotogrammi di guida il pezzo generato resta di ~15 s come un video singolo
+export const CONTINUE_MAX = 14;
+/** Secondi che «Continua» aggiunge (2-CONTINUE_MAX) a un video che ne dura già `total`; meno di 2 = è già al tetto. */
+export const continueSeconds = (seconds, total = 0) => Math.max(0, Math.min(CONTINUE_MAX, Math.max(2, Math.round(Number(seconds) || 5)), MAX - Math.round(Number(total) || 0)));
+export const continueError = (total) => `Il video dura già ${Math.round(total)} s: oltre ${MAX} s il PC non ha abbastanza memoria per allungarlo`;
 export const OVERLAP = 22;    // fotogrammi del pezzo precedente che guidano il nuovo (clip valide: 5, 22, 39… = 17k+5)
 const FPS = 24;
 
-/** Pezzi di un video di `seconds` secondi: [15] fino a 15 s, poi [10, 10, …] con l'ultimo di almeno 4 s. */
+/** Pezzi di un video di `seconds` secondi (al massimo MAX): [15] fino a 15 s, poi [10, 10, …] con l'ultimo di almeno 4 s. */
 export function planSegments(seconds) {
   const s = Math.max(2, Math.min(MAX, Math.round(Number(seconds) || 5)));
   if (s <= SINGLE) return [s];
