@@ -35,8 +35,9 @@ export const PROFILE = {
   // stesso seed, toglierle ha dato errore nel moto 5,0 → 3,9 e nitidezza 55 → 129 (pelle slavata e volto impastato
   // con loro): nei video normali e sensuali non servono a niente (Andrea: artefatti anche in sensuale). Da confermare
   // con il banco (variante con-mystic-unlocked)
-  neutral: { loras: { kiss: 0.8, mystic: 0, unlocked: 0 } },
-  sensual: { loras: { breast: 1.0, kiss: 0.8, mystic: 0, unlocked: 0 } },
+  // stessi turbo e passi dell'esplicito, che funziona bene (Andrea, 2026-10-15): più lento, 5 s in ~160 s invece di ~98
+  neutral: { loras: { kiss: 0.8, mystic: 0, unlocked: 0 }, turbo: 0.5, steps: 12 },
+  sensual: { loras: { breast: 1.0, kiss: 0.8, mystic: 0, unlocked: 0 }, turbo: 0.5, steps: 12 },
   // prova sul PC 2026-10-10 (Hitomi, Studio): con 6 passi corpi deformati e ghosting pesante, con 12 (come dice l'autore di HMNSFW)
   // molto meglio; seno e pene più leggeri cambiano poco ma non peggiorano. Più lento: 5 s in ~160 s invece di ~87
   // secondo giro (2026-10-10): solo HMNSFW molto meglio, deforma poco. Seno, Vagina, hmpussy e Penis V2 deformavano i corpi
@@ -48,9 +49,10 @@ export const PROFILE = {
 
 /** Varianti da confrontare (Studio: menu «LoRA video»). null toglie una LoRA del profilo. */
 export const VARIANTS = {
-  base: { label: 'Profilo video attuale (6 passi; esplicito 12)' },
+  base: { label: 'Profilo video attuale (turbo 0.5, 12 passi)' },
   // passi per tutti i filtri: per confrontare 6 e 8 nello Studio (Andrea, 2026-10-10)
   passi8: { label: '8 passi in tutti i filtri', steps: 8 },
+  'come-prima': { label: 'Normale e sensuale com\'erano (turbo 1, 6 passi)', neutralTurbo: 1, neutralSteps: 6, sensualTurbo: 1, sensualSteps: 6 },
   passi6: { label: 'Esplicito a 6 passi (com\'era: ghosting)', explicitSteps: 6 },
   // esplicito ancora un po' deformato a 12 passi (2026-10-10): una causa alla volta tra quelle rimaste
   // le LoRA tolte dal profilo esplicito, per riprovarle (leggere) dallo Studio
@@ -74,7 +76,8 @@ export function profileFor(level, variant) {
   const v = typeof variant === 'string' ? VARIANTS[variant] : variant;
   const loras = { ...base.loras };
   for (const [k, s] of Object.entries(v?.[level] || {})) { if (s === null) delete loras[k]; else loras[k] = s; }
-  const pick = (key, def) => (level === 'explicit' && v && `explicit${key}` in v ? v[`explicit${key}`] : def);
+  // turbo, passi e shift di un filtro solo: explicitSteps, neutralTurbo…
+  const pick = (key, def) => (v && `${level}${key}` in v ? v[`${level}${key}`] : def);
   return { loras, turbo: pick('Turbo', base.turbo), steps: v?.steps ?? pick('Steps', base.steps), shift: pick('Shift', base.shift) };
 }
 

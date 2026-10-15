@@ -215,3 +215,4 @@ Applicato: in esplicito MysticXXX e Unlocked a 0 (`PROFILE.explicit`), HMNSFW un
   ```
   Se anche `base` resta pieno di artefatti nei gesti veloci, la causa è il movimento (sezione 7: mani «a rete» anche a 0,7 MP); allora si prova `passi8` o un ritmo più lento nel prompt.
 - **Durata**: «Continua» aggiunge fino a 14 s per volta (era 10) e il video intero arriva a 45 s (era 30, anche in chat e nello Studio). Il tetto è la RAM, non la GPU: per incollare i pezzi ComfyUI tiene tutti i fotogrammi in memoria due volte (~19 GB a 45 s sui 32 del PC). Prova da fare: un video da 45 s, guardando la RAM nel Task Manager.
+- **Turbo e passi** (Andrea, 2026-10-15: «sensuale e normale devono girare come esplicito»): anche Normale e Sensuale ora hanno turbo 0.5 e 12 passi. Più lenti (5 s in ~160 s invece di ~98). La variante `come-prima` rimette turbo 1 e 6 passi per confrontare.
