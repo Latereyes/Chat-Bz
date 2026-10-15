@@ -33,9 +33,10 @@ export const LORAS = {
 export const PROFILE = {
   // 2026-10-15: MysticXXX e Unlocked (LoRA NSFW del workflow) erano rimaste a 0.6 nei video normali. In esplicito,
   // stesso seed, toglierle ha dato errore nel moto 5,0 → 3,9 e nitidezza 55 → 129 (pelle slavata e volto impastato
-  // con loro): nei video normali non servono a niente. Da confermare con il banco (variante con-mystic-unlocked)
+  // con loro): nei video normali e sensuali non servono a niente (Andrea: artefatti anche in sensuale). Da confermare
+  // con il banco (variante con-mystic-unlocked)
   neutral: { loras: { kiss: 0.8, mystic: 0, unlocked: 0 } },
-  sensual: { loras: { breast: 1.0, kiss: 0.8 } },
+  sensual: { loras: { breast: 1.0, kiss: 0.8, mystic: 0, unlocked: 0 } },
   // prova sul PC 2026-10-10 (Hitomi, Studio): con 6 passi corpi deformati e ghosting pesante, con 12 (come dice l'autore di HMNSFW)
   // molto meglio; seno e pene più leggeri cambiano poco ma non peggiorano. Più lento: 5 s in ~160 s invece di ~87
   // secondo giro (2026-10-10): solo HMNSFW molto meglio, deforma poco. Seno, Vagina, hmpussy e Penis V2 deformavano i corpi
@@ -56,7 +57,7 @@ export const VARIANTS = {
   'con-genitali': { label: 'Con Vagina 0.5, hmpussy e Penis V2 0.6 (com\'era)', explicit: { breast: 0.8, vagina: 0.5, hmpussy: 0.35, penis: 0.6 } },
   'con-seno': { label: 'Con la LoRA del seno 0.8 anche in esplicito', explicit: { breast: 0.8 } },
   'senza-seno': { label: 'Senza la LoRA del seno (sensuale)', sensual: { breast: null } },
-  'con-mystic-unlocked': { label: 'Con MysticXXX e Unlocked 0.6 (normale ed esplicito, com\'era)', neutral: { mystic: 0.6, unlocked: 0.6 }, explicit: { mystic: 0.6, unlocked: 0.6 } },
+  'con-mystic-unlocked': { label: 'Con MysticXXX e Unlocked 0.6 in tutti i filtri (com\'era)', neutral: { mystic: 0.6, unlocked: 0.6 }, sensual: { mystic: 0.6, unlocked: 0.6 }, explicit: { mystic: 0.6, unlocked: 0.6 } },
   'senza-mystic-unlocked': { label: 'Senza MysticXXX e Unlocked (solo HMNSFW come LoRA NSFW)', sensual: { mystic: 0, unlocked: 0 }, explicit: { mystic: 0, unlocked: 0 } },
   'senza-hmnsfw': { label: 'Senza HMNSFW (turbo 1, 12 passi)', explicit: { hmnsfw: null }, explicitTurbo: 1 },
   'hmnsfw-forte': { label: 'HMNSFW 1.0', explicit: { hmnsfw: 1 } },

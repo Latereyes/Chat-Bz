@@ -208,7 +208,7 @@ Mostra i video ad Andrea, poi cambia `PROFILE.explicit` e lancia `npm test` (il 
 Applicato: in esplicito MysticXXX e Unlocked a 0 (`PROFILE.explicit`), HMNSFW unica LoRA NSFW. Per riprovarle c'è la variante `con-mystic-unlocked`. Da controllare: il sensuale ha ancora Mystic e Unlocked a 0.6.
 
 ## 9. Video normali pieni di artefatti, «Continua» più lungo (2026-10-15)
-- **Video normali**: MysticXXX e Unlocked (LoRA NSFW del workflow) erano ancora a 0.6, perché erano state tolte solo dall'esplicito. Nel terzo giro della sezione 8 toglierle aveva dato pelle e volto puliti (errore moto 5,0 → 3,9, nitidezza 55 → 129). Ora sono a 0 anche nel filtro Normale (`PROFILE.neutral`); la variante `con-mystic-unlocked` le rimette per confrontare. Il sensuale le ha ancora a 0.6.
+- **Video normali**: MysticXXX e Unlocked (LoRA NSFW del workflow) erano ancora a 0.6, perché erano state tolte solo dall'esplicito. Nel terzo giro della sezione 8 toglierle aveva dato pelle e volto puliti (errore moto 5,0 → 3,9, nitidezza 55 → 129). Ora sono a 0 anche nei filtri Normale e Sensuale (`PROFILE.neutral`, `PROFILE.sensual`: Andrea vedeva artefatti anche lì); la variante `con-mystic-unlocked` le rimette per confrontare.
 - **Da confermare** con un video normale, stesso seed (a 8 s si vede meglio):
   ```powershell
   node tools/prova-video.js --personaggio "Nome" --secondi 8 --varianti base,con-mystic-unlocked

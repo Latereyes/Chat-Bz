@@ -117,6 +117,9 @@ test('video espliciti: varianti per riprovare (6 passi, con genitali, con seno, 
   const sen = structuredClone(I2V);
   applyVideoStack(sen, { level: 'sensual', needs: { woman: true }, files: FILES });
   assert.equal(loras(sen).find(([f]) => f === LORAS.breast.file)[1], 1);
+  // anche in sensuale MysticXXX e Unlocked spente (2026-10-15)
+  assert.equal(loras(sen).find(([f]) => f === LORAS.mystic.file)[1], 0);
+  assert.equal(loras(sen).find(([f]) => f === LORAS.unlocked.file)[1], 0);
   // ritmo lento chiesto a Gemma in esplicito
   assert.match(videoRules('explicit', needs), /SLOW/);
 });
